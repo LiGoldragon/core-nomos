@@ -14,8 +14,8 @@ use core_logos::{
 use core_nomos::MacroPackage;
 use core_schema::fixture::{COMMIT_SEQUENCE, DATABASE_MARKER, STATE_DIGEST};
 use core_schema::{
-    CoreDeclaration, CoreField, CoreNewtype, CoreReference, CoreSchema, CoreStruct, CoreType,
-    TextualSchema,
+    CoreDeclaration, CoreEnum, CoreField, CoreNewtype, CoreReference, CoreSchema, CoreStruct,
+    CoreType, CoreVariant, TextualSchema,
 };
 use name_table::{Identifier, Name, NameTable};
 use structural_codec::ids::ScopedCoreTypeId;
@@ -442,6 +442,29 @@ fn hash_discipline_rename_is_stable_output_changes() {
     assert_ne!(rust_a, rust_b);
     assert!(rust_a.contains("CommitSequence"));
     assert!(rust_b.contains("CommitLog"));
+}
+
+#[test]
+fn payload_enumerations_do_not_claim_copy() {
+    let mut names = NameTable::new();
+    let input = intern(&mut names, "Input");
+    let record = intern(&mut names, "Record");
+    let observe = intern(&mut names, "Observe");
+    let value = CoreType::Enumeration(CoreEnum::new(
+        input,
+        vec![
+            CoreVariant::new(record, Some(CoreReference::Integer)),
+            CoreVariant::new(observe, None),
+        ],
+    ));
+    let lowering = MacroPackage::wire_fixture()
+        .apply(&schema_of(value), &names)
+        .expect("lower payload enumeration");
+    let rust = project(&lowering.items[0], &lowering.names);
+    assert!(
+        !rust.contains("    Copy,"),
+        "payload enums cannot derive Copy"
+    );
 }
 
 #[test]

@@ -239,9 +239,22 @@ impl<'package> Evaluator<'package> {
         template: &EnumerationTemplate,
         bound: &BoundInput,
     ) -> Result<CoreItem, NomosError> {
-        let attributes = self.evaluate_attributes(&template.attributes)?;
+        let mut attributes = self.evaluate_attributes(&template.attributes)?;
         let name = self.evaluate_name(&template.name, bound)?;
         let variants = self.evaluate_variants(&template.variants, bound)?;
+        if variants
+            .iter()
+            .any(|variant| !matches!(variant.payload, VariantPayload::Unit))
+        {
+            for attribute in &mut attributes {
+                if let Attribute::Derive(group) = attribute {
+                    group.paths.retain(|path| match path.resolve(&self.names) {
+                        Ok(segments) => segments.as_slice() != [Name::new("Copy")],
+                        Err(_) => true,
+                    });
+                }
+            }
+        }
         Ok(CoreItem::Enumeration(Enumeration {
             visibility: template.visibility.clone(),
             attributes,
