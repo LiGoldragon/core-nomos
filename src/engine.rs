@@ -118,14 +118,11 @@ impl<'package> Evaluator<'package> {
 
     /// The visibility contact point where two enums meet: core-schema's coarse
     /// declaration visibility lowers into core-logos' richer `Visibility`. The
-    /// schema declaration is treated as authoritative API intent and stamps the
-    /// produced item, overriding the visibility the macro template proposed.
-    ///
-    /// LEAN (the visibility-authority question is unresolved, primary-56d1): schema
-    /// `Public`/`Private` is authoritative here. Revisable to Nomos-owned policy by
-    /// dropping the stamp in `lower_declaration`, which restores the template's
-    /// proposed visibility; both surfaces are left intact so either ruling lands
-    /// cheaply.
+    /// schema declaration's `Public`/`Private` is an authoritative API promise and
+    /// stamps the produced item, overriding the visibility the macro template
+    /// proposed; core-logos then stores that final visibility explicitly. Settled
+    /// psyche ruling (primary-56d1.29): schema visibility is authoritative and
+    /// core-nomos must lower it faithfully into the generated Rust.
     fn lower_visibility(&self, visibility: core_schema::Visibility) -> Visibility {
         match visibility {
             core_schema::Visibility::Public => Visibility::Public,

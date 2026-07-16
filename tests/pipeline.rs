@@ -369,10 +369,10 @@ fn wire_preamble(names: &mut NameTable) -> Vec<Attribute> {
 
 #[test]
 fn declaration_visibility_lowers_faithfully() {
-    // The schema declaration's coarse Public/Private is authoritative API intent and
-    // stamps the produced item. A Private declaration projects without `pub`; a
-    // Public one keeps it. Same structure, visibility the only difference. (LEAN:
-    // schema-authoritative visibility, revisable to Nomos-owned policy.)
+    // The schema declaration's coarse Public/Private is an authoritative API promise
+    // and stamps the produced item. A Private declaration projects without `pub`; a
+    // Public one keeps it. Same structure, visibility the only difference. (Settled
+    // psyche ruling primary-56d1.29: schema visibility is authoritative.)
     let mut names = NameTable::new();
     let identifier = intern(&mut names, "Hidden");
     let value = CoreType::Newtype(CoreNewtype::new(identifier, CoreReference::Integer));
