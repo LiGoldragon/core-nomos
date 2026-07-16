@@ -8,7 +8,7 @@
 //! The `$name`/`<<name>>` *text spelling* of an escape is TextualNomos, which is
 //! deferred — nothing here parses text. An escape is data.
 
-use core_logos::{Attribute, Field, Generics, TypeReference, Visibility};
+use core_logos::{Attribute, Field, Generics, TypeReference, Variant, Visibility};
 use name_table::Identifier;
 
 use crate::identity::MacroIdentity;
@@ -125,6 +125,9 @@ pub enum SpliceElement {
         /// How each field's name is selected.
         name_rule: FieldNameRule,
     },
+    /// Each bound schema variant becomes a Logos enum variant, preserving its
+    /// name and lowering an optional payload to a one-element tuple.
+    Variant,
 }
 
 /// How a struct macro selects a field's `CoreLogos` name (deliverable 3: "derived
@@ -161,6 +164,8 @@ pub enum ItemTemplate {
     Newtype(NewtypeTemplate),
     /// A named-field struct result.
     Struct(StructTemplate),
+    /// An enumeration result.
+    Enumeration(EnumerationTemplate),
 }
 
 /// The newtype result template — `Public.Newtype.( $name $(WireAttributes) $type )`
@@ -192,4 +197,16 @@ pub struct StructTemplate {
     pub generics: Generics,
     /// The fields — a splice over the bound struct fields.
     pub fields: Sequence<Field>,
+}
+
+/// The enum result template. Variants are spliced from the bound CoreSchema
+/// enumeration, while attributes, visibility, and name follow the other item
+/// templates.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct EnumerationTemplate {
+    pub visibility: Visibility,
+    pub attributes: Sequence<Attribute>,
+    pub name: Scalar<Identifier>,
+    pub generics: Generics,
+    pub variants: Sequence<Variant>,
 }

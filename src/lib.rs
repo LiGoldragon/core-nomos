@@ -63,6 +63,7 @@ pub use identity::{MacroIdentity, MacroKind, SectionDefault};
 pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use template::{
-    BindingRef, Escape, FieldNameRule, ItemTemplate, NameTransform, NewtypeTemplate, Realize,
-    ResultTemplate, Scalar, Sequence, SequenceItem, Splice, SpliceElement, StructTemplate,
+    BindingRef, EnumerationTemplate, Escape, FieldNameRule, ItemTemplate, NameTransform,
+    NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
+    SpliceElement, StructTemplate,
 };

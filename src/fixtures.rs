@@ -14,8 +14,9 @@ use crate::identity::{MacroKind, SectionDefault};
 use crate::meta::{InputParameter, InputSignature, MetaType};
 use crate::package::{MacroPackage, PackageRevision};
 use crate::template::{
-    BindingRef, Escape, FieldNameRule, ItemTemplate, NameTransform, NewtypeTemplate, Realize,
-    ResultTemplate, Scalar, Sequence, SequenceItem, Splice, SpliceElement, StructTemplate,
+    BindingRef, EnumerationTemplate, Escape, FieldNameRule, ItemTemplate, NameTransform,
+    NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
+    SpliceElement, StructTemplate,
 };
 
 /// Which attribute preamble a fixture package's macros carry. The wire preamble is
@@ -67,6 +68,7 @@ impl MacroPackage {
         let name_binding = package.author_name("name");
         let type_binding = package.author_name("type");
         let fields_binding = package.author_name("fields");
+        let variants_binding = package.author_name("variants");
 
         // The recursive attributes macro (named): a unit input, a literal preamble.
         let attributes_macro_name = package.author_name(kind.attributes_macro_name());
@@ -144,6 +146,39 @@ impl MacroPackage {
                         visibility: Visibility::Public,
                         name_rule: FieldNameRule::FieldRuleDispatch,
                     },
+                }))),
+            })),
+        });
+
+        // The enumeration structural default preserves variant names and lowers
+        // optional payload references into tuple payloads.
+        let enumeration_macro_name = package.author_name("Enumeration");
+        package.register(MacroDefinition {
+            name: enumeration_macro_name,
+            kind: MacroKind::Structural(SectionDefault::Enumeration),
+            input: InputSignature {
+                parameters: vec![
+                    InputParameter {
+                        binding: name_binding,
+                        meta: MetaType::Name,
+                    },
+                    InputParameter {
+                        binding: variants_binding,
+                        meta: MetaType::Variants,
+                    },
+                ],
+            },
+            template: ResultTemplate::Item(ItemTemplate::Enumeration(EnumerationTemplate {
+                visibility: Visibility::Public,
+                attributes: Sequence::of(SequenceItem::Escape(Escape::Invoke(attributes_macro))),
+                name: Scalar::Escape(Escape::Realize(Realize {
+                    binding: BindingRef::Input(name_binding),
+                    transform: NameTransform::Identity,
+                })),
+                generics: Generics::none(),
+                variants: Sequence::of(SequenceItem::Escape(Escape::Splice(Splice {
+                    binding: BindingRef::Input(variants_binding),
+                    element: SpliceElement::Variant,
                 }))),
             })),
         });

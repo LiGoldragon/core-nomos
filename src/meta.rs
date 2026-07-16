@@ -1,7 +1,7 @@
 //! The macro input model: the `{ Name Type }` meta-shape as data, and the values
 //! bound into it when a macro is applied to a schema declaration.
 
-use core_schema::{CoreField, CoreReference};
+use core_schema::{CoreField, CoreReference, CoreVariant};
 use name_table::Identifier;
 use std::collections::BTreeMap;
 
@@ -64,6 +64,8 @@ pub enum MetaValue {
     Type(CoreReference),
     /// A bound field vector (a struct's fields).
     Fields(Vec<CoreField>),
+    /// A bound variant vector (an enumeration's variants).
+    Variants(Vec<CoreVariant>),
 }
 
 /// The bound input: each parameter's binding name mapped to the value the

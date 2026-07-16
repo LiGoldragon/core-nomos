@@ -9,8 +9,9 @@
 //! literal re-interned through the package's authoring table into the extension.
 
 use core_logos::{
-    Attribute, ConfigurationAttribute, ConfigurationPredicate, CoreItem, DeriveGroup, Field,
-    HelperDerive, Newtype, PathNode, Struct, TypeApplication, TypeReference, Visibility,
+    Attribute, ConfigurationAttribute, ConfigurationPredicate, CoreItem, DeriveGroup, Enumeration,
+    Field, HelperDerive, Newtype, PathNode, Struct, TypeApplication, TypeReference, Variant,
+    VariantPayload, Visibility,
 };
 use core_schema::{CoreDeclaration, CoreField, CoreReference, CoreSchema, CoreType};
 use name_table::{Identifier, Name, NameTable};
@@ -20,8 +21,9 @@ use crate::identity::{MacroIdentity, SectionDefault};
 use crate::meta::{BoundInput, InputSignature, MetaType, MetaValue};
 use crate::package::MacroPackage;
 use crate::template::{
-    BindingRef, Escape, FieldNameRule, ItemTemplate, NameTransform, NewtypeTemplate, Realize,
-    ResultTemplate, Scalar, Sequence, SequenceItem, Splice, SpliceElement, StructTemplate,
+    BindingRef, EnumerationTemplate, Escape, FieldNameRule, ItemTemplate, NameTransform,
+    NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
+    SpliceElement, StructTemplate,
 };
 
 /// The result of lowering a schema: the produced `CoreLogos` items, in declaration
@@ -158,11 +160,16 @@ impl<'package> Evaluator<'package> {
                         });
                     }
                 },
-                MetaType::Variants => {
-                    return Err(NomosError::MetaShape {
-                        meta: MetaType::Variants,
-                    });
-                }
+                MetaType::Variants => match value {
+                    CoreType::Enumeration(enumeration) => {
+                        MetaValue::Variants(enumeration.variants().to_vec())
+                    }
+                    _ => {
+                        return Err(NomosError::MetaShape {
+                            meta: MetaType::Variants,
+                        });
+                    }
+                },
             };
             bound.bind(parameter.binding, meta_value);
         }
@@ -190,6 +197,7 @@ impl<'package> Evaluator<'package> {
         match item {
             ItemTemplate::Newtype(template) => self.evaluate_newtype(template, bound),
             ItemTemplate::Struct(template) => self.evaluate_struct(template, bound),
+            ItemTemplate::Enumeration(template) => self.evaluate_enumeration(template, bound),
         }
     }
 
@@ -223,6 +231,23 @@ impl<'package> Evaluator<'package> {
             name,
             generics: template.generics.clone(),
             fields,
+        }))
+    }
+
+    fn evaluate_enumeration(
+        &mut self,
+        template: &EnumerationTemplate,
+        bound: &BoundInput,
+    ) -> Result<CoreItem, NomosError> {
+        let attributes = self.evaluate_attributes(&template.attributes)?;
+        let name = self.evaluate_name(&template.name, bound)?;
+        let variants = self.evaluate_variants(&template.variants, bound)?;
+        Ok(CoreItem::Enumeration(Enumeration {
+            visibility: template.visibility.clone(),
+            attributes,
+            name,
+            generics: template.generics.clone(),
+            variants,
         }))
     }
 
@@ -419,7 +444,12 @@ impl<'package> Evaluator<'package> {
         let SpliceElement::Field {
             visibility,
             name_rule,
-        } = &splice.element;
+        } = &splice.element
+        else {
+            return Err(NomosError::EscapeShape(
+                "a variant splice cannot fill fields",
+            ));
+        };
         let mut out = Vec::with_capacity(schema_fields.len());
         for field in &schema_fields {
             let type_reference = self.lower_reference(field.reference())?;
@@ -431,6 +461,54 @@ impl<'package> Evaluator<'package> {
             });
         }
         Ok(out)
+    }
+
+    fn evaluate_variants(
+        &mut self,
+        sequence: &Sequence<Variant>,
+        bound: &BoundInput,
+    ) -> Result<Vec<Variant>, NomosError> {
+        let mut output = Vec::new();
+        for item in &sequence.items {
+            match item {
+                SequenceItem::Literal(variant) => output.push(variant.clone()),
+                SequenceItem::Escape(Escape::Splice(splice)) => {
+                    let BindingRef::Input(binding) = splice.binding;
+                    let variants = match bound
+                        .value(binding)
+                        .ok_or(NomosError::UnboundInput(binding))?
+                    {
+                        MetaValue::Variants(variants) => variants.clone(),
+                        _ => {
+                            return Err(NomosError::EscapeShape(
+                                "a non-variants binding cannot fill variants",
+                            ));
+                        }
+                    };
+                    if !matches!(splice.element, SpliceElement::Variant) {
+                        return Err(NomosError::EscapeShape(
+                            "a field splice cannot fill variants",
+                        ));
+                    }
+                    for variant in variants {
+                        let payload = match variant.payload() {
+                            None => VariantPayload::Unit,
+                            Some(reference) => {
+                                VariantPayload::Tuple(vec![self.lower_reference(reference)?])
+                            }
+                        };
+                        output.push(Variant {
+                            name: variant.identifier(),
+                            payload,
+                        });
+                    }
+                }
+                SequenceItem::Escape(_) => {
+                    return Err(NomosError::EscapeShape("enum variants require a splice"));
+                }
+            }
+        }
+        Ok(output)
     }
 
     /// Select a produced field's name per the field-name rule. `FieldRuleDispatch`
