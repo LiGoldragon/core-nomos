@@ -428,22 +428,22 @@ impl<'package> Evaluator<'package> {
         match rule {
             FieldNameRule::PreserveSchema => Ok(field.identifier()),
             FieldNameRule::AlwaysDeriveFromType => self.derive_field_name(field),
+            // Elided when the schema name equals the reference's derived name,
+            // explicit otherwise. The derive-vs-preserve decision is the shared
+            // `CoreField::name_is_derivable` predicate in core-schema, so this
+            // Nomos-lowering site and schema's own textual codec cannot drift.
             FieldNameRule::FieldRuleDispatch => {
-                let stored = self.names.resolve(field.identifier())?.as_str().to_owned();
-                match field.reference().type_name(&self.names) {
-                    Ok(type_name) if type_name.field_name() == stored => {
-                        Ok(self.names.intern(Name::new(type_name.field_name())))
-                    }
-                    // A distinct explicit name, or a type whose name does not
-                    // resolve to a single derivation: keep the schema's stored name.
-                    _ => Ok(field.identifier()),
+                if field.name_is_derivable(&self.names)? {
+                    self.derive_field_name(field)
+                } else {
+                    Ok(field.identifier())
                 }
             }
         }
     }
 
     fn derive_field_name(&mut self, field: &CoreField) -> Result<Identifier, NomosError> {
-        let derived = field.reference().type_name(&self.names)?.field_name();
+        let derived = field.reference().derived_field_name(&self.names)?;
         Ok(self.names.intern(Name::new(derived)))
     }
 
