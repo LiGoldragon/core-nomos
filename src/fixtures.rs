@@ -73,12 +73,29 @@ impl MacroPackage {
         // The recursive attributes macro (named): a unit input, a literal preamble.
         let attributes_macro_name = package.author_name(kind.attributes_macro_name());
         let preamble = package.preamble_attributes(kind);
+        let mut enumeration_preamble = preamble.clone();
+        let copy_path = package.author_path(&["Copy"]);
+        if let Some(Attribute::Derive(group)) = enumeration_preamble.last_mut() {
+            group.paths.insert(4, copy_path);
+        }
         let attributes_macro = package.register(MacroDefinition {
             name: attributes_macro_name,
             kind: MacroKind::Named,
             input: InputSignature::unit(),
             template: ResultTemplate::Attributes(Sequence {
                 items: preamble.into_iter().map(SequenceItem::Literal).collect(),
+            }),
+        });
+        let enumeration_attributes_name = package.author_name("EnumerationAttributes");
+        let enumeration_attributes_macro = package.register(MacroDefinition {
+            name: enumeration_attributes_name,
+            kind: MacroKind::Named,
+            input: InputSignature::unit(),
+            template: ResultTemplate::Attributes(Sequence {
+                items: enumeration_preamble
+                    .into_iter()
+                    .map(SequenceItem::Literal)
+                    .collect(),
             }),
         });
 
@@ -170,7 +187,9 @@ impl MacroPackage {
             },
             template: ResultTemplate::Item(ItemTemplate::Enumeration(EnumerationTemplate {
                 visibility: Visibility::Public,
-                attributes: Sequence::of(SequenceItem::Escape(Escape::Invoke(attributes_macro))),
+                attributes: Sequence::of(SequenceItem::Escape(Escape::Invoke(
+                    enumeration_attributes_macro,
+                ))),
                 name: Scalar::Escape(Escape::Realize(Realize {
                     binding: BindingRef::Input(name_binding),
                     transform: NameTransform::Identity,
