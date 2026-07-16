@@ -365,6 +365,42 @@ fn wire_preamble(names: &mut NameTable) -> Vec<Attribute> {
     ]
 }
 
+// ---- declaration visibility is lowered faithfully (golden-bridge item 2) ----
+
+#[test]
+fn declaration_visibility_lowers_faithfully() {
+    // The schema declaration's coarse Public/Private is authoritative API intent and
+    // stamps the produced item. A Private declaration projects without `pub`; a
+    // Public one keeps it. Same structure, visibility the only difference. (LEAN:
+    // schema-authoritative visibility, revisable to Nomos-owned policy.)
+    let mut names = NameTable::new();
+    let identifier = intern(&mut names, "Hidden");
+    let value = CoreType::Newtype(CoreNewtype::new(identifier, CoreReference::Integer));
+    let package = MacroPackage::plain_fixture();
+
+    let public = CoreSchema::new(vec![CoreDeclaration::new(
+        core_schema::Visibility::Public,
+        value.clone(),
+    )]);
+    let public_low = package.apply(&public, &names).expect("lower public");
+    let public_rust = project(&public_low.items[0], &public_low.names);
+    assert!(
+        public_rust.contains("pub struct Hidden(Integer);"),
+        "public declaration keeps pub: {public_rust}",
+    );
+
+    let private = CoreSchema::new(vec![CoreDeclaration::new(
+        core_schema::Visibility::Private,
+        value,
+    )]);
+    let private_low = package.apply(&private, &names).expect("lower private");
+    let private_rust = project(&private_low.items[0], &private_low.names);
+    assert!(
+        private_rust.contains("struct Hidden(Integer);") && !private_rust.contains("pub struct"),
+        "private declaration drops pub: {private_rust}",
+    );
+}
+
 // ---- hash discipline across the whole pipeline ----
 
 #[test]

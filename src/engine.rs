@@ -10,9 +10,9 @@
 
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, CoreItem, DeriveGroup, Field,
-    HelperDerive, Newtype, PathNode, Struct, TypeApplication, TypeReference,
+    HelperDerive, Newtype, PathNode, Struct, TypeApplication, TypeReference, Visibility,
 };
-use core_schema::{CoreField, CoreReference, CoreSchema, CoreType};
+use core_schema::{CoreDeclaration, CoreField, CoreReference, CoreSchema, CoreType};
 use name_table::{Identifier, Name, NameTable};
 
 use crate::error::NomosError;
@@ -87,11 +87,12 @@ impl<'package> Evaluator<'package> {
         schema
             .declarations()
             .iter()
-            .map(|declaration| self.lower_declaration(declaration.value()))
+            .map(|declaration| self.lower_declaration(declaration))
             .collect()
     }
 
-    fn lower_declaration(&mut self, value: &CoreType) -> Result<CoreItem, NomosError> {
+    fn lower_declaration(&mut self, declaration: &CoreDeclaration) -> Result<CoreItem, NomosError> {
+        let value = declaration.value();
         let section = SectionDefault::of_core_type(value);
         let identity = self
             .package
@@ -106,10 +107,29 @@ impl<'package> Evaluator<'package> {
         let fragment = self.evaluate(&definition.template, &bound)?;
         self.active.pop();
         match fragment {
-            Fragment::Item(item) => Ok(item),
+            Fragment::Item(item) => {
+                Ok(item.with_visibility(self.lower_visibility(declaration.visibility())))
+            }
             Fragment::Attributes(_) => Err(NomosError::FragmentKind(
                 "a structural default produced attributes, not an item",
             )),
+        }
+    }
+
+    /// The visibility contact point where two enums meet: core-schema's coarse
+    /// declaration visibility lowers into core-logos' richer `Visibility`. The
+    /// schema declaration is treated as authoritative API intent and stamps the
+    /// produced item, overriding the visibility the macro template proposed.
+    ///
+    /// LEAN (the visibility-authority question is unresolved, primary-56d1): schema
+    /// `Public`/`Private` is authoritative here. Revisable to Nomos-owned policy by
+    /// dropping the stamp in `lower_declaration`, which restores the template's
+    /// proposed visibility; both surfaces are left intact so either ruling lands
+    /// cheaply.
+    fn lower_visibility(&self, visibility: core_schema::Visibility) -> Visibility {
+        match visibility {
+            core_schema::Visibility::Public => Visibility::Public,
+            core_schema::Visibility::Private => Visibility::Private,
         }
     }
 
