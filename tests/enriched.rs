@@ -8,12 +8,12 @@
 //! is the Nomos generation: every generated item's projection must be present in the
 //! golden byte-for-byte, in document order, per class — so a failure names its class.
 //!
-//! One golden block is deliberately absent from the generated set: the `TraceEvent`
-//! tuple-struct declaration `pub struct TraceEvent(pub ObjectName);`. Its field
-//! carries `pub`, and core-logos `Newtype` models no tuple-field visibility, so that
-//! one declaration is not byte-exact-projectable from the frozen kernel. The class-D
-//! `TraceEvent` *impl* is generated and proven; the struct declaration is the flagged
-//! blocker (see the return notes / NON_IDEAL_AGENTS.md).
+//! The full class-D support surface is generated and proven, including the
+//! `TraceEvent` tuple-struct declaration `pub struct TraceEvent(pub ObjectName);`.
+//! Its field carries `pub`; core-logos layout 4 models tuple-field visibility on the
+//! newtype, so that declaration is byte-exact-projectable from the kernel and the
+//! TraceSupport generator emits it in document order (between the `ObjectName` enum
+//! and the `impl ObjectName`). The last class-D gap is closed.
 
 use core_nomos::MacroPackage;
 use core_schema::{
@@ -178,7 +178,7 @@ const CLASS_LAYOUT: &[(&str, usize)] = &[
     ("A: newtype ergonomics", 12),
     ("B: interface ergonomics", 10),
     ("C: wire contract stub", 4),
-    ("D: trace support", 5),
+    ("D: trace support", 6),
 ];
 
 #[test]
@@ -279,6 +279,27 @@ fn the_wire_stub_transcribes_the_short_header_module_byte_exact() {
     // The psyche-pending .9 values are transcribed verbatim.
     assert!(module.contains("pub const INPUT_RECORD: u64 = 0x0000000000000000;"));
     assert!(module.contains("pub const OUTPUT_RECORDS_OBSERVED: u64 = 0x0101000000000000;"));
+}
+
+#[test]
+fn class_d_emits_the_pub_field_trace_event_declaration_byte_exact() {
+    let spirit = SpiritMin::build();
+    let lowering = MacroPackage::enriched_fixture()
+        .apply_enriched(&spirit.schema, &spirit.names)
+        .expect("lower");
+    // Class D begins after declarations (12) + A (12) + B (10) + C (4) = 38. The
+    // TraceEvent declaration is its fourth item (index 41), between the ObjectName
+    // enum and the impl ObjectName — the last class-D gap the layout-4 tuple-field
+    // visibility closes.
+    let declaration = project(&lowering.items[41], &lowering.names);
+    assert!(
+        declaration.ends_with("pub struct TraceEvent(pub ObjectName);"),
+        "the class-D declaration is the pub-field TraceEvent tuple struct:\n{declaration}"
+    );
+    assert!(
+        GOLDEN.contains(&declaration),
+        "the TraceEvent declaration is byte-exact against the golden:\n{declaration}"
+    );
 }
 
 #[test]

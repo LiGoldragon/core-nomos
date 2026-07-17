@@ -242,6 +242,12 @@ impl<'package> Evaluator<'package> {
             visibility: template.visibility.clone(),
             attributes,
             name,
+            // The structural newtype default emits `pub struct Name(Wrapped);` — a
+            // private tuple field. The only `pub`-field tuple struct in the surveyed
+            // goldens is the class-D `TraceEvent` declaration, hand-built by the
+            // TraceSupport generator, not a structural default. So the field
+            // visibility here is the literal `Private` that projects to nothing.
+            wrapped_visibility: Visibility::Private,
             wrapped,
         }))
     }

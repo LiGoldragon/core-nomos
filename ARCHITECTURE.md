@@ -171,7 +171,8 @@ the per-declaration lowering:
   values verbatim as data on the stub, zipped onto the roots' operations in document
   order (LEAN `wire-stub-transcribed-short-headers`).
 - **Class D — `TraceSupport`:** the `SignalObjectName` / `ObjectName` enums with
-  their nested-match `name()` bodies and the `TraceEvent` impl.
+  their nested-match `name()` bodies, the `pub struct TraceEvent(pub ObjectName);`
+  tuple-struct declaration, and the `TraceEvent` impl.
 
 The classes emit the layout-3 item kinds — impl blocks (methods, associated types,
 associated consts), functions, consts, const modules — as stringless CoreLogos data,
@@ -189,12 +190,13 @@ proves it: spirit-min's whole `CoreSchema` lowered through the enriched package 
 every class item byte-for-byte present in `spirit_generated.rs`, in strictly
 increasing golden offset — so a failure names its class.
 
-**Blocked golden block — the `TraceEvent` tuple-struct declaration.** The golden
-declares `pub struct TraceEvent(pub ObjectName);` with a `pub` tuple field. The
-frozen `core-logos` `Newtype` models no tuple-field visibility, so that one
-declaration is not byte-exact-projectable and class D generates the `TraceEvent`
-*impl* but not its struct declaration. Recorded in `NON_IDEAL_AGENTS.md`; the fix is
-a `core-logos` kernel change (tuple-field visibility), out of this slice's scope.
+**The `TraceEvent` tuple-struct declaration (last class-D gap, closed).** The golden
+declares `pub struct TraceEvent(pub ObjectName);` with a `pub` tuple field.
+`core-logos` layout 4 models tuple-field visibility on `Newtype`
+(`wrapped_visibility: Visibility`), so that declaration is byte-exact-projectable and
+class D emits it — a public newtype whose stored tuple-field visibility is `Public`,
+carrying the wire-enum preamble, in document order between the `ObjectName` enum and
+`impl ObjectName`. The enriched test now proves the full class-D surface (44 items).
 
 ## Train status
 

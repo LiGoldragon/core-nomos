@@ -20,9 +20,10 @@ use core_logos::{
     ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ConfigurationAttribute,
     ConfigurationPredicate, Const, CoreItem, DeriveGroup, Enumeration, Expression, Function,
     Generics, ImplBlock, ImplItem, ImplTraitType, IntegerLiteral, IntegerRepresentation, Match,
-    MatchArm, MethodCall, Module, Parameter, PathNode, Pattern, PatternElement, QualifiedPath,
-    Receiver, ReferenceExpression, ReferenceMutability, ReferenceType, SliceType, TupleFieldAccess,
-    TupleVariantPattern, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
+    MatchArm, MethodCall, Module, Newtype, Parameter, PathNode, Pattern, PatternElement,
+    QualifiedPath, Receiver, ReferenceExpression, ReferenceMutability, ReferenceType, SliceType,
+    TupleFieldAccess, TupleVariantPattern, TypeApplication, TypeReference, Variant, VariantPayload,
+    Visibility,
 };
 use core_schema::{CoreDeclaration, CoreReference, CoreSchema, CoreType, CoreVariant};
 use name_table::{Identifier, Name};
@@ -839,9 +840,28 @@ impl Evaluator<'_> {
             self.signal_object_name_enum(&roots)?,
             self.signal_object_name_impl(&roots)?,
             self.object_name_enum()?,
+            self.trace_event_declaration()?,
             self.object_name_impl()?,
             self.trace_event_impl()?,
         ])
+    }
+
+    /// The `pub struct TraceEvent(pub ObjectName);` tuple-struct declaration — a
+    /// public newtype whose single tuple field is itself `pub` (layout-4 tuple-field
+    /// visibility). It carries the same wire-enum preamble the trace enums carry, and
+    /// sits between the `ObjectName` enum and the `impl ObjectName` in the golden's
+    /// document order.
+    fn trace_event_declaration(&mut self) -> Result<CoreItem, NomosError> {
+        let name = self.ident("TraceEvent");
+        let object_name = self.ident("ObjectName");
+        let attributes = self.wire_enum_preamble();
+        Ok(CoreItem::Newtype(Newtype {
+            visibility: Visibility::Public,
+            attributes,
+            name,
+            wrapped_visibility: Visibility::Public,
+            wrapped: TypeReference::Path(self.path_of(&[object_name])),
+        }))
     }
 
     fn signal_object_name_enum(&mut self, roots: &[InterfaceRoot]) -> Result<CoreItem, NomosError> {

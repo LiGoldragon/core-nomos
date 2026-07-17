@@ -16,8 +16,8 @@ path = "src/lib.rs"
 content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "6cc0408cdb96f174cc8fdf6ca23420038de28450" }
 name-table       = { git = "https://github.com/LiGoldragon/name-table.git", rev = "c3237f77c087e6feab49d6cf34971cebc14a11e6" }
 core-schema      = { git = "https://github.com/LiGoldragon/core-schema.git", rev = "72d1c98596f2bba96a80d8c75b16780c4a0dfefe" }
-core-logos       = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "b6198df22e9a56d349012f94c1c853cdb13f9312" }
-textual-rust     = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "3b0c6016219e545c2524295db9ac7b847852cddd" }
+core-logos       = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "0c6df526a84a6f0856f8dfe2718a7567503133d2" }
+textual-rust     = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "1322abbb462eaad8a9d831759c440b3c43c127f9" }
 rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror        = "2"
 
