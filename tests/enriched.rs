@@ -333,3 +333,108 @@ fn the_plain_and_wire_fixtures_keep_an_empty_selection() {
         assert_eq!(enriched.items.len(), 12, "declarations only, no generation");
     }
 }
+
+/// A second, structurally distinct schema: two interface roots that each carry a
+/// single operation. It proves the short-header derivation is schema-general — it
+/// emits one constant per operation from the operation's position, not the four
+/// spirit-min values a transcription would have carried. This is the interface shape
+/// the four-process witness drives as `second-min`.
+struct SecondMin {
+    schema: CoreSchema,
+    names: NameTable,
+}
+
+impl SecondMin {
+    fn build() -> Self {
+        let mut names = NameTable::new();
+        let mut intern = |text: &str| names.intern(Name::new(text));
+
+        let weight = intern("Weight");
+        let note = intern("Note");
+        let priority = intern("Priority");
+        let parcel = intern("Parcel");
+        let ticket = intern("Ticket");
+        let input = intern("Input");
+        let output = intern("Output");
+
+        let weight_decl = newtype(weight, CoreReference::Integer);
+        let note_decl = newtype(note, CoreReference::String);
+        let ticket_decl = newtype(ticket, CoreReference::Integer);
+        let priority_decl = CoreDeclaration::public(CoreType::Enumeration(CoreEnum::new(
+            priority,
+            ["Low", "Normal", "Urgent"]
+                .into_iter()
+                .map(|name| CoreVariant::new(intern(name), None))
+                .collect(),
+        )));
+        let parcel_decl = CoreDeclaration::public(CoreType::Struct(CoreStruct::new(
+            parcel,
+            vec![
+                CoreField::new(intern("weight"), CoreReference::Plain(weight)),
+                CoreField::new(intern("note"), CoreReference::Plain(note)),
+                CoreField::new(intern("priority"), CoreReference::Plain(priority)),
+            ],
+        )));
+        let input_decl = CoreDeclaration::interface(
+            DeclarationRole::InterfaceInput,
+            CoreType::Enumeration(CoreEnum::new(
+                input,
+                vec![CoreVariant::new(
+                    intern("Enqueue"),
+                    Some(CoreReference::Plain(parcel)),
+                )],
+            )),
+        );
+        let output_decl = CoreDeclaration::interface(
+            DeclarationRole::InterfaceOutput,
+            CoreType::Enumeration(CoreEnum::new(
+                output,
+                vec![CoreVariant::new(
+                    intern("Enqueued"),
+                    Some(CoreReference::Plain(ticket)),
+                )],
+            )),
+        );
+
+        let schema = CoreSchema::new(vec![
+            weight_decl,
+            note_decl,
+            priority_decl,
+            parcel_decl,
+            ticket_decl,
+            input_decl,
+            output_decl,
+        ]);
+        Self { schema, names }
+    }
+}
+
+#[test]
+fn the_wire_stub_derives_two_short_headers_for_single_operation_roots() {
+    let second = SecondMin::build();
+    let lowering = MacroPackage::enriched_fixture()
+        .apply_enriched(&second.schema, &second.names)
+        .expect("the enriched package lowers second-min by derivation, not a fixed count");
+    let module = lowering
+        .items
+        .iter()
+        .map(|item| project(item, &lowering.names))
+        .find(|text| text.contains("pub mod short_header {"))
+        .expect("the wire stub emits a short_header module");
+    // Two roots, one operation each: Input at root 0 / variant 0 and Output at root 1
+    // / variant 0 — exactly two derived constants, where a transcription would have
+    // carried spirit-min's four and rejected this schema on the count.
+    assert!(
+        module.contains("pub const INPUT_ENQUEUE: u64 = 0x0000000000000000;"),
+        "{module}"
+    );
+    assert!(
+        module.contains("pub const OUTPUT_ENQUEUED: u64 = 0x0100000000000000;"),
+        "{module}"
+    );
+    assert_eq!(
+        module.matches("pub const").count(),
+        2,
+        "exactly two derived short headers:\n{module}"
+    );
+}
