@@ -248,25 +248,12 @@ pub enum GenerationClass {
     InterfaceErgonomics,
     /// Class C — the thin wire-contract stub: the two route enums, the
     /// `short_header` const module, and the `SignalOperationHeads` associated-const
-    /// impl. The encode/decode function bodies are Tier-2 and out of this slice.
-    WireContractStub(WireContractStub),
+    /// impl. The short-header values are derived from the interface roots' operation
+    /// positions at generation time (see `Evaluator::short_header_module`), so the
+    /// class carries no selection-time data. The encode/decode function bodies are
+    /// Tier-2 and out of this slice.
+    WireContractStub,
     /// Class D — trace support: the `SignalObjectName` / `ObjectName` enums with
     /// their nested-match `name()` bodies and the `TraceEvent` impl.
     TraceSupport,
-}
-
-/// The transcribed data the class-C wire stub carries. The per-operation short-header
-/// values are the psyche-pending `.9` byte-layout: this slice does **not** author the
-/// layout rule that would derive them, it transcribes the golden's observed values
-/// verbatim as data. The interpreter zips them onto the interface roots' operations
-/// in document order (each root's variants in declaration order, the roots in schema
-/// order) and rejects a length mismatch loudly.
-///
-/// LEAN `wire-stub-transcribed-short-headers`: the values are transcribed, not
-/// derived. Trigger to revisit: the psyche settles the `.9` short-header byte-layout,
-/// after which the stub derives them and drops the transcription.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WireContractStub {
-    /// The golden short-header values, root-major then variant order.
-    pub short_header_values: Vec<u64>,
 }

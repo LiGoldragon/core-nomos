@@ -31,7 +31,7 @@ use std::collections::BTreeMap;
 
 use crate::engine::Evaluator;
 use crate::error::NomosError;
-use crate::template::{GenerationClass, WireContractStub};
+use crate::template::GenerationClass;
 
 /// How a newtype's `new` constructor takes its payload — the contact point between
 /// the wrapped type's kind and the constructor ergonomics, named rather than a
@@ -116,9 +116,7 @@ impl Evaluator<'_> {
         match class {
             GenerationClass::NewtypeErgonomics => self.generate_newtype_ergonomics(schema),
             GenerationClass::InterfaceErgonomics => self.generate_interface_ergonomics(schema),
-            GenerationClass::WireContractStub(stub) => {
-                self.generate_wire_contract_stub(schema, stub)
-            }
+            GenerationClass::WireContractStub => self.generate_wire_contract_stub(schema),
             GenerationClass::TraceSupport => self.generate_trace_support(schema),
         }
     }
@@ -705,7 +703,6 @@ impl Evaluator<'_> {
     fn generate_wire_contract_stub(
         &mut self,
         schema: &CoreSchema,
-        stub: &WireContractStub,
     ) -> Result<Vec<CoreItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         if roots.is_empty() {
@@ -715,7 +712,7 @@ impl Evaluator<'_> {
         }
         let mut items = Vec::new();
         // The short_header const module.
-        items.push(self.short_header_module(&roots, stub)?);
+        items.push(self.short_header_module(&roots)?);
         // The route enums, one per root.
         for root in &roots {
             items.push(self.route_enum(root)?);
@@ -729,25 +726,35 @@ impl Evaluator<'_> {
         Ok(items)
     }
 
-    fn short_header_module(
-        &mut self,
-        roots: &[InterfaceRoot],
-        stub: &WireContractStub,
-    ) -> Result<CoreItem, NomosError> {
-        let operation_count: usize = roots.iter().map(|root| root.variants.len()).sum();
-        if stub.short_header_values.len() != operation_count {
-            return Err(NomosError::Generation(
-                "the wire stub's transcribed short-header count does not match the roots' operation count",
-            ));
-        }
+    /// The `short_header` const module: one `pub const <ROOT>_<VARIANT>: u64` per
+    /// interface-root operation. Each value is derived from the operation's position
+    /// — `(root_index << 56) | (variant_index << 48)` — reproducing schema-rust's
+    /// legacy `ShortHeader::value` byte layout (the root index in byte 7, the variant
+    /// index in byte 6). The roots run in document order (input then output) and each
+    /// root's variants in declaration order, so the derived constants match the legacy
+    /// emitter's output byte-for-byte. A root or operation index that would not fit
+    /// its one-byte field is the layout's genuine invariant and fails loudly.
+    ///
+    /// LEAN `short-header-derivation-mirrors-legacy`: the byte layout is reproduced
+    /// from schema-rust's existing emitter rule, not authored here. Trigger to
+    /// revisit: the short-header byte-layout review-later item settles a different
+    /// layout, after which this derivation changes with it.
+    fn short_header_module(&mut self, roots: &[InterfaceRoot]) -> Result<CoreItem, NomosError> {
         let u64_type = self.type_path(&["u64"]);
-        let mut consts = Vec::with_capacity(operation_count);
-        let mut values = stub.short_header_values.iter();
-        for root in roots {
-            for variant in &root.variants {
-                let value = *values.next().ok_or(NomosError::Generation(
-                    "ran out of transcribed short-header values",
-                ))?;
+        let mut consts = Vec::new();
+        for (root_index, root) in roots.iter().enumerate() {
+            let root_byte = u8::try_from(root_index).map_err(|_| {
+                NomosError::Generation(
+                    "an interface root index exceeds the short-header layout's one-byte root field",
+                )
+            })?;
+            for (variant_index, variant) in root.variants.iter().enumerate() {
+                let variant_byte = u8::try_from(variant_index).map_err(|_| {
+                    NomosError::Generation(
+                        "an operation index exceeds the short-header layout's one-byte variant field",
+                    )
+                })?;
+                let value = (u64::from(root_byte) << 56) | (u64::from(variant_byte) << 48);
                 let const_name = self.short_header_const_name(root.name, variant.identifier())?;
                 consts.push(CoreItem::Const(Const {
                     visibility: Visibility::Public,
@@ -755,7 +762,7 @@ impl Evaluator<'_> {
                     name: const_name,
                     type_reference: u64_type.clone(),
                     value: Expression::IntegerLiteral(IntegerLiteral {
-                        value: value as u128,
+                        value: u128::from(value),
                         representation: IntegerRepresentation::Hexadecimal { minimum_digits: 16 },
                     }),
                 }));

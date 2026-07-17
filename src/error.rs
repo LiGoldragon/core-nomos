@@ -89,8 +89,8 @@ pub enum NomosError {
 
     /// An enriched generation class could not be built from the schema — e.g. a
     /// generation class that needs interface roots ran against a schema carrying
-    /// none, an interface root that was not an enumeration, or a wire stub whose
-    /// transcribed short-header count did not match the roots' operation count.
+    /// none, an interface root that was not an enumeration, or an interface root or
+    /// operation index that overflows the short-header layout's one-byte field.
     #[error("enriched generation class cannot build from this schema: {0}")]
     Generation(&'static str),
 }

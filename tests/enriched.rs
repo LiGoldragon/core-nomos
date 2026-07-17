@@ -261,7 +261,7 @@ fn class_a_covers_every_data_newtype_in_declaration_order() {
 }
 
 #[test]
-fn the_wire_stub_transcribes_the_short_header_module_byte_exact() {
+fn the_wire_stub_derives_the_short_header_module_byte_exact() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .apply_enriched(&spirit.schema, &spirit.names)
@@ -276,7 +276,10 @@ fn the_wire_stub_transcribes_the_short_header_module_byte_exact() {
         GOLDEN.contains(&module),
         "short_header module byte-exact:\n{module}"
     );
-    // The psyche-pending .9 values are transcribed verbatim.
+    // The values are derived from each operation's position —
+    // (root_index << 56) | (variant_index << 48) — reproducing schema-rust's legacy
+    // byte layout exactly: Input::Record at root 0 / variant 0 is 0x0000000000000000,
+    // and Output::RecordsObserved at root 1 / variant 1 is 0x0101000000000000.
     assert!(module.contains("pub const INPUT_RECORD: u64 = 0x0000000000000000;"));
     assert!(module.contains("pub const OUTPUT_RECORDS_OBSERVED: u64 = 0x0101000000000000;"));
 }

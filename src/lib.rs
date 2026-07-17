@@ -68,5 +68,5 @@ pub use prelude::{GENERATED_MARKER, ModuleHead};
 pub use template::{
     BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
     NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,
-    Splice, SpliceElement, StructTemplate, WireContractStub,
+    Splice, SpliceElement, StructTemplate,
 };

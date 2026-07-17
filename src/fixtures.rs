@@ -16,7 +16,7 @@ use crate::package::{MacroPackage, PackageRevision};
 use crate::template::{
     BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
     NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,
-    Splice, SpliceElement, StructTemplate, WireContractStub,
+    Splice, SpliceElement, StructTemplate,
 };
 
 /// Which attribute preamble a fixture package's macros carry. The wire preamble is
@@ -67,22 +67,15 @@ impl MacroPackage {
     /// ergonomics, wire-contract stub, and trace support in the golden's document
     /// order. The wire and plain fixtures are unchanged — their selection stays empty.
     ///
-    /// The stub carries the golden's short-header values verbatim (the psyche-pending
-    /// `.9` byte-layout is not authored here) in the spirit-min operation order:
-    /// `Input::Record`, `Input::Observe`, `Output::RecordAccepted`,
-    /// `Output::RecordsObserved`.
+    /// The class-C wire stub derives its short-header values from the interface roots'
+    /// operation positions at generation time (see `Evaluator::short_header_module`),
+    /// so the selection carries no transcribed data — the class is a plain marker like
+    /// its class-A/B/D siblings.
     pub fn enriched_fixture() -> Self {
         Self::wire_fixture().with_selection(vec![
             GenerationClass::NewtypeErgonomics,
             GenerationClass::InterfaceErgonomics,
-            GenerationClass::WireContractStub(WireContractStub {
-                short_header_values: vec![
-                    0x0000_0000_0000_0000,
-                    0x0001_0000_0000_0000,
-                    0x0100_0000_0000_0000,
-                    0x0101_0000_0000_0000,
-                ],
-            }),
+            GenerationClass::WireContractStub,
             GenerationClass::TraceSupport,
         ])
     }
