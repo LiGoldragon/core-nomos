@@ -86,4 +86,11 @@ pub enum NomosError {
     /// internal invariant break, since the prelude items are fixed and in-subset.
     #[error("module prelude projection failed: {0}")]
     PreludeProjection(#[from] textual_rust::Error),
+
+    /// An enriched generation class could not be built from the schema — e.g. a
+    /// generation class that needs interface roots ran against a schema carrying
+    /// none, an interface root that was not an enumeration, or a wire stub whose
+    /// transcribed short-header count did not match the roots' operation count.
+    #[error("enriched generation class cannot build from this schema: {0}")]
+    Generation(&'static str),
 }

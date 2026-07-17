@@ -143,6 +143,59 @@ textual-rust proved 153 items against):
   unchanged while the projected Rust text changes — names live only in the
   projection.
 
+## The enriched generation classes (the support surface)
+
+The per-declaration structural defaults lower one CoreLogos item per schema
+declaration — the *data* declarations. The wire goldens also carry a schema-derived
+*support surface* around those declarations: newtype ergonomics, interface
+ergonomics, a thin wire-contract stub, and trace support. These are the enriched
+**generation classes** ([`template::GenerationClass`]), a whole-schema layer above
+the per-declaration lowering:
+
+- **Class A — `NewtypeErgonomics`:** per data-type newtype, the
+  `impl { new / payload / into_payload }` inherent block and the `From<Inner>`
+  conversion. The `new` intake is the named contact point `Intake`: the `String`
+  scalar leaf takes `impl Into<String>` and constructs through `.into()`; every
+  other wrapped type takes its value directly.
+- **Class B — `InterfaceErgonomics`:** gated on the interface roots
+  (`core_schema::DeclarationRole::InterfaceInput` / `InterfaceOutput`). Per-variant
+  constructors that unwrap newtype payloads (the `ConstructorSource` contact point:
+  a catalogued-newtype payload is taken as its inner type and wrapped through
+  `Newtype::new`), the `From<payload>` conversions, and the cfg-gated `FromStr` /
+  `Display` impls.
+- **Class C — `WireContractStub`:** the two route enums, the `short_header` const
+  module, and the `SignalOperationHeads` associated-const impl (the request root's
+  operation heads). The encode/decode function bodies are Tier-2 and out of this
+  slice. The short-header values are the psyche-pending **`.9` byte-layout**: this
+  crate does **not** author the layout rule, it transcribes the golden's observed
+  values verbatim as data on the stub, zipped onto the roots' operations in document
+  order (LEAN `wire-stub-transcribed-short-headers`).
+- **Class D — `TraceSupport`:** the `SignalObjectName` / `ObjectName` enums with
+  their nested-match `name()` bodies and the `TraceEvent` impl.
+
+The classes emit the layout-3 item kinds — impl blocks (methods, associated types,
+associated consts), functions, consts, const modules — as stringless CoreLogos data,
+built directly like the fixed [`ModuleHead`] prelude, every identifier interned into
+the one continuous logos NameTable. A package's **enriched selection**
+(`MacroPackage::with_selection`, run by `apply_enriched`) is the ordered class list
+nomos-engine will later select; the wire and plain fixtures keep an empty selection,
+so their behaviour is unchanged, and the selection is outside the content-identity
+pre-image.
+
+**Document-order rule (the eventual full-file assembly follows it):** the data
+declarations first, then class A, B, C, D, derived from the golden's own block order;
+within a class, per declaration / interface root in schema order. `tests/enriched.rs`
+proves it: spirit-min's whole `CoreSchema` lowered through the enriched package emits
+every class item byte-for-byte present in `spirit_generated.rs`, in strictly
+increasing golden offset — so a failure names its class.
+
+**Blocked golden block — the `TraceEvent` tuple-struct declaration.** The golden
+declares `pub struct TraceEvent(pub ObjectName);` with a `pub` tuple field. The
+frozen `core-logos` `Newtype` models no tuple-field visibility, so that one
+declaration is not byte-exact-projectable and class D generates the `TraceEvent`
+*impl* but not its struct declaration. Recorded in `NON_IDEAL_AGENTS.md`; the fix is
+a `core-logos` kernel change (tuple-field visibility), out of this slice's scope.
+
 ## Train status
 
 This crate git-pins the green path of the published stack: `content-identity`,
@@ -171,3 +224,18 @@ types). The Nix flake (`build`/`test`/`clippy`/`fmt`/`doc`) is the durable gate.
 - **Text-spelling never leaks into Core.** The macro-model report's `$` / `<< >>`
   surfaces are absent here by construction; escapes are the data nodes `Realize` /
   `Invoke` / `Splice`.
+- **The enriched generation classes build CoreLogos directly, not through the escape
+  algebra.** The class-A/B/C/D support surface iterates over schema collections
+  (variants into match arms, roots into consts, names into `HEADS` elements) and
+  synthesizes derived names and string literals; that is schema-parameterized data,
+  not a fixed skeleton with escape holes. So the classes build stringless CoreLogos
+  directly with interned names — the `ModuleHead` fixed-prelude precedent — rather
+  than growing the `Realize` / `Splice` template DSL to a second copy of the whole
+  CoreLogos algebra. Trigger to revisit: a class shape that a fixed
+  skeleton-with-holes expresses cleanly, or a psyche ruling that the classes must be
+  authored as escape-templates.
+- **`SignalOperationHeads` is emitted for the request (input) root only.** The golden
+  carries one `SignalOperationHeads` impl (`Input`), the request payload's operation
+  heads; the wire stub follows it. `RequestPayload` and `LogVariant` (the marker and
+  the `log_variant` body) are out of this thin stub's scope, riding the next cascade
+  with the encode/decode bodies.

@@ -210,3 +210,63 @@ pub struct EnumerationTemplate {
     pub generics: Generics,
     pub variants: Sequence<Variant>,
 }
+
+/// The enriched generation vocabulary: the schema-derived *support surface* the
+/// goldens emit alongside the data declarations — impl blocks (with methods,
+/// associated types, and associated consts), functions, consts, const modules, and
+/// use imports. Where the per-declaration structural defaults ([`ItemTemplate`])
+/// lower one CoreLogos item per declaration, a [`GenerationClass`] is a whole-schema
+/// generator: it reads the schema's newtype catalogue and interface roots
+/// ([`core_schema::DeclarationRole`]) and emits an ordered run of CoreLogos items.
+///
+/// Each class is closed typed data — no head strings, no text. The schema-derived
+/// names, types, and (for the wire stub) transcribed layout values flow from the
+/// bound schema when the package is applied ([`crate::MacroPackage::apply_enriched`]);
+/// the interpreter that turns a class into CoreLogos items builds the fixed method
+/// and match skeletons directly, exactly as the fixed module prelude
+/// ([`crate::ModuleHead`]) authors its stringless CoreLogos data, keeping every
+/// identifier interned into the one continuous logos NameTable.
+///
+/// The document-order rule the eventual full-file assembly follows is the class
+/// order of this enum: the data declarations first, then A ([`NewtypeErgonomics`]),
+/// B ([`InterfaceErgonomics`]), C ([`WireContractStub`]), and D ([`TraceSupport`]) —
+/// derived from the golden's own block order.
+///
+/// [`NewtypeErgonomics`]: GenerationClass::NewtypeErgonomics
+/// [`InterfaceErgonomics`]: GenerationClass::InterfaceErgonomics
+/// [`WireContractStub`]: GenerationClass::WireContractStub
+/// [`TraceSupport`]: GenerationClass::TraceSupport
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GenerationClass {
+    /// Class A — per data-type newtype declaration: the `impl { new / payload /
+    /// into_payload }` inherent block and the `From<Inner>` conversion.
+    NewtypeErgonomics,
+    /// Class B — gated on the interface roots ([`core_schema::DeclarationRole`]
+    /// `InterfaceInput` / `InterfaceOutput`): the per-variant constructors that
+    /// unwrap newtype payloads, the `From<payload>` conversions, and the cfg-gated
+    /// `FromStr` / `Display` impls.
+    InterfaceErgonomics,
+    /// Class C — the thin wire-contract stub: the two route enums, the
+    /// `short_header` const module, and the `SignalOperationHeads` associated-const
+    /// impl. The encode/decode function bodies are Tier-2 and out of this slice.
+    WireContractStub(WireContractStub),
+    /// Class D — trace support: the `SignalObjectName` / `ObjectName` enums with
+    /// their nested-match `name()` bodies and the `TraceEvent` impl.
+    TraceSupport,
+}
+
+/// The transcribed data the class-C wire stub carries. The per-operation short-header
+/// values are the psyche-pending `.9` byte-layout: this slice does **not** author the
+/// layout rule that would derive them, it transcribes the golden's observed values
+/// verbatim as data. The interpreter zips them onto the interface roots' operations
+/// in document order (each root's variants in declaration order, the roots in schema
+/// order) and rejects a length mismatch loudly.
+///
+/// LEAN `wire-stub-transcribed-short-headers`: the values are transcribed, not
+/// derived. Trigger to revisit: the psyche settles the `.9` short-header byte-layout,
+/// after which the stub derives them and drops the transcription.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WireContractStub {
+    /// The golden short-header values, root-major then variant order.
+    pub short_header_values: Vec<u64>,
+}

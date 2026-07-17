@@ -10,8 +10,8 @@
 
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, CoreItem, DeriveGroup, Enumeration,
-    Field, HelperDerive, Newtype, PathNode, Struct, TypeApplication, TypeReference, Variant,
-    VariantPayload, Visibility,
+    Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType, Struct,
+    TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
 use core_schema::{CoreDeclaration, CoreField, CoreReference, CoreSchema, CoreType};
 use name_table::{Identifier, Name, NameTable};
@@ -54,6 +54,29 @@ impl MacroPackage {
             names: evaluator.into_names(),
         })
     }
+
+    /// Apply this package to a schema through the *enriched* selection: the
+    /// per-declaration structural lowering first (the data declarations), then the
+    /// generation classes ([`crate::GenerationClass`]) in the package's selection
+    /// order — class A, then B, then C, then D, the golden's own document order. The
+    /// returned items are the whole ordered run, resolved by one continuous logos
+    /// NameTable. A package with an empty selection produces exactly what
+    /// [`apply`](Self::apply) does.
+    pub fn apply_enriched(
+        &self,
+        schema: &CoreSchema,
+        schema_names: &NameTable,
+    ) -> Result<Lowering, NomosError> {
+        let mut evaluator = Evaluator::new(self, schema_names);
+        let mut items = evaluator.lower_schema(schema)?;
+        for class in self.selection() {
+            items.extend(evaluator.generate_class(class, schema)?);
+        }
+        Ok(Lowering {
+            items,
+            names: evaluator.into_names(),
+        })
+    }
 }
 
 /// A produced fragment — what evaluating a result template yields. A structural
@@ -67,10 +90,12 @@ enum Fragment {
 
 /// The stateful lowering walk: the package (for macro lookup and literal name
 /// remapping), the extended logos NameTable being built, and the active-invocation
-/// stack for cycle rejection.
-struct Evaluator<'package> {
+/// stack for cycle rejection. Crate-visible so the enriched generation classes
+/// ([`crate::generation`]) can append their items into the same continuous NameTable
+/// the declaration lowering built.
+pub(crate) struct Evaluator<'package> {
     package: &'package MacroPackage,
-    names: NameTable,
+    pub(crate) names: NameTable,
     active: Vec<MacroIdentity>,
 }
 
@@ -561,7 +586,12 @@ impl<'package> Evaluator<'package> {
 
     /// Lower a schema type reference into a `CoreLogos` type — dispatched by kind
     /// and projection, never by a head string. Exhaustive over `CoreReference`.
-    fn lower_reference(&mut self, reference: &CoreReference) -> Result<TypeReference, NomosError> {
+    /// Crate-visible: the enriched generation classes lower newtype-wrapped and
+    /// variant-payload references through the same single home.
+    pub(crate) fn lower_reference(
+        &mut self,
+        reference: &CoreReference,
+    ) -> Result<TypeReference, NomosError> {
         match reference {
             CoreReference::Integer => Ok(TypeReference::Path(self.leaf_path("Integer"))),
             CoreReference::String => Ok(TypeReference::Path(self.leaf_path("String"))),
@@ -652,33 +682,60 @@ impl<'package> Evaluator<'package> {
         Ok(PathNode { segments })
     }
 
+    /// Re-intern every identifier a template-literal type carries into the extended
+    /// logos table. Exhaustive over the whole `TypeReference` algebra: the
+    /// data-declaration templates author only `Path`/`Application`, but the class-A/B/C/D
+    /// ergonomics templates author impl-block signature and const types — `&String`,
+    /// `impl Into<String>`, `&'static [&'static str]`, the `'static` lifetime — so the
+    /// remap threads the continuous-identifier-space renaming through every position.
     fn remap_type_reference(
         &mut self,
         reference: &TypeReference,
     ) -> Result<TypeReference, NomosError> {
         match reference {
             TypeReference::Path(path) => Ok(TypeReference::Path(self.remap_path(path)?)),
-            TypeReference::Application(application) => {
-                let head = self.remap_path(&application.head)?;
-                let arguments = application
-                    .arguments
-                    .iter()
-                    .map(|argument| self.remap_type_reference(argument))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(TypeReference::Application(TypeApplication {
-                    head,
-                    arguments,
+            TypeReference::Application(application) => Ok(TypeReference::Application(
+                self.remap_application(application)?,
+            )),
+            TypeReference::Reference(reference) => {
+                let lifetime = match reference.lifetime {
+                    Some(lifetime) => Some(self.place_literal_name(lifetime)?),
+                    None => None,
+                };
+                Ok(TypeReference::Reference(ReferenceType {
+                    lifetime,
+                    mutability: reference.mutability.clone(),
+                    referent: Box::new(self.remap_type_reference(&reference.referent)?),
                 }))
             }
-            // Reference and impl-trait types belong to impl-block signatures, which
-            // no schema-lowering macro template authors. A template literal carrying
-            // one is out of the template type vocabulary — loud, not silent.
-            TypeReference::Reference(_) | TypeReference::ImplTrait(_) => {
-                Err(NomosError::UnsupportedTemplateType(
-                    "a reference or impl-trait type has no schema-macro template home",
-                ))
+            TypeReference::ImplTrait(impl_trait) => {
+                let bounds = impl_trait
+                    .bounds
+                    .iter()
+                    .map(|bound| self.remap_type_reference(bound))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(TypeReference::ImplTrait(ImplTraitType { bounds }))
+            }
+            TypeReference::Slice(slice) => Ok(TypeReference::Slice(SliceType {
+                element: Box::new(self.remap_type_reference(&slice.element)?),
+            })),
+            TypeReference::Lifetime(lifetime) => {
+                Ok(TypeReference::Lifetime(self.place_literal_name(*lifetime)?))
             }
         }
+    }
+
+    fn remap_application(
+        &mut self,
+        application: &TypeApplication,
+    ) -> Result<TypeApplication, NomosError> {
+        let head = self.remap_path(&application.head)?;
+        let arguments = application
+            .arguments
+            .iter()
+            .map(|argument| self.remap_type_reference(argument))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(TypeApplication { head, arguments })
     }
 
     fn remap_attribute(&mut self, attribute: &Attribute) -> Result<Attribute, NomosError> {

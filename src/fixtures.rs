@@ -14,9 +14,9 @@ use crate::identity::{MacroKind, SectionDefault};
 use crate::meta::{InputParameter, InputSignature, MetaType};
 use crate::package::{MacroPackage, PackageRevision};
 use crate::template::{
-    BindingRef, EnumerationTemplate, Escape, FieldNameRule, ItemTemplate, NameTransform,
-    NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
-    SpliceElement, StructTemplate,
+    BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
+    NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,
+    Splice, SpliceElement, StructTemplate, WireContractStub,
 };
 
 /// Which attribute preamble a fixture package's macros carry. The wire preamble is
@@ -58,6 +58,33 @@ impl MacroPackage {
     /// newtype to the runner goldens byte-for-byte.
     pub fn plain_fixture() -> Self {
         Self::fixture(AttributePreamble::Plain)
+    }
+
+    /// The enriched wire package: the wire fixture's structural defaults (the data
+    /// declarations) plus the class-A/B/C/D generation selection nomos-engine will
+    /// later select. Applied through [`MacroPackage::apply_enriched`], it lowers a
+    /// schema's declarations and then emits the newtype ergonomics, interface
+    /// ergonomics, wire-contract stub, and trace support in the golden's document
+    /// order. The wire and plain fixtures are unchanged — their selection stays empty.
+    ///
+    /// The stub carries the golden's short-header values verbatim (the psyche-pending
+    /// `.9` byte-layout is not authored here) in the spirit-min operation order:
+    /// `Input::Record`, `Input::Observe`, `Output::RecordAccepted`,
+    /// `Output::RecordsObserved`.
+    pub fn enriched_fixture() -> Self {
+        Self::wire_fixture().with_selection(vec![
+            GenerationClass::NewtypeErgonomics,
+            GenerationClass::InterfaceErgonomics,
+            GenerationClass::WireContractStub(WireContractStub {
+                short_header_values: vec![
+                    0x0000_0000_0000_0000,
+                    0x0001_0000_0000_0000,
+                    0x0100_0000_0000_0000,
+                    0x0101_0000_0000_0000,
+                ],
+            }),
+            GenerationClass::TraceSupport,
+        ])
     }
 
     fn fixture(kind: AttributePreamble) -> Self {

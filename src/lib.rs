@@ -50,6 +50,7 @@ pub mod domain;
 pub mod engine;
 pub mod error;
 pub mod fixtures;
+pub mod generation;
 pub mod identity;
 pub mod meta;
 pub mod package;
@@ -65,7 +66,7 @@ pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
 pub use template::{
-    BindingRef, EnumerationTemplate, Escape, FieldNameRule, ItemTemplate, NameTransform,
-    NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
-    SpliceElement, StructTemplate,
+    BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
+    NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,
+    Splice, SpliceElement, StructTemplate, WireContractStub,
 };

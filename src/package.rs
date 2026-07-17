@@ -9,6 +9,7 @@ use crate::definition::MacroDefinition;
 use crate::domain::CoreNomosDomain;
 use crate::error::NomosError;
 use crate::identity::{MacroIdentity, MacroKind, SectionDefault};
+use crate::template::GenerationClass;
 
 /// A package revision — a monotonic counter over the loaded-definitions registry,
 /// bumped when the durable package is re-authored. Truthful versioning of the
@@ -56,10 +57,12 @@ pub struct MacroDefinitions {
 pub struct MacroPackage {
     definitions: MacroDefinitions,
     names: NameTable,
+    selection: Vec<GenerationClass>,
 }
 
 impl MacroPackage {
-    /// An empty package at revision `revision`.
+    /// An empty package at revision `revision`, with no enriched generation
+    /// selection.
     pub fn new(revision: PackageRevision) -> Self {
         Self {
             definitions: MacroDefinitions {
@@ -68,6 +71,7 @@ impl MacroPackage {
                 structural_defaults: BTreeMap::new(),
             },
             names: NameTable::new(),
+            selection: Vec::new(),
         }
     }
 
@@ -115,6 +119,24 @@ impl MacroPackage {
     /// defines one.
     pub fn structural_default(&self, section: SectionDefault) -> Option<MacroIdentity> {
         self.definitions.structural_defaults.get(&section).copied()
+    }
+
+    /// The enriched generation selection — the ordered generation classes the
+    /// enriched apply runs after the per-declaration lowering. Empty for the plain
+    /// and wire fixtures, so their behaviour is unchanged; the enriched fixture wires
+    /// the class-A/B/C/D selection. Kept outside the content-identity pre-image (that
+    /// is the stringless [`MacroDefinitions`] alone), so adding a selection never
+    /// moves an existing package's identity.
+    pub fn selection(&self) -> &[GenerationClass] {
+        &self.selection
+    }
+
+    /// Replace the enriched generation selection, returning the package — the
+    /// builder verb the enriched fixture uses after registering its structural
+    /// defaults.
+    pub fn with_selection(mut self, selection: Vec<GenerationClass>) -> Self {
+        self.selection = selection;
+        self
     }
 
     /// The package's content identity, over the stringless macro data with the
