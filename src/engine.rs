@@ -59,7 +59,9 @@ impl MacroPackage {
 /// A produced fragment — what evaluating a result template yields. A structural
 /// default yields an item; a recursively-invoked attribute macro yields a vector.
 enum Fragment {
-    Item(CoreItem),
+    // Boxed: a `CoreItem` now carries whole impl-block/method-body trees, dwarfing
+    // the attribute-vector variant, so the box keeps the enum small.
+    Item(Box<CoreItem>),
     Attributes(Vec<Attribute>),
 }
 
@@ -110,7 +112,7 @@ impl<'package> Evaluator<'package> {
         self.active.pop();
         match fragment {
             Fragment::Item(item) => {
-                Ok(item.with_visibility(self.lower_visibility(declaration.visibility())))
+                Ok((*item).with_visibility(self.lower_visibility(declaration.visibility())))
             }
             Fragment::Attributes(_) => Err(NomosError::FragmentKind(
                 "a structural default produced attributes, not an item",
@@ -182,7 +184,9 @@ impl<'package> Evaluator<'package> {
         bound: &BoundInput,
     ) -> Result<Fragment, NomosError> {
         match template {
-            ResultTemplate::Item(item) => Ok(Fragment::Item(self.evaluate_item(item, bound)?)),
+            ResultTemplate::Item(item) => {
+                Ok(Fragment::Item(Box::new(self.evaluate_item(item, bound)?)))
+            }
             ResultTemplate::Attributes(sequence) => {
                 Ok(Fragment::Attributes(self.evaluate_attributes(sequence)?))
             }
@@ -666,6 +670,14 @@ impl<'package> Evaluator<'package> {
                     arguments,
                 }))
             }
+            // Reference and impl-trait types belong to impl-block signatures, which
+            // no schema-lowering macro template authors. A template literal carrying
+            // one is out of the template type vocabulary — loud, not silent.
+            TypeReference::Reference(_) | TypeReference::ImplTrait(_) => {
+                Err(NomosError::UnsupportedTemplateType(
+                    "a reference or impl-trait type has no schema-macro template home",
+                ))
+            }
         }
     }
 
@@ -685,6 +697,10 @@ impl<'package> Evaluator<'package> {
                 path: self.remap_path(&helper.path)?,
                 derived: self.remap_derive(&helper.derived)?,
             })),
+            // A plain cfg gate remaps its predicate name like `cfg_attr` does — the
+            // one continuous-identifier-space remapping, forward-compatible if a
+            // future template ever authors a gated item.
+            Attribute::Cfg(predicate) => Ok(Attribute::Cfg(self.remap_predicate(predicate)?)),
         }
     }
 

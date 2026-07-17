@@ -67,6 +67,12 @@ pub enum NomosError {
     #[error("schema reference cannot lower to a CoreLogos type: {0}")]
     UnsupportedReference(&'static str),
 
+    /// A macro template literal carried a `CoreLogos` type outside the schema-lowering
+    /// template vocabulary — a reference or impl-trait type, which belongs to
+    /// impl-block signatures, not schema declarations.
+    #[error("template type is out of the macro template vocabulary: {0}")]
+    UnsupportedTemplateType(&'static str),
+
     /// A name-table projection failed while resolving or interning a name.
     #[error("name resolution failed: {0}")]
     NameResolution(#[from] NameTableError),
@@ -75,4 +81,9 @@ pub enum NomosError {
     /// layer.
     #[error("content identity failed: {0}")]
     ContentIdentity(#[from] ArchiveError),
+
+    /// Projecting the fixed module prelude through the TextualRust codec failed — an
+    /// internal invariant break, since the prelude items are fixed and in-subset.
+    #[error("module prelude projection failed: {0}")]
+    PreludeProjection(#[from] textual_rust::Error),
 }

@@ -23,9 +23,30 @@ closed template escape algebra, and the engine.
 sigils, the meta-type text spellings, Nomos's own delimiters — sits in the
 psyche's non-rejected review-later pile. Nothing in this crate parses or prints
 any Nomos text surface. An escape is a *data* node (`template::Escape`); its text
-spelling is explicitly not this crate's concern. This boundary is why the crate
-depends on no parser and lifts no grammar: a macro is authored as data (see
-`fixtures.rs`), exactly as a daemon would load it.
+spelling is explicitly not this crate's concern. This boundary is why the macro
+engine lifts no grammar: a macro is authored as data (see `fixtures.rs`), exactly
+as a daemon would load it.
+
+## The fixed module head (`ModuleHead`)
+
+Every generated wire module opens with the same, schema-independent head: the
+`// @generated` marker comment, the four scalar type aliases
+(`String`/`Integer`/`Boolean`/`Path`), and the cfg-gated NOTA import. That block is
+a fixed property of the *module shape* the oracle emits, not of any schema, so it
+is Nomos's knowledge, held here (`prelude.rs`) as stringless `CoreLogos` data with a
+sibling NameTable. `ModuleHead::render` projects it through the TextualRust codec —
+the same `prettyplease` pass the pipeline uses for declarations — so the crate now
+takes a `textual-rust` **library** dependency for this one rendering surface. This
+does not reintroduce a Nomos grammar: the macro engine stays data-only; only the
+generated-Rust *output* head is rendered, exactly as the declarations are.
+
+The head is two projection blocks: the four scalar aliases pack into one
+`prettyplease` pass (no blank line between them), and the NOTA import is its own
+block; the oracle separates blocks by a blank line, which the render reproduces.
+The marker comment sits outside every item, so it is prepended raw — the one
+raw-text seam (a recorded lean), with `prettyplease` still the sole formatter of the
+item bodies. The projection engine (`logos-engine`) prepends `ModuleHead::render`
+ahead of a module's declarations.
 
 ## The two macro kinds
 

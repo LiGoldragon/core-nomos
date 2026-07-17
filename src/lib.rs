@@ -53,6 +53,7 @@ pub mod fixtures;
 pub mod identity;
 pub mod meta;
 pub mod package;
+pub mod prelude;
 pub mod template;
 
 pub use definition::MacroDefinition;
@@ -62,6 +63,7 @@ pub use error::NomosError;
 pub use identity::{MacroIdentity, MacroKind, SectionDefault};
 pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
+pub use prelude::{GENERATED_MARKER, ModuleHead};
 pub use template::{
     BindingRef, EnumerationTemplate, Escape, FieldNameRule, ItemTemplate, NameTransform,
     NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
