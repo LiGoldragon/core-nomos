@@ -61,21 +61,24 @@ impl MacroPackage {
     }
 
     /// The enriched wire package: the wire fixture's structural defaults (the data
-    /// declarations) plus the class-A/B/C/D generation selection nomos-engine will
-    /// later select. Applied through [`MacroPackage::apply_enriched`], it lowers a
-    /// schema's declarations and then emits the newtype ergonomics, interface
-    /// ergonomics, wire-contract stub, and trace support in the golden's document
-    /// order. The wire and plain fixtures are unchanged — their selection stays empty.
+    /// declarations) plus the generation selection nomos-engine applies. Through
+    /// [`MacroPackage::apply_enriched`], it lowers a schema's declarations and then
+    /// emits, in the golden's document order, the newtype ergonomics, the interface
+    /// ergonomics, the wire-contract vocabulary, the wire exchange codec (the working
+    /// `encode_signal_frame` / `decode_signal_frame` bodies for the ordinary exchange
+    /// leg), and the trace support. The wire and plain fixtures are unchanged — their
+    /// selection stays empty.
     ///
-    /// The class-C wire stub derives its short-header values from the interface roots'
-    /// operation positions at generation time (see `Evaluator::short_header_module`),
-    /// so the selection carries no transcribed data — the class is a plain marker like
-    /// its class-A/B/D siblings.
+    /// The wire-contract class derives its short-header values from the interface
+    /// roots' operation positions at generation time (see
+    /// `Evaluator::short_header_module`), so the selection carries no transcribed data —
+    /// every class is a plain marker.
     pub fn enriched_fixture() -> Self {
         Self::wire_fixture().with_selection(vec![
             GenerationClass::NewtypeErgonomics,
             GenerationClass::InterfaceErgonomics,
-            GenerationClass::WireContractStub,
+            GenerationClass::WireContract,
+            GenerationClass::WireExchangeCodec,
             GenerationClass::TraceSupport,
         ])
     }

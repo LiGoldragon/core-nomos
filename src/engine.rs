@@ -11,7 +11,7 @@
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, CoreItem, DeriveGroup, Enumeration,
     Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType, Struct,
-    TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
+    TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
 use core_schema::{CoreDeclaration, CoreField, CoreReference, CoreSchema, CoreType};
 use name_table::{Identifier, Name, NameTable};
@@ -725,6 +725,14 @@ impl<'package> Evaluator<'package> {
             TypeReference::Slice(slice) => Ok(TypeReference::Slice(SliceType {
                 element: Box::new(self.remap_type_reference(&slice.element)?),
             })),
+            TypeReference::Tuple(tuple) => {
+                let elements = tuple
+                    .elements
+                    .iter()
+                    .map(|element| self.remap_type_reference(element))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(TypeReference::Tuple(TupleType { elements }))
+            }
             TypeReference::Lifetime(lifetime) => {
                 Ok(TypeReference::Lifetime(self.place_literal_name(*lifetime)?))
             }

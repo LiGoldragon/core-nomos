@@ -1,19 +1,19 @@
 //! The enriched capstone: spirit-min's whole `CoreSchema` — its data declarations
-//! and its two interface roots — lowered through the enriched wire package, with the
-//! class-A/B/C/D support surface asserted byte-exact against the frozen
-//! `spirit_generated.rs` golden.
+//! and its two interface roots — lowered through the enriched wire package: the
+//! newtype ergonomics, the interface ergonomics, the wire-contract vocabulary, the
+//! wire exchange codec, and the trace support, in the golden's document order.
 //!
-//! The golden is `schema-rust`'s own provenance fixture, transcribed verbatim here
-//! (the same bytes textual-rust proves its projection against). The only new variable
-//! is the Nomos generation: every generated item's projection must be present in the
-//! golden byte-for-byte, in document order, per class — so a failure names its class.
-//!
-//! The full class-D support surface is generated and proven, including the
-//! `TraceEvent` tuple-struct declaration `pub struct TraceEvent(pub ObjectName);`.
-//! Its field carries `pub`; core-logos layout 4 models tuple-field visibility on the
-//! newtype, so that declaration is byte-exact-projectable from the kernel and the
-//! TraceSupport generator emits it in document order (between the `ObjectName` enum
-//! and the `impl ObjectName`). The last class-D gap is closed.
+//! Two specs meet here. The *faithful* items reproduce the frozen `spirit_generated.rs`
+//! golden byte-for-byte, in strictly increasing document order — the declarations, A,
+//! B, the `short_header` module, the byte-count const, the route enums,
+//! `SignalOperationHeads`, and the class-D trace surface (including the `pub`-field
+//! `TraceEvent(pub ObjectName)` tuple struct). The *codec-shape* items — the
+//! `SignalFrameError` enum and the two `impl <Root>` codec blocks — are specified
+//! behaviorally: they must project to valid Rust that carries the working
+//! `encode_signal_frame` / `decode_signal_frame` bodies and speaks the golden's *wire*
+//! (an 8-byte little-endian short header ahead of an rkyv archive), not its source
+//! text. The load-bearing round-trip proof lives in the four-process witness, where
+//! the emitted crate is compiled.
 
 use core_nomos::MacroPackage;
 use core_schema::{
@@ -177,12 +177,21 @@ const CLASS_LAYOUT: &[(&str, usize)] = &[
     ("declarations", 12),
     ("A: newtype ergonomics", 12),
     ("B: interface ergonomics", 10),
-    ("C: wire contract stub", 4),
+    ("wire contract vocabulary", 5),
+    ("wire exchange codec", 3),
     ("D: trace support", 6),
 ];
 
+/// The item indices whose bodies are *behaviorally* specified, not byte-copies of the
+/// golden: the `SignalFrameError` enum (a leaner unit/tuple-variant error than the
+/// golden's struct-variant one) and the two `impl <Root>` codec blocks (whose codec
+/// bodies mirror the golden's *wire* — 8-byte little-endian header then rkyv archive —
+/// in the modeled statement style, not its source text). Every other enriched item
+/// still reproduces the golden verbatim.
+const CODEC_SHAPE_ITEMS: &[usize] = &[36, 39, 40];
+
 #[test]
-fn enriched_classes_project_byte_exact_against_the_spirit_golden() {
+fn the_enriched_run_projects_valid_rust_in_the_expected_class_shape() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .apply_enriched(&spirit.schema, &spirit.names)
@@ -192,28 +201,115 @@ fn enriched_classes_project_byte_exact_against_the_spirit_golden() {
     assert_eq!(
         lowering.items.len(),
         expected_total,
-        "the enriched run emits declarations + A + B + C + D",
+        "the enriched run emits declarations + A + B + the wire contract + the wire \
+         exchange codec + D",
     );
 
-    // Every generated item's bytes are present verbatim in the golden, and the whole
-    // run appears in strictly increasing golden order — the document-order rule.
-    let mut previous_offset = 0usize;
-    let mut cursor = 0usize;
-    for (class, count) in CLASS_LAYOUT {
-        for local in 0..*count {
-            let item = &lowering.items[cursor];
-            let text = project(item, &lowering.names);
-            let offset = GOLDEN.find(&text).unwrap_or_else(|| {
-                panic!("[{class}] item {local} is not present verbatim in the golden:\n{text}")
-            });
-            assert!(
-                offset >= previous_offset,
-                "[{class}] item {local} is out of document order (offset {offset} < {previous_offset}):\n{text}",
-            );
-            previous_offset = offset;
-            cursor += 1;
-        }
+    // Every generated item — the codec bodies included — projects to valid Rust:
+    // `project_item` runs `syn::parse2` + prettyplease, so an Ok result is proof the
+    // emitted tokens parse as a Rust item. This is the working-programs spec at the
+    // core-nomos boundary; the four-process witness compiles and round-trips them.
+    for (index, item) in lowering.items.iter().enumerate() {
+        RustSource::project_item(item, &lowering.names).unwrap_or_else(|error| {
+            panic!("item {index} did not project to valid Rust: {error:?}")
+        });
     }
+}
+
+#[test]
+fn the_faithful_items_stay_byte_exact_against_the_spirit_golden() {
+    let spirit = SpiritMin::build();
+    let lowering = MacroPackage::enriched_fixture()
+        .apply_enriched(&spirit.schema, &spirit.names)
+        .expect("enriched lowering");
+
+    // Every item that reproduces the golden verbatim is present in it, in strictly
+    // increasing document order — the document-order rule. The behaviorally-specified
+    // codec items are skipped (their spec is round-trip, not byte-resemblance).
+    let mut previous_offset = 0usize;
+    for (index, item) in lowering.items.iter().enumerate() {
+        if CODEC_SHAPE_ITEMS.contains(&index) {
+            continue;
+        }
+        let text = project(item, &lowering.names);
+        let offset = GOLDEN.find(&text).unwrap_or_else(|| {
+            panic!("item {index} is not present verbatim in the golden:\n{text}")
+        });
+        assert!(
+            offset >= previous_offset,
+            "item {index} is out of document order (offset {offset} < {previous_offset}):\n{text}",
+        );
+        previous_offset = offset;
+    }
+}
+
+#[test]
+fn the_wire_exchange_codec_emits_working_encode_decode_bodies() {
+    let spirit = SpiritMin::build();
+    let lowering = MacroPackage::enriched_fixture()
+        .apply_enriched(&spirit.schema, &spirit.names)
+        .expect("enriched lowering");
+
+    // The byte-count const and the SignalFrameError vocabulary the codec speaks.
+    let byte_count = project(&lowering.items[35], &lowering.names);
+    assert_eq!(
+        byte_count,
+        "#[rustfmt::skip]\nconst SIGNAL_SHORT_HEADER_BYTE_COUNT: usize = 8;"
+    );
+    let error = project(&lowering.items[36], &lowering.names);
+    for fragment in [
+        "pub enum SignalFrameError",
+        "ArchiveEncode",
+        "ArchiveDecode",
+        "FrameTooShort",
+        "UnknownHeader(u64)",
+        "HeaderMismatch",
+    ] {
+        assert!(
+            error.contains(fragment),
+            "SignalFrameError carries {fragment}:\n{error}"
+        );
+    }
+
+    // The Input codec impl carries every ordinary-leg codec method, and its bodies
+    // speak the wire: the 8-byte little-endian short header ahead of an rkyv archive,
+    // with the decode header-mismatch and unknown-header guards.
+    let input_codec = project(&lowering.items[39], &lowering.names);
+    for fragment in [
+        "pub fn route(&self) -> InputRoute {",
+        "pub fn short_header(&self) -> u64 {",
+        "pub fn route_from_short_header(header: u64) -> Result<InputRoute, SignalFrameError> {",
+        "_ => Err(SignalFrameError::UnknownHeader(header)),",
+        "pub fn encode_signal_frame(&self) -> Result<Vec<u8>, SignalFrameError> {",
+        "rkyv::to_bytes::<rkyv::rancor::Error>(self)",
+        ".map_err(|_| SignalFrameError::ArchiveEncode)?;",
+        "let mut frame = self.short_header().to_le_bytes().to_vec();",
+        "frame.extend_from_slice(&archive);",
+        "Ok(frame)",
+        "Result<(InputRoute, Self), SignalFrameError> {",
+        "let header = u64::from_le_bytes(",
+        ".get(..SIGNAL_SHORT_HEADER_BYTE_COUNT)",
+        ".ok_or(SignalFrameError::FrameTooShort)?",
+        "let route = Self::route_from_short_header(header)?;",
+        "rkyv::from_bytes::<",
+        "&frame[SIGNAL_SHORT_HEADER_BYTE_COUNT..]",
+        ".map_err(|_| SignalFrameError::ArchiveDecode)?;",
+        ".ok_or(SignalFrameError::HeaderMismatch)?;",
+        "Ok((route, value))",
+    ] {
+        assert!(
+            input_codec.contains(fragment),
+            "Input codec carries `{fragment}`:\n{input_codec}"
+        );
+    }
+
+    // The Output codec is the same surface over the reply root.
+    let output_codec = project(&lowering.items[40], &lowering.names);
+    assert!(output_codec.contains("pub fn decode_signal_frame("));
+    assert!(output_codec.contains("Result<(OutputRoute, Self), SignalFrameError> {"));
+
+    // The whole module also projects in one pass (the eventual full-file assembly).
+    RustSource::project_module(&lowering.items, &lowering.names).expect("project whole module");
 }
 
 #[test]
@@ -290,11 +386,11 @@ fn class_d_emits_the_pub_field_trace_event_declaration_byte_exact() {
     let lowering = MacroPackage::enriched_fixture()
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("lower");
-    // Class D begins after declarations (12) + A (12) + B (10) + C (4) = 38. The
-    // TraceEvent declaration is its fourth item (index 41), between the ObjectName
-    // enum and the impl ObjectName — the last class-D gap the layout-4 tuple-field
-    // visibility closes.
-    let declaration = project(&lowering.items[41], &lowering.names);
+    // Class D begins after declarations (12) + A (12) + B (10) + wire contract (5) +
+    // wire exchange codec (3) = 42. The TraceEvent declaration is its fourth item
+    // (index 45), between the ObjectName enum and the impl ObjectName — the last
+    // class-D gap the layout-4 tuple-field visibility closes.
+    let declaration = project(&lowering.items[45], &lowering.names);
     assert!(
         declaration.ends_with("pub struct TraceEvent(pub ObjectName);"),
         "the class-D declaration is the pub-field TraceEvent tuple struct:\n{declaration}"

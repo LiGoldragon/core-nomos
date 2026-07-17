@@ -98,7 +98,7 @@ dependencies = [
 [[package]]
 name = "core-logos"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/core-logos.git?rev=0c6df526a84a6f0856f8dfe2718a7567503133d2#0c6df526a84a6f0856f8dfe2718a7567503133d2"
+source = "git+https://github.com/LiGoldragon/core-logos.git?rev=9c4a507ba6031840aa668adf65ac7a66fadb1c4c#9c4a507ba6031840aa668adf65ac7a66fadb1c4c"
 dependencies = [
  "content-identity",
  "name-table",
@@ -408,7 +408,7 @@ dependencies = [
 [[package]]
 name = "textual-rust"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/textual-rust.git?rev=1322abbb462eaad8a9d831759c440b3c43c127f9#1322abbb462eaad8a9d831759c440b3c43c127f9"
+source = "git+https://github.com/LiGoldragon/textual-rust.git?rev=e210dcf5c9fc5d1ed621d96bdb77756cb169ece3#e210dcf5c9fc5d1ed621d96bdb77756cb169ece3"
 dependencies = [
  "content-identity",
  "core-logos",

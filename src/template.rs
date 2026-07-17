@@ -228,13 +228,14 @@ pub struct EnumerationTemplate {
 /// identifier interned into the one continuous logos NameTable.
 ///
 /// The document-order rule the eventual full-file assembly follows is the class
-/// order of this enum: the data declarations first, then A ([`NewtypeErgonomics`]),
-/// B ([`InterfaceErgonomics`]), C ([`WireContractStub`]), and D ([`TraceSupport`]) —
-/// derived from the golden's own block order.
+/// order of this enum: the data declarations first, then [`NewtypeErgonomics`],
+/// [`InterfaceErgonomics`], the [`WireContract`] vocabulary, the [`WireExchangeCodec`]
+/// bodies, and [`TraceSupport`] — derived from the golden's own block order.
 ///
 /// [`NewtypeErgonomics`]: GenerationClass::NewtypeErgonomics
 /// [`InterfaceErgonomics`]: GenerationClass::InterfaceErgonomics
-/// [`WireContractStub`]: GenerationClass::WireContractStub
+/// [`WireContract`]: GenerationClass::WireContract
+/// [`WireExchangeCodec`]: GenerationClass::WireExchangeCodec
 /// [`TraceSupport`]: GenerationClass::TraceSupport
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GenerationClass {
@@ -246,13 +247,22 @@ pub enum GenerationClass {
     /// unwrap newtype payloads, the `From<payload>` conversions, and the cfg-gated
     /// `FromStr` / `Display` impls.
     InterfaceErgonomics,
-    /// Class C — the thin wire-contract stub: the two route enums, the
-    /// `short_header` const module, and the `SignalOperationHeads` associated-const
-    /// impl. The short-header values are derived from the interface roots' operation
-    /// positions at generation time (see `Evaluator::short_header_module`), so the
-    /// class carries no selection-time data. The encode/decode function bodies are
-    /// Tier-2 and out of this slice.
-    WireContractStub,
+    /// The **wire contract** — the ordinary-exchange wire vocabulary: the
+    /// `short_header` const module, the `SIGNAL_SHORT_HEADER_BYTE_COUNT` byte-count
+    /// const, the `SignalFrameError` enum, and the two route enums. The short-header
+    /// values are derived from the interface roots' operation positions at generation
+    /// time (see `Evaluator::short_header_module`), so the class carries no
+    /// selection-time data. (This is the vocabulary the codec speaks; the encode/decode
+    /// bodies are the sibling `WireExchangeCodec`.)
+    WireContract,
+    /// The **wire exchange codec** — the ordinary-exchange encode/decode bodies over
+    /// the `WireContract` vocabulary: per interface root an `impl` carrying `route`,
+    /// `short_header`, `route_from_short_header`, `encode_signal_frame`, and
+    /// `decode_signal_frame`, plus the request root's `SignalOperationHeads`
+    /// associated-const impl. This retires the empty letter placeholders (former
+    /// "classes E/F") for the codec-body work: the stages are named by their content —
+    /// the vocabulary and the codec over it.
+    WireExchangeCodec,
     /// Class D — trace support: the `SignalObjectName` / `ObjectName` enums with
     /// their nested-match `name()` bodies and the `TraceEvent` impl.
     TraceSupport,

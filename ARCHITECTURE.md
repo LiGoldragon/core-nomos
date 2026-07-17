@@ -163,13 +163,29 @@ the per-declaration lowering:
   a catalogued-newtype payload is taken as its inner type and wrapped through
   `Newtype::new`), the `From<payload>` conversions, and the cfg-gated `FromStr` /
   `Display` impls.
-- **Class C — `WireContractStub`:** the two route enums, the `short_header` const
-  module, and the `SignalOperationHeads` associated-const impl (the request root's
-  operation heads). The encode/decode function bodies are Tier-2 and out of this
-  slice. The short-header values are the psyche-pending **`.9` byte-layout**: this
-  crate does **not** author the layout rule, it transcribes the golden's observed
-  values verbatim as data on the stub, zipped onto the roots' operations in document
-  order (LEAN `wire-stub-transcribed-short-headers`).
+- **`WireContract` (the ordinary-exchange wire vocabulary):** the `short_header` const
+  module, the `SIGNAL_SHORT_HEADER_BYTE_COUNT` byte-count const, the `SignalFrameError`
+  enum, and the two route enums — the types the codec speaks. The short-header values
+  are derived from each operation's position (root byte 7, variant byte 6), not
+  transcribed (LEAN `short-header-derivation-mirrors-legacy`); the short-header
+  byte-layout stays the psyche's open **`.38`** review item, mirrored exactly for
+  interop.
+- **`WireExchangeCodec` (the ordinary-exchange encode/decode bodies):** per interface
+  root an `impl` carrying `route`, `short_header`, `route_from_short_header`,
+  `encode_signal_frame`, and `decode_signal_frame`, then the request root's
+  `SignalOperationHeads` impl. This is what retires the empty letter placeholders
+  (former "classes E/F"): the two codec stages are named by their content — the
+  vocabulary and the codec over it. The bodies are **behavioral, not byte-copies of the
+  golden**: they mirror the *wire* the hand-written signal contracts speak (an 8-byte
+  little-endian short header ahead of an rkyv archive, with a decoded-header-mismatch
+  guard) in the shape the modeled statement vocabulary expresses directly — an
+  `.ok_or(…)?` in place of an `if … { return … }`, a tuple-variant `UnknownHeader(header)`
+  in place of a struct-variant literal — so no struct-literal / early-return node is
+  needed. Unported peers (`spirit-judge`, `meta-signal-spirit`) pin `signal-spirit`
+  revisions and decode this same wire, so the mirroring is a genuine interop
+  requirement, not a convenience. (The streaming/subscription leg — the `Stream`
+  construct, `SubscriptionEvent`, the `StreamingFrame` envelope — is under separate
+  psyche design and is generated nowhere here.)
 - **Class D — `TraceSupport`:** the `SignalObjectName` / `ObjectName` enums with
   their nested-match `name()` bodies, the `pub struct TraceEvent(pub ObjectName);`
   tuple-struct declaration, and the `TraceEvent` impl.
@@ -238,6 +254,16 @@ types). The Nix flake (`build`/`test`/`clippy`/`fmt`/`doc`) is the durable gate.
   authored as escape-templates.
 - **`SignalOperationHeads` is emitted for the request (input) root only.** The golden
   carries one `SignalOperationHeads` impl (`Input`), the request payload's operation
-  heads; the wire stub follows it. `RequestPayload` and `LogVariant` (the marker and
-  the `log_variant` body) are out of this thin stub's scope, riding the next cascade
-  with the encode/decode bodies.
+  heads; the codec class follows it. `RequestPayload`, `LogVariant`, the `ExchangeFrame`
+  type aliases, and the `into_frame` / `into_reply_frame` envelope constructors remain
+  out of scope: the delivered codec is the encode/decode leg (`encode_signal_frame` /
+  `decode_signal_frame` over the short-header + rkyv wire), not the frame-envelope
+  wrapping. Trigger to revisit: a slice that ports the exchange-envelope surface.
+- **The codec bodies are byte-behavioral, not golden-byte-exact.** The `enriched.rs`
+  test byte-checks every *faithful* item against the golden (declarations, A, B, the
+  `short_header` module, the byte-count const, the route enums, `SignalOperationHeads`,
+  and D) and asserts the three codec-shape items (`SignalFrameError` and the two `impl`
+  codec blocks) project to valid Rust carrying the expected signatures and wire logic.
+  The load-bearing round-trip proof (generated-encode / hand-written-decode and the
+  reverse) lives in the four-process `language-engine-witness`, where the emitted crate
+  is compiled.

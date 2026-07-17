@@ -17,17 +17,23 @@
 //! resolve in the identifier space the declarations already populated.
 
 use core_logos::{
-    ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ConfigurationAttribute,
-    ConfigurationPredicate, Const, CoreItem, DeriveGroup, Enumeration, Expression, Function,
-    Generics, ImplBlock, ImplItem, ImplTraitType, IntegerLiteral, IntegerRepresentation, Match,
-    MatchArm, MethodCall, Module, Newtype, Parameter, PathNode, Pattern, PatternElement,
-    QualifiedPath, Receiver, ReferenceExpression, ReferenceMutability, ReferenceType, SliceType,
-    TupleFieldAccess, TupleVariantPattern, TypeApplication, TypeReference, Variant, VariantPayload,
-    Visibility,
+    ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ClosureExpression,
+    ConfigurationAttribute, ConfigurationPredicate, Const, CoreItem, DeriveGroup, Enumeration,
+    Expression, Function, Generics, ImplBlock, ImplItem, ImplTraitType, IndexExpression,
+    IntegerLiteral, IntegerRepresentation, LetBinding, LetStatement, Match, MatchArm, MethodCall,
+    Module, Newtype, Parameter, PathNode, Pattern, PatternElement, QualifiedPath, RangeExpression,
+    Receiver, ReferenceExpression, ReferenceMutability, ReferenceType, SliceType, Statement,
+    TryExpression, TupleExpression, TupleFieldAccess, TupleType, TupleVariantPattern,
+    TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
 use core_schema::{CoreDeclaration, CoreReference, CoreSchema, CoreType, CoreVariant};
 use name_table::{Identifier, Name};
 use std::collections::BTreeMap;
+
+/// The little-endian short-header width the codec bodies emit as
+/// `SIGNAL_SHORT_HEADER_BYTE_COUNT`, mirroring the hand-written contracts'
+/// `SIGNAL_SHORT_HEADER_BYTE_COUNT = 8`.
+const SHORT_HEADER_BYTE_COUNT: u64 = 8;
 
 use crate::engine::Evaluator;
 use crate::error::NomosError;
@@ -116,7 +122,8 @@ impl Evaluator<'_> {
         match class {
             GenerationClass::NewtypeErgonomics => self.generate_newtype_ergonomics(schema),
             GenerationClass::InterfaceErgonomics => self.generate_interface_ergonomics(schema),
-            GenerationClass::WireContractStub => self.generate_wire_contract_stub(schema),
+            GenerationClass::WireContract => self.generate_wire_contract(schema),
+            GenerationClass::WireExchangeCodec => self.generate_wire_exchange_codec(schema),
             GenerationClass::TraceSupport => self.generate_trace_support(schema),
         }
     }
@@ -227,8 +234,35 @@ impl Evaluator<'_> {
             parameters,
             return_type,
             body: Block {
+                statements: Vec::new(),
                 tail_expression: body,
             },
+        })
+    }
+
+    /// A method whose body is a full [`Block`] — a statement run plus a tail — for the
+    /// multi-statement codec bodies (`encode_signal_frame` / `decode_signal_frame`).
+    /// The single-tail-expression `method` above is the empty-statement special case
+    /// of this.
+    #[allow(clippy::too_many_arguments)]
+    fn method_block(
+        &mut self,
+        name: Identifier,
+        visibility: Visibility,
+        receiver: Option<Receiver>,
+        parameters: Vec<Parameter>,
+        return_type: Option<TypeReference>,
+        body: Block,
+    ) -> ImplItem {
+        ImplItem::Method(Function {
+            attributes: Vec::new(),
+            visibility,
+            name,
+            generics: Generics::none(),
+            receiver,
+            parameters,
+            return_type,
+            body,
         })
     }
 
@@ -248,7 +282,27 @@ impl Evaluator<'_> {
     /// A call of a fixed-name path callee.
     fn call_path(&mut self, segments: &[&str], arguments: Vec<Expression>) -> Expression {
         let callee = Callee::Path(self.path(segments));
-        Expression::Call(Call { callee, arguments })
+        Expression::Call(Call {
+            callee,
+            type_arguments: Vec::new(),
+            arguments,
+        })
+    }
+
+    /// A call of a fixed-name path callee with a turbofish
+    /// (`rkyv::to_bytes::<rkyv::rancor::Error>(self)`).
+    fn call_path_turbofish(
+        &mut self,
+        segments: &[&str],
+        type_arguments: Vec<TypeReference>,
+        arguments: Vec<Expression>,
+    ) -> Expression {
+        let callee = Callee::Path(self.path(segments));
+        Expression::Call(Call {
+            callee,
+            type_arguments,
+            arguments,
+        })
     }
 
     /// A call of a callee path built from interned identifiers (a variant path such
@@ -256,6 +310,7 @@ impl Evaluator<'_> {
     fn call_path_of(&self, segments: &[Identifier], arguments: Vec<Expression>) -> Expression {
         Expression::Call(Call {
             callee: Callee::Path(self.path_of(segments)),
+            type_arguments: Vec::new(),
             arguments,
         })
     }
@@ -672,6 +727,7 @@ impl Evaluator<'_> {
                 trait_path: nota_encode,
                 member: vec![to_nota],
             }),
+            type_arguments: Vec::new(),
             arguments: vec![Expression::Receiver],
         });
         let write_str = self.ident("write_str");
@@ -698,29 +754,54 @@ impl Evaluator<'_> {
         Ok(self.trait_impl(vec![skip, cfg], implemented_trait, self_type, vec![fmt]))
     }
 
-    // ---- class C: wire contract stub --------------------------------------------
+    // ---- the wire contract: the ordinary-exchange wire vocabulary ---------------
 
-    fn generate_wire_contract_stub(
+    /// The wire vocabulary, in golden document order: the `short_header` const module,
+    /// the `SIGNAL_SHORT_HEADER_BYTE_COUNT` byte-count const, the `SignalFrameError`
+    /// enum, and the two route enums. These are the types the codec speaks; the
+    /// encode/decode bodies over them are the sibling [`Self::generate_wire_exchange_codec`].
+    fn generate_wire_contract(&mut self, schema: &CoreSchema) -> Result<Vec<CoreItem>, NomosError> {
+        let roots = Self::interface_roots(schema)?;
+        if roots.is_empty() {
+            return Err(NomosError::Generation(
+                "the wire contract needs interface roots, the schema has none",
+            ));
+        }
+        let mut items = Vec::new();
+        items.push(self.short_header_module(&roots)?);
+        items.push(self.short_header_byte_count_const());
+        items.push(self.signal_frame_error_enum());
+        for root in &roots {
+            items.push(self.route_enum(root)?);
+        }
+        Ok(items)
+    }
+
+    // ---- the wire exchange codec: the encode/decode bodies ----------------------
+
+    /// The ordinary-exchange codec: per interface root the `impl` carrying `route`,
+    /// `short_header`, `route_from_short_header`, `encode_signal_frame`, and
+    /// `decode_signal_frame`, then the request root's `SignalOperationHeads` impl. The
+    /// bodies are behavioral, not byte-copies of the golden: they mirror the wire the
+    /// hand-written signal contracts speak (an 8-byte little-endian short header ahead
+    /// of an rkyv archive) in a shape the modeled statement vocabulary expresses
+    /// directly (an `.ok_or(…)?` in place of an `if … { return … }`).
+    fn generate_wire_exchange_codec(
         &mut self,
         schema: &CoreSchema,
     ) -> Result<Vec<CoreItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
-                "the wire contract stub needs interface roots, the schema has none",
+                "the wire exchange codec needs interface roots, the schema has none",
             ));
         }
         let mut items = Vec::new();
-        // The short_header const module.
-        items.push(self.short_header_module(&roots)?);
-        // The route enums, one per root.
         for root in &roots {
-            items.push(self.route_enum(root)?);
+            items.push(self.codec_impl(root)?);
         }
-        // The SignalOperationHeads associated-const impl for the request root (the
-        // input): its HEADS is the request operations' head names.
         let request = roots.first().ok_or(NomosError::Generation(
-            "the wire contract stub needs a request (input) root",
+            "the wire exchange codec needs a request (input) root",
         ))?;
         items.push(self.signal_operation_heads_impl(request)?);
         Ok(items)
@@ -832,6 +913,467 @@ impl Evaluator<'_> {
         });
         let skip = self.rustfmt_skip();
         Ok(self.trait_impl(vec![skip], implemented_trait, self_type, vec![heads]))
+    }
+
+    // ---- wire-contract vocabulary builders --------------------------------------
+
+    /// `#[rustfmt::skip] const SIGNAL_SHORT_HEADER_BYTE_COUNT: usize = 8;` — the
+    /// little-endian short-header width shared by every codec body.
+    fn short_header_byte_count_const(&mut self) -> CoreItem {
+        let skip = self.rustfmt_skip();
+        let name = self.ident("SIGNAL_SHORT_HEADER_BYTE_COUNT");
+        let usize_type = self.type_path(&["usize"]);
+        CoreItem::Const(Const {
+            visibility: Visibility::Private,
+            attributes: vec![skip],
+            name,
+            type_reference: usize_type,
+            value: Expression::IntegerLiteral(IntegerLiteral {
+                value: u128::from(SHORT_HEADER_BYTE_COUNT),
+                representation: IntegerRepresentation::Decimal,
+            }),
+        })
+    }
+
+    /// The `SignalFrameError` enum — the codec's fallible result. A tuple `UnknownHeader`
+    /// carries the offending header; the rest are unit variants. It derives the value
+    /// traits only (no rkyv/nota — it is a local error, never on the wire), so a caller
+    /// can `unwrap`/compare it.
+    fn signal_frame_error_enum(&mut self) -> CoreItem {
+        let skip = self.rustfmt_skip();
+        let derive = Attribute::Derive(DeriveGroup {
+            paths: vec![
+                self.path(&["Clone"]),
+                self.path(&["Debug"]),
+                self.path(&["PartialEq"]),
+                self.path(&["Eq"]),
+            ],
+        });
+        let name = self.ident("SignalFrameError");
+        let u64_type = self.type_path(&["u64"]);
+        let variants = vec![
+            Variant {
+                name: self.ident("ArchiveEncode"),
+                payload: VariantPayload::Unit,
+            },
+            Variant {
+                name: self.ident("ArchiveDecode"),
+                payload: VariantPayload::Unit,
+            },
+            Variant {
+                name: self.ident("FrameTooShort"),
+                payload: VariantPayload::Unit,
+            },
+            Variant {
+                name: self.ident("UnknownHeader"),
+                payload: VariantPayload::Tuple(vec![u64_type]),
+            },
+            Variant {
+                name: self.ident("HeaderMismatch"),
+                payload: VariantPayload::Unit,
+            },
+        ];
+        CoreItem::Enumeration(Enumeration {
+            visibility: Visibility::Public,
+            attributes: vec![skip, derive],
+            name,
+            generics: Generics::none(),
+            variants,
+        })
+    }
+
+    // ---- small expression/statement builders (verbs on the growing table) -------
+
+    /// A value path expression over fixed name segments (`SignalFrameError::ArchiveEncode`).
+    fn path_expr(&mut self, segments: &[&str]) -> Expression {
+        Expression::Path(self.path(segments))
+    }
+
+    /// A method call `<receiver>.<method>(<arguments>)` with no turbofish.
+    fn method_call(
+        &mut self,
+        receiver: Expression,
+        method: &str,
+        arguments: Vec<Expression>,
+    ) -> Expression {
+        let method = self.ident(method);
+        Expression::MethodCall(MethodCall {
+            receiver: Box::new(receiver),
+            method,
+            type_arguments: Vec::new(),
+            arguments,
+        })
+    }
+
+    /// The `?` try operator over a fallible expression.
+    fn try_expr(&self, inner: Expression) -> Expression {
+        Expression::Try(TryExpression {
+            inner: Box::new(inner),
+        })
+    }
+
+    /// The discarding closure `|_| <body>` the `.map_err` arms use.
+    fn closure_discard(&self, body: Expression) -> Expression {
+        Expression::Closure(ClosureExpression {
+            parameters: vec![PatternElement::Wildcard],
+            body: Box::new(body),
+        })
+    }
+
+    /// A shared reference `&<referent>`.
+    fn reference_expr(&self, referent: Expression) -> Expression {
+        Expression::Reference(ReferenceExpression {
+            referent: Box::new(referent),
+        })
+    }
+
+    /// A `let <binding> <name> = <value>;` statement.
+    fn let_stmt(&mut self, binding: LetBinding, name: &str, value: Expression) -> Statement {
+        let name = self.ident(name);
+        Statement::Let(LetStatement {
+            binding,
+            name,
+            value,
+        })
+    }
+
+    /// The `Result<<ok>, <err>>` return type.
+    fn result_type(&mut self, ok: TypeReference, err: TypeReference) -> TypeReference {
+        let head = self.path(&["Result"]);
+        TypeReference::Application(TypeApplication {
+            head,
+            arguments: vec![ok, err],
+        })
+    }
+
+    /// The `SignalFrameError` type — the error half of every codec return.
+    fn signal_frame_error_type(&mut self) -> TypeReference {
+        self.type_path(&["SignalFrameError"])
+    }
+
+    /// The `&[u8]` byte-slice parameter type of `decode_signal_frame`.
+    fn byte_slice_type(&mut self) -> TypeReference {
+        let u8_type = self.type_path(&["u8"]);
+        TypeReference::Reference(ReferenceType {
+            lifetime: None,
+            mutability: ReferenceMutability::Shared,
+            referent: Box::new(TypeReference::Slice(SliceType {
+                element: Box::new(u8_type),
+            })),
+        })
+    }
+
+    // ---- wire exchange codec builders -------------------------------------------
+
+    /// The pattern that matches one interface variant on `self`: `Self::Record(_)` for
+    /// a payload-carrying operation, or the unit path `Self::Version` for a unit one —
+    /// the payload/no-payload special case dissolved by reading the variant's payload.
+    fn self_variant_pattern(&mut self, variant: &CoreVariant) -> Pattern {
+        let self_ident = self.self_ident();
+        let path = self.path_of(&[self_ident, variant.identifier()]);
+        match variant.payload() {
+            Some(_) => Pattern::TupleVariant(TupleVariantPattern {
+                path,
+                elements: vec![PatternElement::Wildcard],
+            }),
+            None => Pattern::Path(path),
+        }
+    }
+
+    /// The codec `impl <Root> { route / short_header / route_from_short_header /
+    /// encode_signal_frame / decode_signal_frame }`.
+    fn codec_impl(&mut self, root: &InterfaceRoot) -> Result<CoreItem, NomosError> {
+        let self_type = TypeReference::Path(self.path_of(&[root.name]));
+        let items = vec![
+            self.route_method(root)?,
+            self.short_header_method(root)?,
+            self.route_from_short_header_method(root)?,
+            self.encode_signal_frame_method(),
+            self.decode_signal_frame_method(root)?,
+        ];
+        Ok(self.inherent_impl(self_type, items))
+    }
+
+    /// `pub fn route(&self) -> <Root>Route { match self { Self::V(_) => <Root>Route::V, … } }`.
+    fn route_method(&mut self, root: &InterfaceRoot) -> Result<ImplItem, NomosError> {
+        let route_enum = self.route_enum_name(root.name)?;
+        let mut arms = Vec::with_capacity(root.variants.len());
+        for variant in &root.variants {
+            let pattern = self.self_variant_pattern(variant);
+            let body = Expression::Path(self.path_of(&[route_enum, variant.identifier()]));
+            arms.push(MatchArm { pattern, body });
+        }
+        let body = Expression::Match(Match {
+            scrutinee: Box::new(Expression::Receiver),
+            arms,
+        });
+        let name = self.ident("route");
+        let return_type = TypeReference::Path(self.path_of(&[route_enum]));
+        Ok(self.method(
+            name,
+            Visibility::Public,
+            Some(Receiver::Reference),
+            Vec::new(),
+            Some(return_type),
+            body,
+        ))
+    }
+
+    /// `pub fn short_header(&self) -> u64 { match self { Self::V(_) => short_header::ROOT_V, … } }`.
+    fn short_header_method(&mut self, root: &InterfaceRoot) -> Result<ImplItem, NomosError> {
+        let short_header = self.ident("short_header");
+        let mut arms = Vec::with_capacity(root.variants.len());
+        for variant in &root.variants {
+            let pattern = self.self_variant_pattern(variant);
+            let const_name = self.short_header_const_name(root.name, variant.identifier())?;
+            let body = Expression::Path(self.path_of(&[short_header, const_name]));
+            arms.push(MatchArm { pattern, body });
+        }
+        let body = Expression::Match(Match {
+            scrutinee: Box::new(Expression::Receiver),
+            arms,
+        });
+        let name = self.ident("short_header");
+        let return_type = self.type_path(&["u64"]);
+        Ok(self.method(
+            name,
+            Visibility::Public,
+            Some(Receiver::Reference),
+            Vec::new(),
+            Some(return_type),
+            body,
+        ))
+    }
+
+    /// `pub fn route_from_short_header(header: u64) -> Result<<Root>Route, SignalFrameError>`
+    /// — the enumerated arms map each known header to `Ok(<Root>Route::V)`, and the
+    /// wildcard arm rejects an unknown header with `Err(SignalFrameError::UnknownHeader(header))`.
+    fn route_from_short_header_method(
+        &mut self,
+        root: &InterfaceRoot,
+    ) -> Result<ImplItem, NomosError> {
+        let short_header = self.ident("short_header");
+        let route_enum = self.route_enum_name(root.name)?;
+        let header = self.ident("header");
+        let mut arms = Vec::with_capacity(root.variants.len() + 1);
+        for variant in &root.variants {
+            let const_name = self.short_header_const_name(root.name, variant.identifier())?;
+            let pattern = Pattern::Path(self.path_of(&[short_header, const_name]));
+            let route_value = Expression::Path(self.path_of(&[route_enum, variant.identifier()]));
+            let body = self.call_path(&["Ok"], vec![route_value]);
+            arms.push(MatchArm { pattern, body });
+        }
+        // _ => Err(SignalFrameError::UnknownHeader(header))
+        let header_value = Expression::Path(self.path_of(&[header]));
+        let unknown = self.call_path(&["SignalFrameError", "UnknownHeader"], vec![header_value]);
+        let wildcard_body = self.call_path(&["Err"], vec![unknown]);
+        arms.push(MatchArm {
+            pattern: Pattern::Wildcard,
+            body: wildcard_body,
+        });
+        let scrutinee = Expression::Path(self.path_of(&[header]));
+        let body = Expression::Match(Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+        });
+        let parameter = Parameter {
+            name: header,
+            type_reference: self.type_path(&["u64"]),
+        };
+        let route_type = TypeReference::Path(self.path_of(&[route_enum]));
+        let error_type = self.signal_frame_error_type();
+        let return_type = self.result_type(route_type, error_type);
+        let name = self.ident("route_from_short_header");
+        Ok(self.method(
+            name,
+            Visibility::Public,
+            None,
+            vec![parameter],
+            Some(return_type),
+            body,
+        ))
+    }
+
+    /// `pub fn encode_signal_frame(&self) -> Result<Vec<u8>, SignalFrameError>` — rkyv
+    /// the payload, then prepend the little-endian short header. Mirrors the wire the
+    /// hand-written contracts speak (header bytes then archive).
+    fn encode_signal_frame_method(&mut self) -> ImplItem {
+        // let archive = rkyv::to_bytes::<rkyv::rancor::Error>(self)
+        //     .map_err(|_| SignalFrameError::ArchiveEncode)?;
+        let rancor_error = self.type_path(&["rkyv", "rancor", "Error"]);
+        let to_bytes = self.call_path_turbofish(
+            &["rkyv", "to_bytes"],
+            vec![rancor_error],
+            vec![Expression::Receiver],
+        );
+        let archive_error = self.path_expr(&["SignalFrameError", "ArchiveEncode"]);
+        let closure = self.closure_discard(archive_error);
+        let map_err = self.method_call(to_bytes, "map_err", vec![closure]);
+        let archive_value = self.try_expr(map_err);
+        let statement_archive = self.let_stmt(LetBinding::Immutable, "archive", archive_value);
+
+        // let mut frame = self.short_header().to_le_bytes().to_vec();
+        let short_header_call = self.method_call(Expression::Receiver, "short_header", Vec::new());
+        let to_le_bytes = self.method_call(short_header_call, "to_le_bytes", Vec::new());
+        let to_vec = self.method_call(to_le_bytes, "to_vec", Vec::new());
+        let statement_frame = self.let_stmt(LetBinding::Mutable, "frame", to_vec);
+
+        // frame.extend_from_slice(&archive);
+        let archive_path = self.path_expr(&["archive"]);
+        let archive_reference = self.reference_expr(archive_path);
+        let frame_path = self.path_expr(&["frame"]);
+        let extend = self.method_call(frame_path, "extend_from_slice", vec![archive_reference]);
+        let statement_extend = Statement::Expression(extend);
+
+        // Ok(frame)
+        let frame_tail = self.path_expr(&["frame"]);
+        let tail = self.call_path(&["Ok"], vec![frame_tail]);
+
+        let block = Block {
+            statements: vec![statement_archive, statement_frame, statement_extend],
+            tail_expression: tail,
+        };
+        let u8_type = self.type_path(&["u8"]);
+        let vec_head = self.path(&["Vec"]);
+        let vec_u8 = TypeReference::Application(TypeApplication {
+            head: vec_head,
+            arguments: vec![u8_type],
+        });
+        let error_type = self.signal_frame_error_type();
+        let return_type = self.result_type(vec_u8, error_type);
+        let name = self.ident("encode_signal_frame");
+        self.method_block(
+            name,
+            Visibility::Public,
+            Some(Receiver::Reference),
+            Vec::new(),
+            Some(return_type),
+            block,
+        )
+    }
+
+    /// `pub fn decode_signal_frame(frame: &[u8]) -> Result<(<Root>Route, Self), SignalFrameError>`
+    /// — split the little-endian short header, rkyv the remainder, and reject a header
+    /// that the decoded value does not re-derive. Written with `.ok_or(…)?` in place of
+    /// an early-return `if`, so the modeled statement vocabulary expresses it directly.
+    fn decode_signal_frame_method(&mut self, root: &InterfaceRoot) -> Result<ImplItem, NomosError> {
+        // let header = u64::from_le_bytes(
+        //     frame.get(..SIGNAL_SHORT_HEADER_BYTE_COUNT)
+        //         .ok_or(SignalFrameError::FrameTooShort)?
+        //         .try_into()
+        //         .map_err(|_| SignalFrameError::FrameTooShort)?,
+        // );
+        let byte_count = self.path_expr(&["SIGNAL_SHORT_HEADER_BYTE_COUNT"]);
+        let range_to = Expression::Range(RangeExpression {
+            start: None,
+            end: Some(Box::new(byte_count)),
+        });
+        let frame_get = self.path_expr(&["frame"]);
+        let get = self.method_call(frame_get, "get", vec![range_to]);
+        let frame_too_short = self.path_expr(&["SignalFrameError", "FrameTooShort"]);
+        let ok_or = self.method_call(get, "ok_or", vec![frame_too_short]);
+        let ok_or_try = self.try_expr(ok_or);
+        let try_into = self.method_call(ok_or_try, "try_into", Vec::new());
+        let frame_too_short_two = self.path_expr(&["SignalFrameError", "FrameTooShort"]);
+        let try_into_closure = self.closure_discard(frame_too_short_two);
+        let try_into_map_err = self.method_call(try_into, "map_err", vec![try_into_closure]);
+        let header_bytes = self.try_expr(try_into_map_err);
+        let from_le_bytes = self.call_path(&["u64", "from_le_bytes"], vec![header_bytes]);
+        let statement_header = self.let_stmt(LetBinding::Immutable, "header", from_le_bytes);
+
+        // let route = Self::route_from_short_header(header)?;
+        let header_argument = self.path_expr(&["header"]);
+        let route_call =
+            self.call_path(&["Self", "route_from_short_header"], vec![header_argument]);
+        let route_value = self.try_expr(route_call);
+        let statement_route = self.let_stmt(LetBinding::Immutable, "route", route_value);
+
+        // let value = rkyv::from_bytes::<Self, rkyv::rancor::Error>(
+        //     &frame[SIGNAL_SHORT_HEADER_BYTE_COUNT..],
+        // )
+        // .map_err(|_| SignalFrameError::ArchiveDecode)?;
+        let self_argument = self.self_type();
+        let rancor_error = self.type_path(&["rkyv", "rancor", "Error"]);
+        let byte_count_from = self.path_expr(&["SIGNAL_SHORT_HEADER_BYTE_COUNT"]);
+        let range_from = Expression::Range(RangeExpression {
+            start: Some(Box::new(byte_count_from)),
+            end: None,
+        });
+        let frame_base = self.path_expr(&["frame"]);
+        let index = Expression::Index(IndexExpression {
+            base: Box::new(frame_base),
+            index: Box::new(range_from),
+        });
+        let index_reference = self.reference_expr(index);
+        let from_bytes = self.call_path_turbofish(
+            &["rkyv", "from_bytes"],
+            vec![self_argument, rancor_error],
+            vec![index_reference],
+        );
+        let archive_decode = self.path_expr(&["SignalFrameError", "ArchiveDecode"]);
+        let decode_closure = self.closure_discard(archive_decode);
+        let decode_map_err = self.method_call(from_bytes, "map_err", vec![decode_closure]);
+        let value_value = self.try_expr(decode_map_err);
+        let statement_value = self.let_stmt(LetBinding::Immutable, "value", value_value);
+
+        // let expected = value.short_header();
+        let value_receiver = self.path_expr(&["value"]);
+        let expected_call = self.method_call(value_receiver, "short_header", Vec::new());
+        let statement_expected = self.let_stmt(LetBinding::Immutable, "expected", expected_call);
+
+        // let value = expected.eq(&header).then_some(value)
+        //     .ok_or(SignalFrameError::HeaderMismatch)?;
+        let expected_receiver = self.path_expr(&["expected"]);
+        let header_reference_inner = self.path_expr(&["header"]);
+        let header_reference = self.reference_expr(header_reference_inner);
+        let equals = self.method_call(expected_receiver, "eq", vec![header_reference]);
+        let value_argument = self.path_expr(&["value"]);
+        let then_some = self.method_call(equals, "then_some", vec![value_argument]);
+        let mismatch = self.path_expr(&["SignalFrameError", "HeaderMismatch"]);
+        let checked_ok_or = self.method_call(then_some, "ok_or", vec![mismatch]);
+        let checked_value = self.try_expr(checked_ok_or);
+        let statement_checked = self.let_stmt(LetBinding::Immutable, "value", checked_value);
+
+        // Ok((route, value))
+        let route_element = self.path_expr(&["route"]);
+        let value_element = self.path_expr(&["value"]);
+        let pair = Expression::Tuple(TupleExpression {
+            elements: vec![route_element, value_element],
+        });
+        let tail = self.call_path(&["Ok"], vec![pair]);
+
+        let block = Block {
+            statements: vec![
+                statement_header,
+                statement_route,
+                statement_value,
+                statement_expected,
+                statement_checked,
+            ],
+            tail_expression: tail,
+        };
+
+        let route_enum = self.route_enum_name(root.name)?;
+        let route_type = TypeReference::Path(self.path_of(&[route_enum]));
+        let self_type = self.self_type();
+        let pair_type = TypeReference::Tuple(TupleType {
+            elements: vec![route_type, self_type],
+        });
+        let error_type = self.signal_frame_error_type();
+        let return_type = self.result_type(pair_type, error_type);
+        let frame_parameter = Parameter {
+            name: self.ident("frame"),
+            type_reference: self.byte_slice_type(),
+        };
+        let name = self.ident("decode_signal_frame");
+        Ok(self.method_block(
+            name,
+            Visibility::Public,
+            None,
+            vec![frame_parameter],
+            Some(return_type),
+            block,
+        ))
     }
 
     // ---- class D: trace support -------------------------------------------------
