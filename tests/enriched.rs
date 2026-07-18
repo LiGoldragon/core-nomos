@@ -1,12 +1,15 @@
 //! The enriched capstone: spirit-min's whole `CoreSchema` — its data declarations
 //! and its two interface roots — lowered through the enriched wire package: the
 //! newtype ergonomics, the interface ergonomics, the wire-contract vocabulary, the
-//! wire exchange codec, and the trace support, in the golden's document order.
+//! wire exchange codec, the wire exchange envelope, and the trace support, in the
+//! golden's document order.
 //!
 //! Two specs meet here. The *faithful* items reproduce the frozen `spirit_generated.rs`
 //! golden byte-for-byte, in strictly increasing document order — the declarations, A,
-//! B, the `short_header` module, the byte-count const, the route enums,
-//! `SignalOperationHeads`, and the class-D trace surface (including the `pub`-field
+//! B, the `short_header` module, the byte-count const, the route enums, the whole
+//! ordinary-leg envelope surface (`RequestPayload`, `SignalOperationHeads`,
+//! `LogVariant`, the `ExchangeFrame` aliases, and the `into_frame` / `into_reply_frame`
+//! constructors), and the class-D trace surface (including the `pub`-field
 //! `TraceEvent(pub ObjectName)` tuple struct). The *codec-shape* items — the
 //! `SignalFrameError` enum and the two `impl <Root>` codec blocks — are specified
 //! behaviorally: they must project to valid Rust that carries the working
@@ -178,7 +181,8 @@ const CLASS_LAYOUT: &[(&str, usize)] = &[
     ("A: newtype ergonomics", 12),
     ("B: interface ergonomics", 10),
     ("wire contract vocabulary", 5),
-    ("wire exchange codec", 3),
+    ("wire exchange codec", 2),
+    ("wire exchange envelope", 10),
     ("D: trace support", 6),
 ];
 
@@ -313,6 +317,62 @@ fn the_wire_exchange_codec_emits_working_encode_decode_bodies() {
 }
 
 #[test]
+fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
+    let spirit = SpiritMin::build();
+    let lowering = MacroPackage::enriched_fixture()
+        .apply_enriched(&spirit.schema, &spirit.names)
+        .expect("enriched lowering");
+
+    // The envelope follows the two codec impls: the request root's three trait impls,
+    // the five `ExchangeFrame` aliases, then the `into_frame` / `into_reply_frame`
+    // constructors — every item byte-exact against the golden (the ordinary two-way
+    // leg, never `StreamingFrame`).
+    let envelope: Vec<String> = (41..=50)
+        .map(|index| project(&lowering.items[index], &lowering.names))
+        .collect();
+    let expected = [
+        "impl signal_frame::RequestPayload for Input {}",
+        "impl signal_frame::SignalOperationHeads for Input {",
+        "impl signal_frame::LogVariant for Input {",
+        "pub type Frame = signal_frame::ExchangeFrame<Input, Output>;",
+        "pub type FrameBody = signal_frame::ExchangeFrameBody<Input, Output>;",
+        "pub type Request = signal_frame::Request<Input>;",
+        "pub type ReplyEnvelope = signal_frame::Reply<Output>;",
+        "pub type RequestBuilder = signal_frame::RequestBuilder<Input>;",
+        "pub fn into_frame(self, exchange: signal_frame::ExchangeIdentifier) -> Frame {",
+        "pub fn into_reply_frame(self, exchange: signal_frame::ExchangeIdentifier) -> Frame {",
+    ];
+    for (item, fragment) in envelope.iter().zip(expected) {
+        assert!(item.contains(fragment), "envelope item carries `{fragment}`:\n{item}");
+        assert!(
+            GOLDEN.contains(item.as_str()),
+            "envelope item is byte-exact against the golden:\n{item}"
+        );
+    }
+
+    // The ordinary leg names `ExchangeFrame`, never the streaming envelope, whose
+    // `StreamingFrame` / `SubscriptionEvent` surface waits on pending psyche rulings.
+    for item in &envelope {
+        assert!(
+            !item.contains("StreamingFrame") && !item.contains("SubscriptionEvent"),
+            "the ordinary leg emits no streaming surface:\n{item}"
+        );
+    }
+
+    // The struct-variant construction the constructors carry — the `StructLiteral`
+    // node in shorthand-field form the envelope adds to the Tier-1 vocabulary.
+    let into_frame = &envelope[8];
+    assert!(into_frame.contains("FrameBody::Request {"), "{into_frame}");
+    assert!(into_frame.contains("signal_frame::Request::from_payload(self)"), "{into_frame}");
+    let into_reply = &envelope[9];
+    assert!(into_reply.contains("FrameBody::Reply {"), "{into_reply}");
+    assert!(
+        into_reply.contains("signal_frame::SubReply::Ok(self)"),
+        "{into_reply}"
+    );
+}
+
+#[test]
 fn class_a_covers_every_data_newtype_in_declaration_order() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
@@ -387,10 +447,10 @@ fn class_d_emits_the_pub_field_trace_event_declaration_byte_exact() {
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("lower");
     // Class D begins after declarations (12) + A (12) + B (10) + wire contract (5) +
-    // wire exchange codec (3) = 42. The TraceEvent declaration is its fourth item
-    // (index 45), between the ObjectName enum and the impl ObjectName — the last
-    // class-D gap the layout-4 tuple-field visibility closes.
-    let declaration = project(&lowering.items[45], &lowering.names);
+    // wire exchange codec (2) + wire exchange envelope (10) = 51. The TraceEvent
+    // declaration is its fourth item (index 54), between the ObjectName enum and the
+    // impl ObjectName — the last class-D gap the layout-4 tuple-field visibility closes.
+    let declaration = project(&lowering.items[54], &lowering.names);
     assert!(
         declaration.ends_with("pub struct TraceEvent(pub ObjectName);"),
         "the class-D declaration is the pub-field TraceEvent tuple struct:\n{declaration}"

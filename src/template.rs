@@ -230,12 +230,14 @@ pub struct EnumerationTemplate {
 /// The document-order rule the eventual full-file assembly follows is the class
 /// order of this enum: the data declarations first, then [`NewtypeErgonomics`],
 /// [`InterfaceErgonomics`], the [`WireContract`] vocabulary, the [`WireExchangeCodec`]
-/// bodies, and [`TraceSupport`] — derived from the golden's own block order.
+/// bodies, the [`WireExchangeEnvelope`] surface, and [`TraceSupport`] — derived from
+/// the golden's own block order.
 ///
 /// [`NewtypeErgonomics`]: GenerationClass::NewtypeErgonomics
 /// [`InterfaceErgonomics`]: GenerationClass::InterfaceErgonomics
 /// [`WireContract`]: GenerationClass::WireContract
 /// [`WireExchangeCodec`]: GenerationClass::WireExchangeCodec
+/// [`WireExchangeEnvelope`]: GenerationClass::WireExchangeEnvelope
 /// [`TraceSupport`]: GenerationClass::TraceSupport
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GenerationClass {
@@ -258,11 +260,19 @@ pub enum GenerationClass {
     /// The **wire exchange codec** — the ordinary-exchange encode/decode bodies over
     /// the `WireContract` vocabulary: per interface root an `impl` carrying `route`,
     /// `short_header`, `route_from_short_header`, `encode_signal_frame`, and
-    /// `decode_signal_frame`, plus the request root's `SignalOperationHeads`
-    /// associated-const impl. This retires the empty letter placeholders (former
+    /// `decode_signal_frame`. This retires the empty letter placeholders (former
     /// "classes E/F") for the codec-body work: the stages are named by their content —
     /// the vocabulary and the codec over it.
     WireExchangeCodec,
+    /// The **wire exchange envelope** — the ordinary-exchange envelope surface the
+    /// ported daemon and clients speak, over the codec: the request root's
+    /// `signal_frame::RequestPayload`, `SignalOperationHeads`, and `LogVariant` trait
+    /// impls; the `Frame` / `FrameBody` / `Request` / `ReplyEnvelope` / `RequestBuilder`
+    /// type aliases over `signal_frame::ExchangeFrame` (the ordinary two-way leg — no
+    /// `StreamingFrame`, whose subscription envelope waits on pending psyche rulings);
+    /// and the request root's `into_frame` and the reply root's `into_reply_frame`
+    /// constructors. Named by its content — the envelope over the codec.
+    WireExchangeEnvelope,
     /// Class D — trace support: the `SignalObjectName` / `ObjectName` enums with
     /// their nested-match `name()` bodies and the `TraceEvent` impl.
     TraceSupport,

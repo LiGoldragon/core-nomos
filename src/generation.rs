@@ -17,14 +17,15 @@
 //! resolve in the identifier space the declarations already populated.
 
 use core_logos::{
-    ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ClosureExpression,
+    Alias, ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ClosureExpression,
     ConfigurationAttribute, ConfigurationPredicate, Const, CoreItem, DeriveGroup, Enumeration,
-    Expression, Function, Generics, ImplBlock, ImplItem, ImplTraitType, IndexExpression,
-    IntegerLiteral, IntegerRepresentation, LetBinding, LetStatement, Match, MatchArm, MethodCall,
-    Module, Newtype, Parameter, PathNode, Pattern, PatternElement, QualifiedPath, RangeExpression,
-    Receiver, ReferenceExpression, ReferenceMutability, ReferenceType, SliceType, Statement,
-    TryExpression, TupleExpression, TupleFieldAccess, TupleType, TupleVariantPattern,
-    TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
+    Expression, FieldInitializer, Function, Generics, ImplBlock, ImplItem, ImplTraitType,
+    IndexExpression, IntegerLiteral, IntegerRepresentation, LetBinding, LetStatement, Match,
+    MatchArm, MethodCall, Module, Newtype, Parameter, PathNode, Pattern, PatternElement,
+    QualifiedPath, RangeExpression, Receiver, ReferenceExpression, ReferenceMutability,
+    ReferenceType, SliceType, Statement, StructLiteral, TryExpression, TupleExpression,
+    TupleFieldAccess, TupleType, TupleVariantPattern, TypeApplication, TypeReference, Variant,
+    VariantPayload, Visibility,
 };
 use core_schema::{CoreDeclaration, CoreReference, CoreSchema, CoreType, CoreVariant};
 use name_table::{Identifier, Name};
@@ -124,6 +125,7 @@ impl Evaluator<'_> {
             GenerationClass::InterfaceErgonomics => self.generate_interface_ergonomics(schema),
             GenerationClass::WireContract => self.generate_wire_contract(schema),
             GenerationClass::WireExchangeCodec => self.generate_wire_exchange_codec(schema),
+            GenerationClass::WireExchangeEnvelope => self.generate_wire_exchange_envelope(schema),
             GenerationClass::TraceSupport => self.generate_trace_support(schema),
         }
     }
@@ -781,11 +783,13 @@ impl Evaluator<'_> {
 
     /// The ordinary-exchange codec: per interface root the `impl` carrying `route`,
     /// `short_header`, `route_from_short_header`, `encode_signal_frame`, and
-    /// `decode_signal_frame`, then the request root's `SignalOperationHeads` impl. The
-    /// bodies are behavioral, not byte-copies of the golden: they mirror the wire the
-    /// hand-written signal contracts speak (an 8-byte little-endian short header ahead
-    /// of an rkyv archive) in a shape the modeled statement vocabulary expresses
-    /// directly (an `.ok_or(…)?` in place of an `if … { return … }`).
+    /// `decode_signal_frame`. The bodies are behavioral, not byte-copies of the golden:
+    /// they mirror the wire the hand-written signal contracts speak (an 8-byte
+    /// little-endian short header ahead of an rkyv archive) in a shape the modeled
+    /// statement vocabulary expresses directly (an `.ok_or(…)?` in place of an
+    /// `if … { return … }`). The request root's `SignalOperationHeads` impl and the
+    /// rest of the envelope surface are the sibling
+    /// [`Self::generate_wire_exchange_envelope`].
     fn generate_wire_exchange_codec(
         &mut self,
         schema: &CoreSchema,
@@ -800,11 +804,45 @@ impl Evaluator<'_> {
         for root in &roots {
             items.push(self.codec_impl(root)?);
         }
-        let request = roots.first().ok_or(NomosError::Generation(
-            "the wire exchange codec needs a request (input) root",
-        ))?;
-        items.push(self.signal_operation_heads_impl(request)?);
         Ok(items)
+    }
+
+    // ---- the wire exchange envelope: the ordinary-leg envelope surface ----------
+
+    /// The ordinary-exchange envelope surface the ported daemon and clients speak over
+    /// the codec, in the golden's document order: the request root's
+    /// `signal_frame::RequestPayload`, `SignalOperationHeads`, and `LogVariant` trait
+    /// impls; the `Frame` / `FrameBody` / `Request` / `ReplyEnvelope` / `RequestBuilder`
+    /// type aliases over `signal_frame::ExchangeFrame` (the ordinary two-way leg); and
+    /// the request root's `into_frame` and the reply root's `into_reply_frame`
+    /// constructors. Scope is the ordinary leg only — the aliases name `ExchangeFrame`,
+    /// never `StreamingFrame`, whose subscription envelope waits on pending psyche
+    /// rulings.
+    fn generate_wire_exchange_envelope(
+        &mut self,
+        schema: &CoreSchema,
+    ) -> Result<Vec<CoreItem>, NomosError> {
+        let roots = Self::interface_roots(schema)?;
+        let request = roots.first().ok_or(NomosError::Generation(
+            "the wire exchange envelope needs a request (input) root",
+        ))?;
+        let reply = roots.get(1).ok_or(NomosError::Generation(
+            "the wire exchange envelope needs a reply (output) root",
+        ))?;
+        let request_name = request.name;
+        let reply_name = reply.name;
+        Ok(vec![
+            self.request_payload_impl(request_name),
+            self.signal_operation_heads_impl(request)?,
+            self.log_variant_impl(request_name),
+            self.frame_alias("Frame", "ExchangeFrame", &[request_name, reply_name]),
+            self.frame_alias("FrameBody", "ExchangeFrameBody", &[request_name, reply_name]),
+            self.frame_alias("Request", "Request", &[request_name]),
+            self.frame_alias("ReplyEnvelope", "Reply", &[reply_name]),
+            self.frame_alias("RequestBuilder", "RequestBuilder", &[request_name]),
+            self.into_frame_impl(request_name),
+            self.into_reply_frame_impl(reply_name),
+        ])
     }
 
     /// The `short_header` const module: one `pub const <ROOT>_<VARIANT>: u64` per
@@ -1374,6 +1412,193 @@ impl Evaluator<'_> {
             Some(return_type),
             block,
         ))
+    }
+
+    // ---- wire exchange envelope builders ----------------------------------------
+
+    /// `#[rustfmt::skip] impl signal_frame::RequestPayload for <Root> {}` — the empty
+    /// marker impl that admits the request root onto the exchange envelope.
+    fn request_payload_impl(&mut self, request: Identifier) -> CoreItem {
+        let self_type = TypeReference::Path(self.path_of(&[request]));
+        let implemented_trait =
+            TypeReference::Path(self.path(&["signal_frame", "RequestPayload"]));
+        let skip = self.rustfmt_skip();
+        self.trait_impl(vec![skip], implemented_trait, self_type, Vec::new())
+    }
+
+    /// `#[rustfmt::skip] impl signal_frame::LogVariant for <Root> { fn log_variant(&self)
+    /// -> u64 { self.short_header() } }` — the log discriminant the frame log reads,
+    /// delegating to the codec's `short_header`.
+    fn log_variant_impl(&mut self, request: Identifier) -> CoreItem {
+        let self_type = TypeReference::Path(self.path_of(&[request]));
+        let implemented_trait = TypeReference::Path(self.path(&["signal_frame", "LogVariant"]));
+        let body = self.method_call(Expression::Receiver, "short_header", Vec::new());
+        let name = self.ident("log_variant");
+        let return_type = self.type_path(&["u64"]);
+        let method = self.method(
+            name,
+            Visibility::Private,
+            Some(Receiver::Reference),
+            Vec::new(),
+            Some(return_type),
+            body,
+        );
+        let skip = self.rustfmt_skip();
+        self.trait_impl(vec![skip], implemented_trait, self_type, vec![method])
+    }
+
+    /// A `#[rustfmt::skip] pub type <name> = signal_frame::<target><arguments>;` envelope
+    /// alias — `Frame` / `FrameBody` over `ExchangeFrame` / `ExchangeFrameBody` (the
+    /// ordinary two-way leg), and the `Request` / `ReplyEnvelope` / `RequestBuilder`
+    /// aliases over the request or reply root.
+    fn frame_alias(&mut self, name: &str, target: &str, arguments: &[Identifier]) -> CoreItem {
+        let skip = self.rustfmt_skip();
+        let name = self.ident(name);
+        let head = self.path(&["signal_frame", target]);
+        let mut argument_types = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            argument_types.push(TypeReference::Path(self.path_of(&[*argument])));
+        }
+        let target = TypeReference::Application(TypeApplication {
+            head,
+            arguments: argument_types,
+        });
+        CoreItem::Alias(Alias {
+            visibility: Visibility::Public,
+            attributes: vec![skip],
+            name,
+            generics: Generics::none(),
+            target,
+        })
+    }
+
+    /// `signal_frame::ShortHeader::new(self.short_header())` — the short-header value
+    /// both envelope constructors prepend, derived from the codec's `short_header`.
+    fn short_header_new_value(&mut self) -> Expression {
+        let short_header_call = self.method_call(Expression::Receiver, "short_header", Vec::new());
+        self.call_path(
+            &["signal_frame", "ShortHeader", "new"],
+            vec![short_header_call],
+        )
+    }
+
+    /// The `exchange: signal_frame::ExchangeIdentifier` parameter both envelope
+    /// constructors take.
+    fn exchange_parameter(&mut self) -> Parameter {
+        let name = self.ident("exchange");
+        let type_reference = self.type_path(&["signal_frame", "ExchangeIdentifier"]);
+        Parameter {
+            name,
+            type_reference,
+        }
+    }
+
+    /// A struct-variant literal in shorthand-field form over interned segments:
+    /// `FrameBody::Request { exchange, request }`. Every field is shorthand (the field
+    /// name and the in-scope binding coincide), so each initializer carries a `None`
+    /// value.
+    fn struct_literal_shorthand(
+        &mut self,
+        path_segments: &[&str],
+        field_names: &[&str],
+    ) -> Expression {
+        let path = self.path(path_segments);
+        let mut fields = Vec::with_capacity(field_names.len());
+        for field in field_names {
+            let name = self.ident(field);
+            fields.push(FieldInitializer { name, value: None });
+        }
+        Expression::StructLiteral(StructLiteral { path, fields })
+    }
+
+    /// `#[rustfmt::skip] impl <Root> { pub fn into_frame(self, exchange:
+    /// signal_frame::ExchangeIdentifier) -> Frame { … } }` — the request constructor
+    /// that wraps the payload into a `FrameBody::Request` exchange frame.
+    fn into_frame_impl(&mut self, request: Identifier) -> CoreItem {
+        let short_header_value = self.short_header_new_value();
+        let statement_short_header =
+            self.let_stmt(LetBinding::Immutable, "short_header", short_header_value);
+
+        // let request = signal_frame::Request::from_payload(self);
+        let request_value = self.call_path(
+            &["signal_frame", "Request", "from_payload"],
+            vec![Expression::Receiver],
+        );
+        let statement_request = self.let_stmt(LetBinding::Immutable, "request", request_value);
+
+        // Frame::with_short_header(short_header, FrameBody::Request { exchange, request })
+        let short_header_argument = self.path_expr(&["short_header"]);
+        let body_literal =
+            self.struct_literal_shorthand(&["FrameBody", "Request"], &["exchange", "request"]);
+        let tail = self.call_path(
+            &["Frame", "with_short_header"],
+            vec![short_header_argument, body_literal],
+        );
+
+        let block = Block {
+            statements: vec![statement_short_header, statement_request],
+            tail_expression: tail,
+        };
+        let exchange_parameter = self.exchange_parameter();
+        let return_type = self.type_path(&["Frame"]);
+        let name = self.ident("into_frame");
+        let method = self.method_block(
+            name,
+            Visibility::Public,
+            Some(Receiver::Value),
+            vec![exchange_parameter],
+            Some(return_type),
+            block,
+        );
+        let self_type = TypeReference::Path(self.path_of(&[request]));
+        self.inherent_impl(self_type, vec![method])
+    }
+
+    /// `#[rustfmt::skip] impl <Root> { pub fn into_reply_frame(self, exchange:
+    /// signal_frame::ExchangeIdentifier) -> Frame { … } }` — the reply constructor that
+    /// wraps the payload into a committed single-`Ok` `FrameBody::Reply` exchange frame.
+    fn into_reply_frame_impl(&mut self, reply: Identifier) -> CoreItem {
+        let short_header_value = self.short_header_new_value();
+        let statement_short_header =
+            self.let_stmt(LetBinding::Immutable, "short_header", short_header_value);
+
+        // let reply = signal_frame::Reply::committed(
+        //     signal_frame::NonEmpty::single(signal_frame::SubReply::Ok(self)),
+        // );
+        let ok = self.call_path(
+            &["signal_frame", "SubReply", "Ok"],
+            vec![Expression::Receiver],
+        );
+        let single = self.call_path(&["signal_frame", "NonEmpty", "single"], vec![ok]);
+        let committed = self.call_path(&["signal_frame", "Reply", "committed"], vec![single]);
+        let statement_reply = self.let_stmt(LetBinding::Immutable, "reply", committed);
+
+        // Frame::with_short_header(short_header, FrameBody::Reply { exchange, reply })
+        let short_header_argument = self.path_expr(&["short_header"]);
+        let body_literal =
+            self.struct_literal_shorthand(&["FrameBody", "Reply"], &["exchange", "reply"]);
+        let tail = self.call_path(
+            &["Frame", "with_short_header"],
+            vec![short_header_argument, body_literal],
+        );
+
+        let block = Block {
+            statements: vec![statement_short_header, statement_reply],
+            tail_expression: tail,
+        };
+        let exchange_parameter = self.exchange_parameter();
+        let return_type = self.type_path(&["Frame"]);
+        let name = self.ident("into_reply_frame");
+        let method = self.method_block(
+            name,
+            Visibility::Public,
+            Some(Receiver::Value),
+            vec![exchange_parameter],
+            Some(return_type),
+            block,
+        );
+        let self_type = TypeReference::Path(self.path_of(&[reply]));
+        self.inherent_impl(self_type, vec![method])
     }
 
     // ---- class D: trace support -------------------------------------------------

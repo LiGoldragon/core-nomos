@@ -66,8 +66,10 @@ impl MacroPackage {
     /// emits, in the golden's document order, the newtype ergonomics, the interface
     /// ergonomics, the wire-contract vocabulary, the wire exchange codec (the working
     /// `encode_signal_frame` / `decode_signal_frame` bodies for the ordinary exchange
-    /// leg), and the trace support. The wire and plain fixtures are unchanged — their
-    /// selection stays empty.
+    /// leg), the wire exchange envelope (the `RequestPayload` / `SignalOperationHeads` /
+    /// `LogVariant` impls, the `ExchangeFrame` aliases, and the `into_frame` /
+    /// `into_reply_frame` constructors), and the trace support. The wire and plain
+    /// fixtures are unchanged — their selection stays empty.
     ///
     /// The wire-contract class derives its short-header values from the interface
     /// roots' operation positions at generation time (see
@@ -79,6 +81,7 @@ impl MacroPackage {
             GenerationClass::InterfaceErgonomics,
             GenerationClass::WireContract,
             GenerationClass::WireExchangeCodec,
+            GenerationClass::WireExchangeEnvelope,
             GenerationClass::TraceSupport,
         ])
     }
