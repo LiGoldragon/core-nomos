@@ -108,7 +108,7 @@ dependencies = [
 
 [[package]]
 name = "core-nomos"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "content-identity",
  "core-logos",
@@ -123,8 +123,8 @@ dependencies = [
 
 [[package]]
 name = "core-schema"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/core-schema.git?rev=d3cdee9ac2c17de16a7745c9854344d8bbcde64e#d3cdee9ac2c17de16a7745c9854344d8bbcde64e"
+version = "0.2.0"
+source = "git+https://github.com/LiGoldragon/core-schema.git?rev=66611bb53a8b4b3f9dcccf2add6ca2fa8b70a393#66611bb53a8b4b3f9dcccf2add6ca2fa8b70a393"
 dependencies = [
  "content-identity",
  "name-table",
@@ -385,8 +385,8 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "structural-codec"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/structural-codec.git?rev=104f92454a5ba88b376fa706a9fe38c4a4b65ee0#104f92454a5ba88b376fa706a9fe38c4a4b65ee0"
+version = "0.2.0"
+source = "git+https://github.com/LiGoldragon/structural-codec.git?rev=8ca0418dfa0b2e403833201d10f527fbad38f299#8ca0418dfa0b2e403833201d10f527fbad38f299"
 dependencies = [
  "content-identity",
  "name-table",

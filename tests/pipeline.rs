@@ -19,6 +19,7 @@ use core_schema::{
 };
 use name_table::{Identifier, Name, NameTable};
 use structural_codec::ids::ScopedCoreTypeId;
+use structural_codec::{Converted, EncodedConversion};
 use textual_rust::RustSource;
 
 // ---- the real provenance goldens (verbatim bytes; each item ends in a newline) ----
@@ -185,6 +186,48 @@ fn pipeline_plain_newtype_from_text_matches_runner_golden() {
             lowering.names.len() - schema_names.len(),
         );
     }
+}
+
+#[test]
+fn lowering_is_an_encoded_conversion_instance() {
+    // The schema→logos lowering stated at the TRAIT level: `MacroPackage` is an
+    // `EncodedConversion` whose `convert` yields the SAME logos EncodedForm and the
+    // SAME continuous NameTable as the eponymous `apply` — the trait face is the
+    // lowering, not a reimplementation. The `convert` signature carries no `&str` /
+    // `String`: the conversion is a real type conversion, structurally text-free.
+    let (value, schema_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
+    let schema = schema_of(value);
+    let package = MacroPackage::plain_fixture();
+
+    let converted: Converted<Vec<CoreItem>> =
+        EncodedConversion::convert(&package, &schema, &schema_names).expect("trait convert");
+    let lowering = package
+        .apply(&schema, &schema_names)
+        .expect("inherent apply");
+
+    // Same target EncodedForm and same continuous nametree.
+    assert_eq!(
+        converted.target, lowering.items,
+        "the trait conversion target IS the lowered logos item set"
+    );
+    assert_eq!(
+        converted.names.len(),
+        lowering.names.len(),
+        "the trait conversion threads the same continuous NameTable"
+    );
+    // Continuity: the layer conversion only ever EXTENDS the schema nametree.
+    assert!(
+        converted.names.len() >= schema_names.len(),
+        "the continuous nametree crosses the layer, schema indices preserved"
+    );
+
+    // End-to-end proof the continuous nametree resolves everything: the trait-produced
+    // logos item projects to the same byte-exact golden as the inherent path.
+    let rust = project(&converted.target[0], &converted.names);
+    assert_eq!(
+        rust, GOLDEN_COMMIT_SEQUENCE_PLAIN,
+        "the trait-level conversion projects byte-exact Rust"
+    );
 }
 
 #[test]

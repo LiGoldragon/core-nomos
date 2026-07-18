@@ -6,9 +6,9 @@
 //! structural-codec evaluator walking a sealed, disjointness-proved structuretree plus
 //! the nametree. There is no bespoke per-type parse or print path; every spelling is a
 //! `StructuralForm` in the sealed table. (This door uses `StructuralEvaluator`
-//! directly, the exact mechanism the shared `TextualForm` trait wraps; it cannot yet
-//! adopt the trait because that lives in a newer structural-codec rev whose adoption
-//! here is blocked by the `textual-rust` pin — epic .44, gated out of this wave.)
+//! directly, the exact mechanism the shared `Textual` mouth trait wraps; the
+//! macro-definition door does not adopt that mouth itself because the `$` / bracket
+//! TextualNomos surface it would speak is deferred — epic .44.)
 //!
 //! The RAW door spells every construct as the positional data record it is (the ruled
 //! Protos laws): a struct is a `{ … }` record, an enum variant carrying a payload is

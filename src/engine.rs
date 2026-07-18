@@ -15,6 +15,7 @@ use core_logos::{
 };
 use core_schema::{CoreDeclaration, CoreField, CoreReference, CoreSchema, CoreType};
 use name_table::{Identifier, Name, NameTable};
+use structural_codec::{Converted, EncodedConversion};
 
 use crate::error::NomosError;
 use crate::identity::{MacroIdentity, SectionDefault};
@@ -76,6 +77,41 @@ impl MacroPackage {
             items,
             names: evaluator.into_names(),
         })
+    }
+}
+
+/// A [`Lowering`] IS a [`Converted`] `Vec<CoreItem>`-plus-names: the domain-named
+/// result of the lowering and the reusable-trait output of an [`EncodedConversion`] are
+/// the same data, so the trait face costs no new representation.
+impl From<Lowering> for Converted<Vec<CoreItem>> {
+    fn from(lowering: Lowering) -> Self {
+        Converted {
+            target: lowering.items,
+            names: lowering.names,
+        }
+    }
+}
+
+/// The schema→logos lowering IS the reference [`EncodedConversion`] instance — the
+/// psyche's real type conversion `EncodedForm<Schema> -> EncodedForm<Logos>` seated as
+/// the truth-side pairing in `structural-codec`. The source is the schema
+/// [`EncodedForm`](structural_codec::EncodedForm) (`CoreSchema`); the target is the
+/// lowered logos item set (`Vec<CoreItem>`, the logos EncodedForm); and the continuous
+/// NameTable threads the layer, schema indices preserved and logos names appended. No
+/// text crosses this path — the signature carries no `&str`/`String`, which is the
+/// structural proof that the conversion is a real type conversion, not string
+/// manipulation. It delegates to the eponymous [`apply`](MacroPackage::apply).
+impl EncodedConversion for MacroPackage {
+    type Source = CoreSchema;
+    type Target = Vec<CoreItem>;
+    type Error = NomosError;
+
+    fn convert(
+        &self,
+        source: &CoreSchema,
+        names: &NameTable,
+    ) -> Result<Converted<Vec<CoreItem>>, NomosError> {
+        Ok(self.apply(source, names)?.into())
     }
 }
 
