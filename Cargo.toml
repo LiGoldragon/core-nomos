@@ -23,6 +23,7 @@ thiserror        = "2"
 
 [dev-dependencies]
 structural-codec = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "104f92454a5ba88b376fa706a9fe38c4a4b65ee0" }
+raw-discovery    = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "a4e8c6df84e6a487ca6fe2f3641f9bafd0b0d8c8" }
 
 [lints.rust]
 unsafe_code = "forbid"
