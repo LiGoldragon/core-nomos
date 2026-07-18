@@ -224,10 +224,7 @@ impl TextualNomos {
     // ===== structuretree authoring =====
 
     fn solo(core_type: ScopedCoreTypeId, form: StructuralForm) -> StructuralEntry {
-        StructuralEntry::new(
-            core_type,
-            vec![Self::codec(core_type, 0, form)],
-        )
+        StructuralEntry::new(core_type, vec![Self::codec(core_type, 0, form)])
     }
 
     fn codec(core_type: ScopedCoreTypeId, index: u32, form: StructuralForm) -> ConstructorCodec {
@@ -279,7 +276,11 @@ impl TextualNomos {
         StructuralEntry::new(
             MACRO_KIND,
             vec![
-                Self::codec(MACRO_KIND, KIND_NAMED, StructuralForm::Literal(lexicon.named)),
+                Self::codec(
+                    MACRO_KIND,
+                    KIND_NAMED,
+                    StructuralForm::Literal(lexicon.named),
+                ),
                 Self::codec(
                     MACRO_KIND,
                     KIND_STRUCTURAL,
@@ -319,7 +320,10 @@ impl TextualNomos {
     fn input_parameter_entry() -> StructuralEntry {
         Self::solo(
             INPUT_PARAMETER,
-            Self::brace(vec![Self::camel_atom(), StructuralForm::Delegate(META_TYPE)]),
+            Self::brace(vec![
+                Self::camel_atom(),
+                StructuralForm::Delegate(META_TYPE),
+            ]),
         )
     }
 
@@ -327,7 +331,11 @@ impl TextualNomos {
         StructuralEntry::new(
             META_TYPE,
             vec![
-                Self::codec(META_TYPE, META_NAME, StructuralForm::Literal(lexicon.meta_name)),
+                Self::codec(
+                    META_TYPE,
+                    META_NAME,
+                    StructuralForm::Literal(lexicon.meta_name),
+                ),
                 Self::codec(
                     META_TYPE,
                     META_TYPE_KIND,
@@ -384,10 +392,7 @@ impl TextualNomos {
     fn scalar_entry(lexicon: &Lexicon) -> StructuralEntry {
         Self::solo(
             SCALAR,
-            Self::keyword_application(
-                lexicon.sequence_escape,
-                StructuralForm::Delegate(ESCAPE),
-            ),
+            Self::keyword_application(lexicon.sequence_escape, StructuralForm::Delegate(ESCAPE)),
         )
     }
 
@@ -395,10 +400,7 @@ impl TextualNomos {
     fn sequence_item_entry(lexicon: &Lexicon) -> StructuralEntry {
         Self::solo(
             SEQUENCE_ITEM,
-            Self::keyword_application(
-                lexicon.sequence_escape,
-                StructuralForm::Delegate(ESCAPE),
-            ),
+            Self::keyword_application(lexicon.sequence_escape, StructuralForm::Delegate(ESCAPE)),
         )
     }
 
@@ -476,7 +478,10 @@ impl TextualNomos {
 
     /// `Public` (the golden macro's only visibility; other variants deferred).
     fn visibility_entry(lexicon: &Lexicon) -> StructuralEntry {
-        Self::solo(VISIBILITY, StructuralForm::Literal(lexicon.visibility_public))
+        Self::solo(
+            VISIBILITY,
+            StructuralForm::Literal(lexicon.visibility_public),
+        )
     }
 
     // ===== reify: mirror -> MacroDefinition =====
@@ -583,11 +588,9 @@ impl TextualNomos {
             ESCAPE_REALIZE => Escape::Realize(Self::reify_realize(Self::delegated(
                 Self::application_body(payload),
             ))),
-            ESCAPE_INVOKE => {
-                Escape::Invoke(MacroIdentity::new(Self::scalar_integer(Self::application_body(
-                    payload,
-                )) as u32))
-            }
+            ESCAPE_INVOKE => Escape::Invoke(MacroIdentity::new(Self::scalar_integer(
+                Self::application_body(payload),
+            ) as u32)),
             other => panic!("escape constructor {other}"),
         }
     }
@@ -650,9 +653,10 @@ impl TextualNomos {
 
     fn reflect_kind(&self, kind: &MacroKind, names: &mut NameTable) -> StructuralValue {
         match kind {
-            MacroKind::Named => {
-                StructuralValue::chosen(KIND_NAMED, StructuralValue::Atom(self.keyword(names, "Named")))
-            }
+            MacroKind::Named => StructuralValue::chosen(
+                KIND_NAMED,
+                StructuralValue::Atom(self.keyword(names, "Named")),
+            ),
             MacroKind::Structural(section) => Self::keyword_chosen(
                 KIND_STRUCTURAL,
                 self.keyword(names, "Structural"),
@@ -667,7 +671,10 @@ impl TextualNomos {
             SectionDefault::Struct => (SECTION_STRUCT, "Struct"),
             SectionDefault::Enumeration => (SECTION_ENUMERATION, "Enumeration"),
         };
-        StructuralValue::chosen(constructor, StructuralValue::Atom(self.keyword(names, keyword)))
+        StructuralValue::chosen(
+            constructor,
+            StructuralValue::Atom(self.keyword(names, keyword)),
+        )
     }
 
     fn reflect_parameter(
@@ -691,7 +698,10 @@ impl TextualNomos {
             MetaType::Fields => (META_FIELDS, "Fields"),
             MetaType::Variants => (META_VARIANTS, "Variants"),
         };
-        StructuralValue::chosen(constructor, StructuralValue::Atom(self.keyword(names, keyword)))
+        StructuralValue::chosen(
+            constructor,
+            StructuralValue::Atom(self.keyword(names, keyword)),
+        )
     }
 
     fn reflect_template(
@@ -703,14 +713,18 @@ impl TextualNomos {
             panic!("only ResultTemplate::Item(Newtype) is authored");
         };
         let body = StructuralValue::Delimited(vec![
-            StructuralValue::Delegated(Box::new(self.reflect_visibility(&newtype.visibility, names))),
+            StructuralValue::Delegated(Box::new(
+                self.reflect_visibility(&newtype.visibility, names),
+            )),
             StructuralValue::Delimited(
                 newtype
                     .attributes
                     .items
                     .iter()
                     .map(|item| {
-                        StructuralValue::Delegated(Box::new(self.reflect_sequence_item(item, names)))
+                        StructuralValue::Delegated(Box::new(
+                            self.reflect_sequence_item(item, names),
+                        ))
                     })
                     .collect(),
             ),
@@ -727,15 +741,18 @@ impl TextualNomos {
             self.keyword(names, "Newtype"),
             StructuralValue::Delegated(Box::new(StructuralValue::chosen(0, body))),
         );
-        let item_template = Self::keyword_chosen(
+        Self::keyword_chosen(
             0,
             self.keyword(names, "Item"),
             StructuralValue::Delegated(Box::new(newtype_template)),
-        );
-        item_template
+        )
     }
 
-    fn reflect_visibility(&self, visibility: &Visibility, names: &mut NameTable) -> StructuralValue {
+    fn reflect_visibility(
+        &self,
+        visibility: &Visibility,
+        names: &mut NameTable,
+    ) -> StructuralValue {
         let Visibility::Public = visibility else {
             panic!("only Visibility::Public is authored");
         };
@@ -811,14 +828,21 @@ impl TextualNomos {
         )
     }
 
-    fn reflect_transform(&self, transform: &NameTransform, names: &mut NameTable) -> StructuralValue {
+    fn reflect_transform(
+        &self,
+        transform: &NameTransform,
+        names: &mut NameTable,
+    ) -> StructuralValue {
         let (constructor, keyword) = match transform {
             NameTransform::Identity => (TRANSFORM_IDENTITY, "Identity"),
             NameTransform::FieldName => (TRANSFORM_FIELD_NAME, "FieldName"),
             NameTransform::Screaming => (TRANSFORM_SCREAMING, "Screaming"),
             NameTransform::PascalCase => (TRANSFORM_PASCAL, "PascalCase"),
         };
-        StructuralValue::chosen(constructor, StructuralValue::Atom(self.keyword(names, keyword)))
+        StructuralValue::chosen(
+            constructor,
+            StructuralValue::Atom(self.keyword(names, keyword)),
+        )
     }
 
     // ===== mirror-shape helpers =====
@@ -941,7 +965,10 @@ fn newtype_macro_registration_decodes_from_nota_text() {
 
     // decode + reify: the text -> a MacroDefinition, EQUAL to the Rust-built witness.
     let decoded = door.decode_macro(&text, &mut names);
-    assert_eq!(witness, decoded, "the decoded macro equals the Rust-built one");
+    assert_eq!(
+        witness, decoded,
+        "the decoded macro equals the Rust-built one"
+    );
 
     // The recovered value re-encodes to byte-identical text.
     let re_encoded = door.encode_macro(&decoded, &mut names);
@@ -962,6 +989,9 @@ fn newtype_macro_registration_decodes_from_nota_text() {
         "Input",
         "Identity",
     ] {
-        assert!(text.contains(datum), "raw text must carry `{datum}`: {text}");
+        assert!(
+            text.contains(datum),
+            "raw text must carry `{datum}`: {text}"
+        );
     }
 }
