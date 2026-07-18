@@ -19,10 +19,10 @@ and the currently generated Rust is the acceptance oracle.*
 `CoreSchema` → `CoreLogos`, the two macro kinds, the stateful-at-rest package, the
 closed template escape algebra, and the engine.
 
-**TextualNomos is deferred.** Nomos's text surface — the `$` / `<< >>` escape
-sigils, the meta-type text spellings, Nomos's own delimiters — sits in the
-psyche's non-rejected review-later pile. Nothing in this crate parses or prints
-any Nomos text surface. An escape is a *data* node (`template::Escape`); its text
+**TextualNomos is deferred.** Nomos's text surface — whether an escape wears a
+`$` sigil, the meta-type text spellings, Nomos's own delimiters — is genuinely
+unsettled: an open design question, not a fixed spelling. Nothing in this crate
+parses or prints any Nomos text surface. An escape is a *data* node (`template::Escape`); its text
 spelling is explicitly not this crate's concern. This boundary is why the macro
 engine lifts no grammar: a macro is authored as data (see `fixtures.rs`), exactly
 as a daemon would load it.
@@ -239,9 +239,9 @@ types). The Nix flake (`build`/`test`/`clippy`/`fmt`/`doc`) is the durable gate.
   The engine re-derives through the walker into the extended table; because
   interning dedups, the two derivations coincide and the identifier is stable — the
   idempotence is a feature, and the continuous-space test asserts it.
-- **Text-spelling never leaks into Core.** The macro-model report's `$` / `<< >>`
-  surfaces are absent here by construction; escapes are the data nodes `Realize` /
-  `Invoke` / `Splice`.
+- **Text-spelling never leaks into Core.** The macro-model report's pretty text
+  surface — whether an escape wears a `$` sigil is still unsettled — is absent here
+  by construction; escapes are the data nodes `Realize` / `Invoke` / `Splice`.
 - **The enriched generation classes build CoreLogos directly, not through the escape
   algebra.** The class-A/B/C/D support surface iterates over schema collections
   (variants into match arms, roots into consts, names into `HEADS` elements) and
