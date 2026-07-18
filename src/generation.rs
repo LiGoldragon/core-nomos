@@ -836,12 +836,16 @@ impl Evaluator<'_> {
             self.signal_operation_heads_impl(request)?,
             self.log_variant_impl(request_name),
             self.frame_alias("Frame", "ExchangeFrame", &[request_name, reply_name]),
-            self.frame_alias("FrameBody", "ExchangeFrameBody", &[request_name, reply_name]),
+            self.frame_alias(
+                "FrameBody",
+                "ExchangeFrameBody",
+                &[request_name, reply_name],
+            ),
             self.frame_alias("Request", "Request", &[request_name]),
             self.frame_alias("ReplyEnvelope", "Reply", &[reply_name]),
             self.frame_alias("RequestBuilder", "RequestBuilder", &[request_name]),
-            self.into_frame_impl(request_name),
-            self.into_reply_frame_impl(reply_name),
+            self.frame_constructor_impl(request_name),
+            self.reply_frame_constructor_impl(reply_name),
         ])
     }
 
@@ -1420,8 +1424,7 @@ impl Evaluator<'_> {
     /// marker impl that admits the request root onto the exchange envelope.
     fn request_payload_impl(&mut self, request: Identifier) -> CoreItem {
         let self_type = TypeReference::Path(self.path_of(&[request]));
-        let implemented_trait =
-            TypeReference::Path(self.path(&["signal_frame", "RequestPayload"]));
+        let implemented_trait = TypeReference::Path(self.path(&["signal_frame", "RequestPayload"]));
         let skip = self.rustfmt_skip();
         self.trait_impl(vec![skip], implemented_trait, self_type, Vec::new())
     }
@@ -1514,7 +1517,7 @@ impl Evaluator<'_> {
     /// `#[rustfmt::skip] impl <Root> { pub fn into_frame(self, exchange:
     /// signal_frame::ExchangeIdentifier) -> Frame { … } }` — the request constructor
     /// that wraps the payload into a `FrameBody::Request` exchange frame.
-    fn into_frame_impl(&mut self, request: Identifier) -> CoreItem {
+    fn frame_constructor_impl(&mut self, request: Identifier) -> CoreItem {
         let short_header_value = self.short_header_new_value();
         let statement_short_header =
             self.let_stmt(LetBinding::Immutable, "short_header", short_header_value);
@@ -1557,7 +1560,7 @@ impl Evaluator<'_> {
     /// `#[rustfmt::skip] impl <Root> { pub fn into_reply_frame(self, exchange:
     /// signal_frame::ExchangeIdentifier) -> Frame { … } }` — the reply constructor that
     /// wraps the payload into a committed single-`Ok` `FrameBody::Reply` exchange frame.
-    fn into_reply_frame_impl(&mut self, reply: Identifier) -> CoreItem {
+    fn reply_frame_constructor_impl(&mut self, reply: Identifier) -> CoreItem {
         let short_header_value = self.short_header_new_value();
         let statement_short_header =
             self.let_stmt(LetBinding::Immutable, "short_header", short_header_value);

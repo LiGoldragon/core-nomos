@@ -343,7 +343,10 @@ fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
         "pub fn into_reply_frame(self, exchange: signal_frame::ExchangeIdentifier) -> Frame {",
     ];
     for (item, fragment) in envelope.iter().zip(expected) {
-        assert!(item.contains(fragment), "envelope item carries `{fragment}`:\n{item}");
+        assert!(
+            item.contains(fragment),
+            "envelope item carries `{fragment}`:\n{item}"
+        );
         assert!(
             GOLDEN.contains(item.as_str()),
             "envelope item is byte-exact against the golden:\n{item}"
@@ -363,7 +366,10 @@ fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
     // node in shorthand-field form the envelope adds to the Tier-1 vocabulary.
     let into_frame = &envelope[8];
     assert!(into_frame.contains("FrameBody::Request {"), "{into_frame}");
-    assert!(into_frame.contains("signal_frame::Request::from_payload(self)"), "{into_frame}");
+    assert!(
+        into_frame.contains("signal_frame::Request::from_payload(self)"),
+        "{into_frame}"
+    );
     let into_reply = &envelope[9];
     assert!(into_reply.contains("FrameBody::Reply {"), "{into_reply}");
     assert!(
