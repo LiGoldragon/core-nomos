@@ -7,15 +7,17 @@
 //! the nametree. There is no bespoke per-type parse or print path; every spelling is a
 //! `StructuralForm` in the sealed table. (This door uses `StructuralEvaluator`
 //! directly, the exact mechanism the shared `Textual` mouth trait wraps; the
-//! macro-definition door does not adopt that mouth itself because the `$` / bracket
-//! TextualNomos surface it would speak is deferred — epic .44.)
+//! macro-definition door does not adopt that mouth itself because the TextualNomos
+//! surface it would speak — whether an escape wears a `$` sigil is still unsettled —
+//! is deferred — epic .44.)
 //!
 //! The RAW door spells every construct as the positional data record it is (the ruled
 //! Protos laws): a struct is a `{ … }` record, an enum variant carrying a payload is
 //! `Head.payload`, a vector is `[ … ]`, a name is a camelCase atom, a type/kind is a
 //! PascalCase atom. Escapes are ordinary data records — a `Realize` is
 //! `Realize.{ Input.name Identity }`, an `Invoke` is `Invoke.99` — with NO sigil; the
-//! `$` / `<<>>` pretty surface is the deferred TextualNomos form (.42), not this door.
+//! pretty surface — whether an escape wears a `$` sigil is still unsettled — is the
+//! deferred TextualNomos form (.42), not this door.
 //!
 //! Table-seal site: `TextualNomos::build` -> `AddressedStructuralTable::seal` (proved
 //! disjoint via `validate_disjoint`). Evaluator entry: `TextualNomos::decode_macro` /

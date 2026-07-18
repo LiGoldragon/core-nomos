@@ -5,8 +5,9 @@
 //! sits (a name slot holds an `Identifier`, a type slot a `TypeReference`), so the
 //! template stays strongly typed while the escape algebra stays one closed set.
 //!
-//! The `$name`/`<<name>>` *text spelling* of an escape is TextualNomos, which is
-//! deferred — nothing here parses text. An escape is data.
+//! The *text spelling* of an escape — whether it wears a `$` sigil — is TextualNomos,
+//! a genuinely unsettled question, and is deferred: nothing here parses text. An
+//! escape is data.
 
 use core_logos::{Attribute, Field, Generics, TypeReference, Variant, Visibility};
 use name_table::Identifier;

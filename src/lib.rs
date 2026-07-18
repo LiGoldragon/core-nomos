@@ -9,11 +9,11 @@
 //! ## What is here (CoreNomos), and what is deferred (TextualNomos)
 //!
 //! CoreNomos is settled and built here: macros as typed data, the two macro kinds,
-//! the stateful-at-rest package, and the engine. **TextualNomos** — the `$` / `<<>>`
-//! escape sigils, the meta-type text spellings, Nomos's own delimiters — sits in the
-//! psyche's non-rejected review-later pile and is **deferred**. Nothing in this
-//! crate parses or prints any Nomos text surface; an escape is a data node
-//! ([`Escape`]), and its text spelling is not this crate's concern.
+//! the stateful-at-rest package, and the engine. **TextualNomos** — whether an escape
+//! wears a `$` sigil, the meta-type text spellings, Nomos's own delimiters — is
+//! genuinely unsettled and **deferred**: an open design question, not a fixed
+//! spelling. Nothing in this crate parses or prints any Nomos text surface; an escape
+//! is a data node ([`Escape`]), and its text spelling is not this crate's concern.
 //!
 //! ## The two macro kinds
 //!
