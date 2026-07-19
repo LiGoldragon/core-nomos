@@ -315,13 +315,18 @@ fn real_provenance_structs_lower_byte_exact() {
 
 #[test]
 fn illustrative_struct_from_schema_text_lowers_and_derives_names() {
-    // DatabaseMarker.{ CommitSequence StateDigest secretDigest.StateDigest } from
-    // real schema text: two elided (derived) field names, one explicit — the
-    // particular-struct default runs the field-name walker on the elided pair and
-    // preserves the explicit name. Not an on-disk golden, so no byte-exact claim.
+    // DatabaseMarker.{ CommitSequence StateDigest StateDigest } from real schema
+    // text: field names are illegal everywhere (psyche ruling 2026-07-19), so every
+    // field name is derived from its type and the two same-typed StateDigest fields
+    // would collide on `state_digest`. The deterministic same-typed-field rule
+    // (directed work, 2026-07-19) resolves that collision: a type naming more than one
+    // field distinguishes each by the ordinal English word of its position among the
+    // same-typed fields — `first_state_digest`, `second_state_digest` — while the
+    // singly-used `CommitSequence` keeps its bare `commit_sequence`. Not an on-disk
+    // golden, so no byte-exact claim.
     let (value, schema_names) = decode(
         DATABASE_MARKER,
-        "DatabaseMarker.{ CommitSequence StateDigest secretDigest.StateDigest }",
+        "DatabaseMarker.{ CommitSequence StateDigest StateDigest }",
     );
     let schema = schema_of(value);
     let package = MacroPackage::wire_fixture();
@@ -329,8 +334,11 @@ fn illustrative_struct_from_schema_text_lowers_and_derives_names() {
     let rust = project(&lowering.items[0], &lowering.names);
     assert!(rust.contains("pub struct DatabaseMarker {"));
     assert!(rust.contains("pub commit_sequence: CommitSequence,"));
-    assert!(rust.contains("pub state_digest: StateDigest,"));
-    assert!(rust.contains("secretDigest: StateDigest,"));
+    assert!(rust.contains("pub first_state_digest: StateDigest,"));
+    assert!(rust.contains("pub second_state_digest: StateDigest,"));
+    // The colliding bare name must not survive: position, via the ordinal rule, tells
+    // the two StateDigest fields apart.
+    assert!(!rust.contains("pub state_digest: StateDigest,"));
     println!("\n[illustrative struct from schema text]\n{rust}");
 }
 

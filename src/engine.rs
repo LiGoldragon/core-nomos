@@ -8,6 +8,8 @@
 //! identifiers keep their indices and logos names append, with every template
 //! literal re-interned through the package's authoring table into the extension.
 
+use std::collections::BTreeMap;
+
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, CoreItem, DeriveGroup, Enumeration,
     Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType, Struct,
@@ -534,10 +536,11 @@ impl<'package> Evaluator<'package> {
                 "a variant splice cannot fill fields",
             ));
         };
+        let group_names = self.derive_group_names(&schema_fields)?;
         let mut out = Vec::with_capacity(schema_fields.len());
-        for field in &schema_fields {
+        for (field, group_name) in schema_fields.iter().zip(group_names) {
             let type_reference = self.lower_reference(field.reference())?;
-            let name = self.field_name(field, *name_rule)?;
+            let name = self.field_name(field, group_name, *name_rule)?;
             out.push(Field {
                 visibility: visibility.clone(),
                 name,
@@ -545,6 +548,48 @@ impl<'package> Evaluator<'package> {
             });
         }
         Ok(out)
+    }
+
+    /// The deterministic Rust field names for an ordered field group — the psyche's
+    /// same-typed-field rule (directed work, 2026-07-19: "create a deterministic rule
+    /// for structs that contain more than one field with the same type"). Each field's
+    /// base name is the `snake_case` of its type, core-schema's single-field
+    /// [`CoreReference::derived_field_name`]. When a type names more than one field in
+    /// the group, every one of those fields is distinguished by prefixing the ordinal
+    /// English word of its position among the same-typed fields — `first_state_digest`,
+    /// `second_state_digest`; a type naming exactly one field keeps the bare base name,
+    /// which is the degenerate empty-ordinal case, not a separate branch. The result is
+    /// a pure function of field position and type: no stored or authored name is read,
+    /// adding a later field of another type never moves an earlier field's name, and the
+    /// same struct always lowers to the same field names.
+    fn derive_group_names(&self, fields: &[CoreField]) -> Result<Vec<Name>, NomosError> {
+        let base_names = fields
+            .iter()
+            .map(|field| field.reference().derived_field_name(&self.names))
+            .collect::<Result<Vec<String>, _>>()?;
+        let mut totals: BTreeMap<&str, usize> = BTreeMap::new();
+        for base in &base_names {
+            *totals.entry(base.as_str()).or_default() += 1;
+        }
+        let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut names = Vec::with_capacity(base_names.len());
+        for base in &base_names {
+            let occurrence = {
+                let count = seen.entry(base.as_str()).or_default();
+                *count += 1;
+                *count
+            };
+            let name = if totals[base.as_str()] > 1 {
+                Name::new(format!(
+                    "{}_{base}",
+                    SameTypeOrdinal(occurrence).ordinal_word()
+                ))
+            } else {
+                Name::new(base.clone())
+            };
+            names.push(name);
+        }
+        Ok(names)
     }
 
     fn evaluate_variants(
@@ -595,35 +640,36 @@ impl<'package> Evaluator<'package> {
         Ok(output)
     }
 
-    /// Select a produced field's name per the field-name rule. `FieldRuleDispatch`
-    /// distinguishes an *elided* field (schema name equals the `field_name` of its
-    /// type — re-derive through the walker) from an *explicit* one (keep the schema
-    /// name), matching schema's own decode-time Field-rule split.
+    /// Select a produced field's name per the field-name rule, given the field's
+    /// already-computed group name (its base name, ordinal-disambiguated against
+    /// same-typed siblings by [`derive_group_names`](Self::derive_group_names)).
+    /// `FieldRuleDispatch` distinguishes an *elided* field (schema name equals the
+    /// `field_name` of its type — take the derived group name) from an *explicit* one
+    /// (keep the schema name), matching schema's own decode-time Field-rule split. Post
+    /// field-name-ban a decoded field is always elided, so the group name — and its
+    /// same-typed disambiguation — governs; `PreserveSchema` remains for a
+    /// programmatically constructed Core that carries verbatim distinct names.
     fn field_name(
         &mut self,
         field: &CoreField,
+        group_name: Name,
         rule: FieldNameRule,
     ) -> Result<Identifier, NomosError> {
         match rule {
             FieldNameRule::PreserveSchema => Ok(field.identifier()),
-            FieldNameRule::AlwaysDeriveFromType => self.derive_field_name(field),
+            FieldNameRule::AlwaysDeriveFromType => Ok(self.names.intern(group_name)),
             // Elided when the schema name equals the reference's derived name,
             // explicit otherwise. The derive-vs-preserve decision is the shared
             // `CoreField::name_is_derivable` predicate in core-schema, so this
             // Nomos-lowering site and schema's own textual codec cannot drift.
             FieldNameRule::FieldRuleDispatch => {
                 if field.name_is_derivable(&self.names)? {
-                    self.derive_field_name(field)
+                    Ok(self.names.intern(group_name))
                 } else {
                     Ok(field.identifier())
                 }
             }
         }
-    }
-
-    fn derive_field_name(&mut self, field: &CoreField) -> Result<Identifier, NomosError> {
-        let derived = field.reference().derived_field_name(&self.names)?;
-        Ok(self.names.intern(Name::new(derived)))
     }
 
     /// Lower a schema type reference into a `CoreLogos` type — dispatched by kind
@@ -837,5 +883,100 @@ impl<'package> Evaluator<'package> {
             name: self.place_literal_name(field.name)?,
             type_reference: self.remap_type_reference(&field.type_reference)?,
         })
+    }
+}
+
+/// A one-based position within a group of same-typed struct fields. Its ordinal
+/// English word is how the deterministic same-typed-field rule tells such fields
+/// apart when lowering to a target that needs distinct field identifiers (Rust).
+/// Position is the only input, so the word is a total, stable function of it.
+struct SameTypeOrdinal(usize);
+
+impl SameTypeOrdinal {
+    /// The ordinal English word for this position, in `snake_case`: `first`,
+    /// `second`, `third`, `twenty_first`, `one_hundredth`. Spelled by the cardinal
+    /// words of the position with the final word ordinalized, so every position —
+    /// however large — has a full-English name and never falls back to a numeral.
+    fn ordinal_word(&self) -> String {
+        let cardinal = Self::cardinal_word(self.0);
+        let (prefix, last) = match cardinal.rsplit_once('_') {
+            Some((prefix, last)) => (Some(prefix), last),
+            None => (None, cardinal.as_str()),
+        };
+        let ordinal_last = match last {
+            "one" => "first".to_owned(),
+            "two" => "second".to_owned(),
+            "three" => "third".to_owned(),
+            "five" => "fifth".to_owned(),
+            "eight" => "eighth".to_owned(),
+            "nine" => "ninth".to_owned(),
+            "twelve" => "twelfth".to_owned(),
+            word if word.ends_with('y') => format!("{}ieth", &word[..word.len() - 1]),
+            word => format!("{word}th"),
+        };
+        match prefix {
+            Some(prefix) => format!("{prefix}_{ordinal_last}"),
+            None => ordinal_last,
+        }
+    }
+
+    /// The cardinal English words for a count, in `snake_case` (`twenty_three`,
+    /// `one_hundred_five`). Total over `usize` by recursing through the scale words.
+    fn cardinal_word(count: usize) -> String {
+        const ONES: [&str; 20] = [
+            "zero",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+            "thirteen",
+            "fourteen",
+            "fifteen",
+            "sixteen",
+            "seventeen",
+            "eighteen",
+            "nineteen",
+        ];
+        const TENS: [&str; 10] = [
+            "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+        ];
+        const SCALES: [(usize, &str); 5] = [
+            (1_000_000_000_000, "trillion"),
+            (1_000_000_000, "billion"),
+            (1_000_000, "million"),
+            (1_000, "thousand"),
+            (100, "hundred"),
+        ];
+        if count < 20 {
+            return ONES[count].to_owned();
+        }
+        if count < 100 {
+            let tens = TENS[count / 10];
+            return if count % 10 == 0 {
+                tens.to_owned()
+            } else {
+                format!("{tens}_{}", ONES[count % 10])
+            };
+        }
+        for (value, word) in SCALES {
+            if count >= value {
+                let high = Self::cardinal_word(count / value);
+                let remainder = count % value;
+                return if remainder == 0 {
+                    format!("{high}_{word}")
+                } else {
+                    format!("{high}_{word}_{}", Self::cardinal_word(remainder))
+                };
+            }
+        }
+        unreachable!("counts below 100 are handled above")
     }
 }
