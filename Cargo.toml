@@ -22,9 +22,6 @@ structural-codec = { git = "https://github.com/LiGoldragon/protos.git", rev = "1
 rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror        = "2"
 
-[dev-dependencies]
-raw-discovery    = { git = "https://github.com/LiGoldragon/protos.git", rev = "18ae746857979c9c01c0d4b315bb8a818056cf09" }
-
 [lints.rust]
 unsafe_code = "forbid"
 unused      = { level = "warn", priority = -1 }

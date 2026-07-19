@@ -568,7 +568,7 @@ impl Evaluator<'_> {
                     "an interface variant carries no payload to construct from",
                 ))?
                 .clone();
-            let method_name = self.derived_snake_name(variant.identifier())?;
+            let method_name = self.names.derived_snake_name(variant.identifier())?;
             let self_return = self.self_type();
             let (parameter, body) = match ConstructorSource::of(&payload, catalogue) {
                 ConstructorSource::Direct(reference) => {
@@ -878,7 +878,9 @@ impl Evaluator<'_> {
                     )
                 })?;
                 let value = (u64::from(root_byte) << 56) | (u64::from(variant_byte) << 48);
-                let const_name = self.short_header_const_name(root.name, variant.identifier())?;
+                let const_name = self
+                    .names
+                    .short_header_const_name(root.name, variant.identifier())?;
                 consts.push(CoreItem::Const(Const {
                     visibility: Visibility::Public,
                     attributes: Vec::new(),
@@ -902,7 +904,7 @@ impl Evaluator<'_> {
     }
 
     fn route_enum(&mut self, root: &InterfaceRoot) -> Result<CoreItem, NomosError> {
-        let name = self.route_enum_name(root.name)?;
+        let name = self.names.route_enum_name(root.name)?;
         let attributes = self.wire_enum_preamble();
         let variants = root
             .variants
@@ -940,7 +942,7 @@ impl Evaluator<'_> {
         let mut elements = Vec::with_capacity(request.variants.len());
         for variant in &request.variants {
             elements.push(Expression::StringLiteral(
-                self.resolved_text(variant.identifier())?,
+                self.names.resolved_text(variant.identifier())?,
             ));
         }
         let heads_value = Expression::Reference(ReferenceExpression {
@@ -1138,7 +1140,7 @@ impl Evaluator<'_> {
 
     /// `pub fn route(&self) -> <Root>Route { match self { Self::V(_) => <Root>Route::V, … } }`.
     fn route_method(&mut self, root: &InterfaceRoot) -> Result<ImplItem, NomosError> {
-        let route_enum = self.route_enum_name(root.name)?;
+        let route_enum = self.names.route_enum_name(root.name)?;
         let mut arms = Vec::with_capacity(root.variants.len());
         for variant in &root.variants {
             let pattern = self.self_variant_pattern(variant);
@@ -1167,7 +1169,9 @@ impl Evaluator<'_> {
         let mut arms = Vec::with_capacity(root.variants.len());
         for variant in &root.variants {
             let pattern = self.self_variant_pattern(variant);
-            let const_name = self.short_header_const_name(root.name, variant.identifier())?;
+            let const_name = self
+                .names
+                .short_header_const_name(root.name, variant.identifier())?;
             let body = Expression::Path(self.path_of(&[short_header, const_name]));
             arms.push(MatchArm { pattern, body });
         }
@@ -1195,11 +1199,13 @@ impl Evaluator<'_> {
         root: &InterfaceRoot,
     ) -> Result<ImplItem, NomosError> {
         let short_header = self.ident("short_header");
-        let route_enum = self.route_enum_name(root.name)?;
+        let route_enum = self.names.route_enum_name(root.name)?;
         let header = self.ident("header");
         let mut arms = Vec::with_capacity(root.variants.len() + 1);
         for variant in &root.variants {
-            let const_name = self.short_header_const_name(root.name, variant.identifier())?;
+            let const_name = self
+                .names
+                .short_header_const_name(root.name, variant.identifier())?;
             let pattern = Pattern::Path(self.path_of(&[short_header, const_name]));
             let route_value = Expression::Path(self.path_of(&[route_enum, variant.identifier()]));
             let body = self.call_path(&["Ok"], vec![route_value]);
@@ -1395,7 +1401,7 @@ impl Evaluator<'_> {
             tail_expression: tail,
         };
 
-        let route_enum = self.route_enum_name(root.name)?;
+        let route_enum = self.names.route_enum_name(root.name)?;
         let route_type = TypeReference::Path(self.path_of(&[route_enum]));
         let self_type = self.self_type();
         let pair_type = TypeReference::Tuple(TupleType {
@@ -1646,7 +1652,7 @@ impl Evaluator<'_> {
         let attributes = self.wire_enum_preamble();
         let mut variants = Vec::with_capacity(roots.len());
         for root in roots {
-            let route_enum = self.route_enum_name(root.name)?;
+            let route_enum = self.names.route_enum_name(root.name)?;
             variants.push(Variant {
                 name: root.name,
                 payload: VariantPayload::Tuple(vec![TypeReference::Path(
@@ -1670,10 +1676,12 @@ impl Evaluator<'_> {
         let self_ident = self.self_ident();
         let mut outer_arms = Vec::with_capacity(roots.len());
         for root in roots {
-            let route_enum = self.route_enum_name(root.name)?;
+            let route_enum = self.names.route_enum_name(root.name)?;
             let mut inner_arms = Vec::with_capacity(root.variants.len());
             for variant in &root.variants {
-                let literal = self.signal_object_name_literal(root.name, variant.identifier())?;
+                let literal = self
+                    .names
+                    .signal_object_name_literal(root.name, variant.identifier())?;
                 inner_arms.push(MatchArm {
                     pattern: Pattern::Path(self.path_of(&[route_enum, variant.identifier()])),
                     body: Expression::StringLiteral(literal),
@@ -1829,50 +1837,5 @@ impl Evaluator<'_> {
     /// construction and pattern.
     fn self_ident(&mut self) -> Identifier {
         self.ident("Self")
-    }
-
-    /// The snake_case constructor/method name derived from a variant name
-    /// (`RecordAccepted` → `record_accepted`), interned into the extended table.
-    fn derived_snake_name(&mut self, variant: Identifier) -> Result<Identifier, NomosError> {
-        let derived = self.names.resolve(variant)?.field_name();
-        Ok(self.names.intern(Name::new(derived)))
-    }
-
-    /// The `SCREAMING_SNAKE` short-header const name `<ROOT>_<VARIANT>`
-    /// (`Input` + `Record` → `INPUT_RECORD`).
-    fn short_header_const_name(
-        &mut self,
-        root: Identifier,
-        variant: Identifier,
-    ) -> Result<Identifier, NomosError> {
-        let root_screaming = self.names.resolve(root)?.screaming();
-        let variant_screaming = self.names.resolve(variant)?.screaming();
-        let name = format!("{root_screaming}_{variant_screaming}");
-        Ok(self.names.intern(Name::new(name)))
-    }
-
-    /// The route-enum name `<Root>Route` (`Input` → `InputRoute`).
-    fn route_enum_name(&mut self, root: Identifier) -> Result<Identifier, NomosError> {
-        let root_name = self.names.resolve(root)?.as_str().to_owned();
-        Ok(self.names.intern(Name::new(format!("{root_name}Route"))))
-    }
-
-    /// The trace object-name string literal `Signal<Root><Variant>`
-    /// (`Input`, `Record` → `SignalInputRecord`). Literal content, hashed data, never
-    /// an interned name.
-    fn signal_object_name_literal(
-        &mut self,
-        root: Identifier,
-        variant: Identifier,
-    ) -> Result<String, NomosError> {
-        let root_name = self.names.resolve(root)?.as_str().to_owned();
-        let variant_name = self.names.resolve(variant)?.as_str().to_owned();
-        Ok(format!("Signal{root_name}{variant_name}"))
-    }
-
-    /// The resolved text of an identifier as a string literal's content (a variant
-    /// head name in the `HEADS` array).
-    fn resolved_text(&self, identifier: Identifier) -> Result<String, NomosError> {
-        Ok(self.names.resolve(identifier)?.as_str().to_owned())
     }
 }

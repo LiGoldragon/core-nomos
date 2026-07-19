@@ -32,9 +32,9 @@
 //! ## The closed escape algebra
 //!
 //! A result template is logos-encoded-form data whose non-literal positions are the
-//! closed set [`Escape`] = **Realize** / **Invoke** / **Splice**. Name synthesis is
-//! not a fourth escape but a [`NameTransform`] inside `Realize`, reusing name-table's
-//! single home of the derived-name rule (the psyche's no-fourth-escape ruling).
+//! closed set [`Escape`] = **Realize** / **Invoke** / **Splice**. A [`NameTransform`]
+//! is typed intent carried by `Realize`, not a fourth escape; `NameTableBoundary`
+//! performs the derived-name work at the NameTable/emission boundary.
 //!
 //! ## The engine
 //!
@@ -51,6 +51,7 @@ pub mod fixtures;
 pub mod generation;
 pub mod identity;
 pub mod meta;
+mod name_boundary;
 pub mod package;
 pub mod prelude;
 pub mod template;

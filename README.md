@@ -43,13 +43,15 @@ let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
   content-identified registry of macros as data, carrying its own authoring
   `NameTable` sibling (excluded from the content identity, so it is rename-stable
   and portable).
-- **A closed template escape algebra** — `Realize` / `Invoke` / `Splice`. Name
-  synthesis is a `NameTransform` inside `Realize`, not a fourth escape.
+- **A closed template escape algebra** — `Realize` / `Invoke` / `Splice`. A
+  `NameTransform` is typed intent carried by `Realize`, not a fourth escape; its
+  name work occurs only at the NameTable/emission boundary.
 - **A typed engine** — `MacroPackage::apply` converts schema encoded forms to logos
-  encoded forms entirely outside text: named invocations resolve or error loudly,
-  structural defaults cover plain declarations, recursive invocation is bounded by
-  cycle rejection, and the NameTable is extended continuously (schema indices
-  preserved, logos names appended).
+  encoded forms without string manipulation in its macro transform: named
+  invocations resolve or error loudly, structural defaults cover plain declarations,
+  recursive invocation is bounded by cycle rejection, and the NameTable/emission
+  boundary extends the identifier space (schema indices preserved, logos names
+  appended).
 
 ## What it is not (yet)
 

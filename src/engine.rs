@@ -8,25 +8,23 @@
 //! identifiers keep their indices and logos names append, with every template
 //! literal re-interned through the package's authoring table into the extension.
 
-use std::collections::BTreeMap;
-
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, CoreItem, DeriveGroup, Enumeration,
     Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType, Struct,
     TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
-use core_schema::{CoreDeclaration, CoreField, CoreReference, CoreSchema, CoreType};
-use name_table::{Identifier, Name, NameTable};
+use core_schema::{CoreDeclaration, CoreSchema, CoreType};
+use name_table::{Identifier, NameTable};
 use structural_codec::{Converted, EncodedConversion};
 
 use crate::error::NomosError;
 use crate::identity::{MacroIdentity, SectionDefault};
 use crate::meta::{BoundInput, InputSignature, MetaType, MetaValue};
+use crate::name_boundary::NameTableBoundary;
 use crate::package::MacroPackage;
 use crate::template::{
-    BindingRef, EnumerationTemplate, Escape, FieldNameRule, ItemTemplate, NameTransform,
-    NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
-    SpliceElement, StructTemplate,
+    BindingRef, EnumerationTemplate, Escape, ItemTemplate, NameTransform, NewtypeTemplate, Realize,
+    ResultTemplate, Scalar, Sequence, SequenceItem, Splice, SpliceElement, StructTemplate,
 };
 
 /// The result of lowering a schema: the produced `CoreLogos` items, in declaration
@@ -133,7 +131,9 @@ enum Fragment {
 /// the declaration lowering built.
 pub(crate) struct Evaluator<'package> {
     package: &'package MacroPackage,
-    pub(crate) names: NameTable,
+    /// The sole NameTable/emission boundary. Typed evaluation asks this boundary to
+    /// allocate or project names but never reads or constructs text itself.
+    pub(crate) names: NameTableBoundary<'package>,
     active: Vec<MacroIdentity>,
 }
 
@@ -141,13 +141,13 @@ impl<'package> Evaluator<'package> {
     fn new(package: &'package MacroPackage, schema_names: &NameTable) -> Self {
         Self {
             package,
-            names: NameTable::extend_from(schema_names),
+            names: NameTableBoundary::new(package.names(), schema_names),
             active: Vec::new(),
         }
     }
 
     fn into_names(self) -> NameTable {
-        self.names
+        self.names.into_names()
     }
 
     fn lower_schema(&mut self, schema: &CoreSchema) -> Result<Vec<CoreItem>, NomosError> {
@@ -319,14 +319,7 @@ impl<'package> Evaluator<'package> {
             .iter()
             .any(|variant| !matches!(variant.payload, VariantPayload::Unit))
         {
-            for attribute in &mut attributes {
-                if let Attribute::Derive(group) = attribute {
-                    group.paths.retain(|path| match path.resolve(&self.names) {
-                        Ok(segments) => segments.as_slice() != [Name::new("Copy")],
-                        Err(_) => true,
-                    });
-                }
-            }
+            self.names.remove_copy_derive(&mut attributes)?;
         }
         Ok(CoreItem::Enumeration(Enumeration {
             visibility: template.visibility.clone(),
@@ -343,7 +336,7 @@ impl<'package> Evaluator<'package> {
         bound: &BoundInput,
     ) -> Result<Identifier, NomosError> {
         match slot {
-            Scalar::Literal(identifier) => self.place_literal_name(*identifier),
+            Scalar::Literal(identifier) => self.names.place_literal_name(*identifier),
             Scalar::Escape(Escape::Realize(realize)) => self.realize_name(realize, bound),
             Scalar::Escape(Escape::Invoke(_)) => Err(NomosError::EscapeShape(
                 "an invoke cannot fill a name position",
@@ -364,35 +357,10 @@ impl<'package> Evaluator<'package> {
             .value(binding)
             .ok_or(NomosError::UnboundInput(binding))?
         {
-            MetaValue::Name(identifier) => self.transform_name(*identifier, realize.transform),
+            MetaValue::Name(identifier) => {
+                self.names.transform_name(*identifier, realize.transform)
+            }
             _ => Err(NomosError::NameTransformShape),
-        }
-    }
-
-    /// Apply a name transform, reusing name-table's single home of the derived-name
-    /// walk. `Identity` returns the (schema/logos) identifier verbatim; the derived
-    /// transforms resolve, walk, and re-intern into the extended table — where
-    /// interning dedups, so a derivation that reproduces an existing name returns
-    /// its existing identifier (the continuous space).
-    fn transform_name(
-        &mut self,
-        identifier: Identifier,
-        transform: NameTransform,
-    ) -> Result<Identifier, NomosError> {
-        match transform {
-            NameTransform::Identity => Ok(identifier),
-            NameTransform::FieldName => {
-                let derived = self.names.resolve(identifier)?.field_name();
-                Ok(self.names.intern(Name::new(derived)))
-            }
-            NameTransform::Screaming => {
-                let derived = self.names.resolve(identifier)?.screaming();
-                Ok(self.names.intern(Name::new(derived)))
-            }
-            NameTransform::PascalCase => {
-                let derived = self.names.resolve(identifier)?.pascal_case();
-                Ok(self.names.intern(Name::new(derived)))
-            }
         }
     }
 
@@ -536,11 +504,10 @@ impl<'package> Evaluator<'package> {
                 "a variant splice cannot fill fields",
             ));
         };
-        let group_names = self.derive_group_names(&schema_fields)?;
+        let names = self.names.field_names(&schema_fields, *name_rule)?;
         let mut out = Vec::with_capacity(schema_fields.len());
-        for (field, group_name) in schema_fields.iter().zip(group_names) {
+        for (field, name) in schema_fields.iter().zip(names) {
             let type_reference = self.lower_reference(field.reference())?;
-            let name = self.field_name(field, group_name, *name_rule)?;
             out.push(Field {
                 visibility: visibility.clone(),
                 name,
@@ -548,48 +515,6 @@ impl<'package> Evaluator<'package> {
             });
         }
         Ok(out)
-    }
-
-    /// The deterministic Rust field names for an ordered field group — the psyche's
-    /// same-typed-field rule (directed work, 2026-07-19: "create a deterministic rule
-    /// for structs that contain more than one field with the same type"). Each field's
-    /// base name is the `snake_case` of its type, core-schema's single-field
-    /// [`CoreReference::derived_field_name`]. When a type names more than one field in
-    /// the group, every one of those fields is distinguished by prefixing the ordinal
-    /// English word of its position among the same-typed fields — `first_state_digest`,
-    /// `second_state_digest`; a type naming exactly one field keeps the bare base name,
-    /// which is the degenerate empty-ordinal case, not a separate branch. The result is
-    /// a pure function of field position and type: no stored or authored name is read,
-    /// adding a later field of another type never moves an earlier field's name, and the
-    /// same struct always lowers to the same field names.
-    fn derive_group_names(&self, fields: &[CoreField]) -> Result<Vec<Name>, NomosError> {
-        let base_names = fields
-            .iter()
-            .map(|field| field.reference().derived_field_name(&self.names))
-            .collect::<Result<Vec<String>, _>>()?;
-        let mut totals: BTreeMap<&str, usize> = BTreeMap::new();
-        for base in &base_names {
-            *totals.entry(base.as_str()).or_default() += 1;
-        }
-        let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
-        let mut names = Vec::with_capacity(base_names.len());
-        for base in &base_names {
-            let occurrence = {
-                let count = seen.entry(base.as_str()).or_default();
-                *count += 1;
-                *count
-            };
-            let name = if totals[base.as_str()] > 1 {
-                Name::new(format!(
-                    "{}_{base}",
-                    SameTypeOrdinal(occurrence).ordinal_word()
-                ))
-            } else {
-                Name::new(base.clone())
-            };
-            names.push(name);
-        }
-        Ok(names)
     }
 
     fn evaluate_variants(
@@ -640,132 +565,19 @@ impl<'package> Evaluator<'package> {
         Ok(output)
     }
 
-    /// Select a produced field's name per the field-name rule, given the field's
-    /// already-computed group name (its base name, ordinal-disambiguated against
-    /// same-typed siblings by [`derive_group_names`](Self::derive_group_names)).
-    /// `FieldRuleDispatch` distinguishes an *elided* field (schema name equals the
-    /// `field_name` of its type — take the derived group name) from an *explicit* one
-    /// (keep the schema name), matching schema's own decode-time Field-rule split. Post
-    /// field-name-ban a decoded field is always elided, so the group name — and its
-    /// same-typed disambiguation — governs; `PreserveSchema` remains for a
-    /// programmatically constructed Core that carries verbatim distinct names.
-    fn field_name(
-        &mut self,
-        field: &CoreField,
-        group_name: Name,
-        rule: FieldNameRule,
-    ) -> Result<Identifier, NomosError> {
-        match rule {
-            FieldNameRule::PreserveSchema => Ok(field.identifier()),
-            FieldNameRule::AlwaysDeriveFromType => Ok(self.names.intern(group_name)),
-            // Elided when the schema name equals the reference's derived name,
-            // explicit otherwise. The derive-vs-preserve decision is the shared
-            // `CoreField::name_is_derivable` predicate in core-schema, so this
-            // Nomos-lowering site and schema's own textual codec cannot drift.
-            FieldNameRule::FieldRuleDispatch => {
-                if field.name_is_derivable(&self.names)? {
-                    Ok(self.names.intern(group_name))
-                } else {
-                    Ok(field.identifier())
-                }
-            }
-        }
-    }
-
-    /// Lower a schema type reference into a `CoreLogos` type — dispatched by kind
-    /// and projection, never by a head string. Exhaustive over `CoreReference`.
-    /// Crate-visible: the enriched generation classes lower newtype-wrapped and
-    /// variant-payload references through the same single home.
+    /// Lower a typed schema reference through the NameTable boundary. The evaluator
+    /// never reads or introduces a spelling while performing this conversion.
     pub(crate) fn lower_reference(
         &mut self,
-        reference: &CoreReference,
+        reference: &core_schema::CoreReference,
     ) -> Result<TypeReference, NomosError> {
-        match reference {
-            CoreReference::Integer => Ok(TypeReference::Path(self.leaf_path("Integer"))),
-            CoreReference::String => Ok(TypeReference::Path(self.leaf_path("String"))),
-            CoreReference::Boolean => Ok(TypeReference::Path(self.leaf_path("Boolean"))),
-            CoreReference::Bytes => Ok(TypeReference::Path(self.leaf_path("Bytes"))),
-            CoreReference::Plain(identifier) => Ok(TypeReference::Path(PathNode {
-                segments: vec![*identifier],
-            })),
-            CoreReference::SingleTypeApplication {
-                projection,
-                argument,
-            } => {
-                let head = self.single_projection_head(projection);
-                let argument = self.lower_reference(argument)?;
-                Ok(TypeReference::Application(TypeApplication {
-                    head: self.leaf_path(head),
-                    arguments: vec![argument],
-                }))
-            }
-            CoreReference::MultiTypeApplication {
-                projection,
-                arguments,
-            } => {
-                let head = self.multi_projection_head(projection);
-                let arguments = arguments
-                    .iter()
-                    .map(|argument| self.lower_reference(argument))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(TypeReference::Application(TypeApplication {
-                    head: self.leaf_path(head),
-                    arguments,
-                }))
-            }
-            CoreReference::ValueApplication { .. } => Err(NomosError::UnsupportedReference(
-                "a byte-length value application has no CoreLogos type-argument home",
-            )),
-        }
-    }
-
-    /// The Rust head spelling of a single-argument type projection. Vector and
-    /// Optional are verified against the reference fixtures (`Vec<_>`, `Option<_>`); ScopeOf
-    /// is a flagged best guess (absent from the surveyed corpus).
-    fn single_projection_head(
-        &self,
-        projection: &core_schema::SingleTypeReferenceProjection,
-    ) -> &'static str {
-        use core_schema::SingleTypeReferenceProjection::{Optional, ScopeOf, Vector};
-        match projection {
-            Vector => "Vec",
-            Optional => "Option",
-            ScopeOf => "ScopeOf",
-        }
-    }
-
-    fn multi_projection_head(
-        &self,
-        projection: &core_schema::MultiTypeReferenceProjection,
-    ) -> &'static str {
-        use core_schema::MultiTypeReferenceProjection::Map;
-        match projection {
-            Map => "Map",
-        }
-    }
-
-    /// Intern a logos-only leaf or head name into the extended table, returning a
-    /// single-segment path. Interning dedups, so a leaf name that a schema
-    /// identifier already carries reuses that identifier.
-    fn leaf_path(&mut self, text: &str) -> PathNode {
-        PathNode {
-            segments: vec![self.names.intern(Name::new(text))],
-        }
-    }
-
-    /// Re-intern a template-literal name (authored against the package's NameTable)
-    /// into the extended logos table. This is the runtime realization of the one
-    /// continuous identifier space: the package's names append to the schema
-    /// allocation, deduped.
-    fn place_literal_name(&mut self, identifier: Identifier) -> Result<Identifier, NomosError> {
-        let name = self.package.names().resolve(identifier)?.clone();
-        Ok(self.names.intern(name))
+        self.names.lower_reference(reference)
     }
 
     fn remap_path(&mut self, path: &PathNode) -> Result<PathNode, NomosError> {
         let mut segments = Vec::with_capacity(path.segments.len());
         for segment in &path.segments {
-            segments.push(self.place_literal_name(*segment)?);
+            segments.push(self.names.place_literal_name(*segment)?);
         }
         Ok(PathNode { segments })
     }
@@ -787,7 +599,7 @@ impl<'package> Evaluator<'package> {
             )),
             TypeReference::Reference(reference) => {
                 let lifetime = match reference.lifetime {
-                    Some(lifetime) => Some(self.place_literal_name(lifetime)?),
+                    Some(lifetime) => Some(self.names.place_literal_name(lifetime)?),
                     None => None,
                 };
                 Ok(TypeReference::Reference(ReferenceType {
@@ -815,9 +627,9 @@ impl<'package> Evaluator<'package> {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(TypeReference::Tuple(TupleType { elements }))
             }
-            TypeReference::Lifetime(lifetime) => {
-                Ok(TypeReference::Lifetime(self.place_literal_name(*lifetime)?))
-            }
+            TypeReference::Lifetime(lifetime) => Ok(TypeReference::Lifetime(
+                self.names.place_literal_name(*lifetime)?,
+            )),
         }
     }
 
@@ -872,7 +684,7 @@ impl<'package> Evaluator<'package> {
     ) -> Result<ConfigurationPredicate, NomosError> {
         match predicate {
             ConfigurationPredicate::Feature(identifier) => Ok(ConfigurationPredicate::Feature(
-                self.place_literal_name(*identifier)?,
+                self.names.place_literal_name(*identifier)?,
             )),
         }
     }
@@ -880,103 +692,8 @@ impl<'package> Evaluator<'package> {
     fn remap_field(&mut self, field: &Field) -> Result<Field, NomosError> {
         Ok(Field {
             visibility: field.visibility.clone(),
-            name: self.place_literal_name(field.name)?,
+            name: self.names.place_literal_name(field.name)?,
             type_reference: self.remap_type_reference(&field.type_reference)?,
         })
-    }
-}
-
-/// A one-based position within a group of same-typed struct fields. Its ordinal
-/// English word is how the deterministic same-typed-field rule tells such fields
-/// apart when lowering to a target that needs distinct field identifiers (Rust).
-/// Position is the only input, so the word is a total, stable function of it.
-struct SameTypeOrdinal(usize);
-
-impl SameTypeOrdinal {
-    /// The ordinal English word for this position, in `snake_case`: `first`,
-    /// `second`, `third`, `twenty_first`, `one_hundredth`. Spelled by the cardinal
-    /// words of the position with the final word ordinalized, so every position —
-    /// however large — has a full-English name and never falls back to a numeral.
-    fn ordinal_word(&self) -> String {
-        let cardinal = Self::cardinal_word(self.0);
-        let (prefix, last) = match cardinal.rsplit_once('_') {
-            Some((prefix, last)) => (Some(prefix), last),
-            None => (None, cardinal.as_str()),
-        };
-        let ordinal_last = match last {
-            "one" => "first".to_owned(),
-            "two" => "second".to_owned(),
-            "three" => "third".to_owned(),
-            "five" => "fifth".to_owned(),
-            "eight" => "eighth".to_owned(),
-            "nine" => "ninth".to_owned(),
-            "twelve" => "twelfth".to_owned(),
-            word if word.ends_with('y') => format!("{}ieth", &word[..word.len() - 1]),
-            word => format!("{word}th"),
-        };
-        match prefix {
-            Some(prefix) => format!("{prefix}_{ordinal_last}"),
-            None => ordinal_last,
-        }
-    }
-
-    /// The cardinal English words for a count, in `snake_case` (`twenty_three`,
-    /// `one_hundred_five`). Total over `usize` by recursing through the scale words.
-    fn cardinal_word(count: usize) -> String {
-        const ONES: [&str; 20] = [
-            "zero",
-            "one",
-            "two",
-            "three",
-            "four",
-            "five",
-            "six",
-            "seven",
-            "eight",
-            "nine",
-            "ten",
-            "eleven",
-            "twelve",
-            "thirteen",
-            "fourteen",
-            "fifteen",
-            "sixteen",
-            "seventeen",
-            "eighteen",
-            "nineteen",
-        ];
-        const TENS: [&str; 10] = [
-            "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
-        ];
-        const SCALES: [(usize, &str); 5] = [
-            (1_000_000_000_000, "trillion"),
-            (1_000_000_000, "billion"),
-            (1_000_000, "million"),
-            (1_000, "thousand"),
-            (100, "hundred"),
-        ];
-        if count < 20 {
-            return ONES[count].to_owned();
-        }
-        if count < 100 {
-            let tens = TENS[count / 10];
-            return if count % 10 == 0 {
-                tens.to_owned()
-            } else {
-                format!("{tens}_{}", ONES[count % 10])
-            };
-        }
-        for (value, word) in SCALES {
-            if count >= value {
-                let high = Self::cardinal_word(count / value);
-                let remainder = count % value;
-                return if remainder == 0 {
-                    format!("{high}_{word}")
-                } else {
-                    format!("{high}_{word}_{}", Self::cardinal_word(remainder))
-                };
-            }
-        }
-        unreachable!("counts below 100 are handled above")
     }
 }
