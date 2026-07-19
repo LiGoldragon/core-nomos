@@ -6,7 +6,7 @@ use content_identity::ContentHash;
 use name_table::{Identifier, Name, NameTable};
 
 use crate::definition::MacroDefinition;
-use crate::domain::CoreNomosDomain;
+use crate::domain::EncodedNomosDomain;
 use crate::error::NomosError;
 use crate::identity::{MacroIdentity, MacroKind, SectionDefault};
 use crate::template::GenerationClass;
@@ -142,7 +142,7 @@ impl MacroPackage {
     /// The package's content identity, over the stringless macro data with the
     /// NameTable excluded. Rename-stable: renaming a macro moves nothing here;
     /// changing a macro's kind, input, or template moves the identity.
-    pub fn content_identity(&self) -> Result<ContentHash<CoreNomosDomain>, NomosError> {
+    pub fn content_identity(&self) -> Result<ContentHash<EncodedNomosDomain>, NomosError> {
         Ok(ContentHash::of_core(&self.definitions)?)
     }
 }

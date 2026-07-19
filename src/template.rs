@@ -1,20 +1,19 @@
-//! The result template: CoreLogos-shaped data with escape nodes. A macro's result
+//! The result template: logos-encoded-form data with escape nodes. A macro's result
 //! is a *quoted* logos skeleton in which specific positions are escapes rather than
 //! literals. The escape set is closed — **Realize**, **Invoke**, **Splice** — and
 //! shared across every position; a position's literal type is fixed by where it
 //! sits (a name slot holds an `Identifier`, a type slot a `TypeReference`), so the
 //! template stays strongly typed while the escape algebra stays one closed set.
 //!
-//! The *text spelling* of an escape — whether it wears a `$` sigil — is TextualNomos,
-//! a genuinely unsettled question, and is deferred: nothing here parses text. An
-//! escape is data.
+//! The text spelling of an escape is TextualNomos, a genuinely unsettled question,
+//! and is deferred: nothing here parses text. An escape is data.
 
 use core_logos::{Attribute, Field, Generics, TypeReference, Variant, Visibility};
 use name_table::Identifier;
 
 use crate::identity::MacroIdentity;
 
-/// A scalar template position: a literal Core value, or a single-valued escape.
+/// A scalar template position: a literal encoded value, or a single-valued escape.
 /// Evaluation must produce exactly one `Literal` here; a splice into a scalar is a
 /// typed error.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -169,9 +168,9 @@ pub enum ItemTemplate {
     Enumeration(EnumerationTemplate),
 }
 
-/// The newtype result template — `Public.Newtype.( $name $(WireAttributes) $type )`
-/// as data. Visibility is literal; the attribute vector recursively invokes the
-/// wire-attributes macro; the name and wrapped type are realized from the input.
+/// The newtype result template as data. Visibility is literal; the attribute vector
+/// recursively invokes the wire-attributes macro; the name and wrapped type are
+/// realized from the input.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct NewtypeTemplate {
     /// The item visibility (a literal Core value).
@@ -213,7 +212,7 @@ pub struct EnumerationTemplate {
 }
 
 /// The enriched generation vocabulary: the schema-derived *support surface* the
-/// goldens emit alongside the data declarations — impl blocks (with methods,
+/// reference fixtures emit alongside the data declarations — impl blocks (with methods,
 /// associated types, and associated consts), functions, consts, const modules, and
 /// use imports. Where the per-declaration structural defaults ([`ItemTemplate`])
 /// lower one CoreLogos item per declaration, a [`GenerationClass`] is a whole-schema
@@ -232,7 +231,7 @@ pub struct EnumerationTemplate {
 /// order of this enum: the data declarations first, then [`NewtypeErgonomics`],
 /// [`InterfaceErgonomics`], the [`WireContract`] vocabulary, the [`WireExchangeCodec`]
 /// bodies, the [`WireExchangeEnvelope`] surface, and [`TraceSupport`] — derived from
-/// the golden's own block order.
+/// the reference fixture's own block order.
 ///
 /// [`NewtypeErgonomics`]: GenerationClass::NewtypeErgonomics
 /// [`InterfaceErgonomics`]: GenerationClass::InterfaceErgonomics

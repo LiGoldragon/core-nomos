@@ -1,22 +1,9 @@
-//! The enriched capstone: spirit-min's whole `CoreSchema` — its data declarations
-//! and its two interface roots — lowered through the enriched wire package: the
-//! newtype ergonomics, the interface ergonomics, the wire-contract vocabulary, the
-//! wire exchange codec, the wire exchange envelope, and the trace support, in the
-//! golden's document order.
+//! The enriched capstone for the typed schema-to-logos pipeline.
 //!
-//! Two specs meet here. The *faithful* items reproduce the frozen `spirit_generated.rs`
-//! golden byte-for-byte, in strictly increasing document order — the declarations, A,
-//! B, the `short_header` module, the byte-count const, the route enums, the whole
-//! ordinary-leg envelope surface (`RequestPayload`, `SignalOperationHeads`,
-//! `LogVariant`, the `ExchangeFrame` aliases, and the `into_frame` / `into_reply_frame`
-//! constructors), and the class-D trace surface (including the `pub`-field
-//! `TraceEvent(pub ObjectName)` tuple struct). The *codec-shape* items — the
-//! `SignalFrameError` enum and the two `impl <Root>` codec blocks — are specified
-//! behaviorally: they must project to valid Rust that carries the working
-//! `encode_signal_frame` / `decode_signal_frame` bodies and speaks the golden's *wire*
-//! (an 8-byte little-endian short header ahead of an rkyv archive), not its source
-//! text. The load-bearing round-trip proof lives in the four-process witness, where
-//! the emitted crate is compiled.
+//! The fixture exercises declarations, ergonomics, the wire contract, codec bodies,
+//! envelope items, and trace support in their defined generation order. This crate
+//! checks the structural generator boundary; `language-engine-witness` compiles and
+//! runs the emitted contract as the working-program acceptance surface.
 
 use core_nomos::MacroPackage;
 use core_schema::{
@@ -26,13 +13,8 @@ use core_schema::{
 use name_table::{Identifier, Name, NameTable};
 use textual_rust::RustSource;
 
-// The frozen provenance golden, copied verbatim from schema-rust (the same bytes
-// textual-rust proves its projection against), so the byte-exact check is
-// self-contained and survives the flake-check sandbox.
-const GOLDEN: &str = include_str!("fixtures/spirit_generated.rs");
-
 /// The spirit-min schema built by hand through the crate's declaration path: the ten
-/// data declarations in golden order, then the two role-tagged interface roots.
+/// data declarations in source order, then the two role-tagged interface roots.
 struct SpiritMin {
     schema: CoreSchema,
     names: NameTable,
@@ -164,8 +146,7 @@ fn vector(argument: CoreReference) -> CoreReference {
     }
 }
 
-/// Project one item to Rust text (trailing newline trimmed, the golden-substring
-/// unit).
+/// Project one item to Rust text with its trailing newline trimmed.
 fn project(item: &core_logos::CoreItem, names: &NameTable) -> String {
     RustSource::project_item(item, names)
         .expect("project item")
@@ -186,14 +167,6 @@ const CLASS_LAYOUT: &[(&str, usize)] = &[
     ("D: trace support", 6),
 ];
 
-/// The item indices whose bodies are *behaviorally* specified, not byte-copies of the
-/// golden: the `SignalFrameError` enum (a leaner unit/tuple-variant error than the
-/// golden's struct-variant one) and the two `impl <Root>` codec blocks (whose codec
-/// bodies mirror the golden's *wire* — 8-byte little-endian header then rkyv archive —
-/// in the modeled statement style, not its source text). Every other enriched item
-/// still reproduces the golden verbatim.
-const CODEC_SHAPE_ITEMS: &[usize] = &[36, 39, 40];
-
 #[test]
 fn the_enriched_run_projects_valid_rust_in_the_expected_class_shape() {
     let spirit = SpiritMin::build();
@@ -209,41 +182,13 @@ fn the_enriched_run_projects_valid_rust_in_the_expected_class_shape() {
          exchange codec + D",
     );
 
-    // Every generated item — the codec bodies included — projects to valid Rust:
-    // `project_item` runs `syn::parse2` + prettyplease, so an Ok result is proof the
-    // emitted tokens parse as a Rust item. This is the working-programs spec at the
-    // core-nomos boundary; the four-process witness compiles and round-trips them.
+    // Every generated item — the codec bodies included — projects to valid Rust.
+    // `project_item` runs `syn::parse2` plus prettyplease; the separate process-level
+    // witness supplies the compile-and-run evidence for the assembled module.
     for (index, item) in lowering.items.iter().enumerate() {
         RustSource::project_item(item, &lowering.names).unwrap_or_else(|error| {
             panic!("item {index} did not project to valid Rust: {error:?}")
         });
-    }
-}
-
-#[test]
-fn the_faithful_items_stay_byte_exact_against_the_spirit_golden() {
-    let spirit = SpiritMin::build();
-    let lowering = MacroPackage::enriched_fixture()
-        .apply_enriched(&spirit.schema, &spirit.names)
-        .expect("enriched lowering");
-
-    // Every item that reproduces the golden verbatim is present in it, in strictly
-    // increasing document order — the document-order rule. The behaviorally-specified
-    // codec items are skipped (their spec is round-trip, not byte-resemblance).
-    let mut previous_offset = 0usize;
-    for (index, item) in lowering.items.iter().enumerate() {
-        if CODEC_SHAPE_ITEMS.contains(&index) {
-            continue;
-        }
-        let text = project(item, &lowering.names);
-        let offset = GOLDEN.find(&text).unwrap_or_else(|| {
-            panic!("item {index} is not present verbatim in the golden:\n{text}")
-        });
-        assert!(
-            offset >= previous_offset,
-            "item {index} is out of document order (offset {offset} < {previous_offset}):\n{text}",
-        );
-        previous_offset = offset;
     }
 }
 
@@ -256,9 +201,9 @@ fn the_wire_exchange_codec_emits_working_encode_decode_bodies() {
 
     // The byte-count const and the SignalFrameError vocabulary the codec speaks.
     let byte_count = project(&lowering.items[35], &lowering.names);
-    assert_eq!(
-        byte_count,
-        "#[rustfmt::skip]\nconst SIGNAL_SHORT_HEADER_BYTE_COUNT: usize = 8;"
+    assert!(
+        byte_count.contains("const SIGNAL_SHORT_HEADER_BYTE_COUNT: usize = 8;"),
+        "{byte_count}"
     );
     let error = project(&lowering.items[36], &lowering.names);
     for fragment in [
@@ -325,8 +270,7 @@ fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
 
     // The envelope follows the two codec impls: the request root's three trait impls,
     // the five `ExchangeFrame` aliases, then the `into_frame` / `into_reply_frame`
-    // constructors — every item byte-exact against the golden (the ordinary two-way
-    // leg, never `StreamingFrame`).
+    // constructors for the ordinary two-way leg, never `StreamingFrame`.
     let envelope: Vec<String> = (41..=50)
         .map(|index| project(&lowering.items[index], &lowering.names))
         .collect();
@@ -346,10 +290,6 @@ fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
         assert!(
             item.contains(fragment),
             "envelope item carries `{fragment}`:\n{item}"
-        );
-        assert!(
-            GOLDEN.contains(item.as_str()),
-            "envelope item is byte-exact against the golden:\n{item}"
         );
     }
 
@@ -384,7 +324,7 @@ fn class_a_covers_every_data_newtype_in_declaration_order() {
     let lowering = MacroPackage::enriched_fixture()
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("lower");
-    // Class A begins after the 12 declarations: six inherent+From pairs.
+    // Class A begins after the 12 declarations: six inherent-and-From pairs.
     let class_a = &lowering.items[12..24];
     let heads = [
         "Topic",
@@ -414,16 +354,11 @@ fn class_a_covers_every_data_newtype_in_declaration_order() {
             from.contains(&format!("for {head} {{")),
             "From impl for {head}:\n{from}"
         );
-        assert!(
-            GOLDEN.contains(&inherent),
-            "{head} inherent impl byte-exact"
-        );
-        assert!(GOLDEN.contains(&from), "{head} From impl byte-exact");
     }
 }
 
 #[test]
-fn the_wire_stub_derives_the_short_header_module_byte_exact() {
+fn the_wire_stub_derives_the_short_header_module_from_operation_positions() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .apply_enriched(&spirit.schema, &spirit.names)
@@ -434,10 +369,6 @@ fn the_wire_stub_derives_the_short_header_module_byte_exact() {
         module.starts_with("#[rustfmt::skip]\npub mod short_header {"),
         "{module}"
     );
-    assert!(
-        GOLDEN.contains(&module),
-        "short_header module byte-exact:\n{module}"
-    );
     // The values are derived from each operation's position —
     // (root_index << 56) | (variant_index << 48) — reproducing schema-rust's legacy
     // byte layout exactly: Input::Record at root 0 / variant 0 is 0x0000000000000000,
@@ -447,7 +378,7 @@ fn the_wire_stub_derives_the_short_header_module_byte_exact() {
 }
 
 #[test]
-fn class_d_emits_the_pub_field_trace_event_declaration_byte_exact() {
+fn class_d_emits_the_public_field_trace_event_declaration() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .apply_enriched(&spirit.schema, &spirit.names)
@@ -455,15 +386,11 @@ fn class_d_emits_the_pub_field_trace_event_declaration_byte_exact() {
     // Class D begins after declarations (12) + A (12) + B (10) + wire contract (5) +
     // wire exchange codec (2) + wire exchange envelope (10) = 51. The TraceEvent
     // declaration is its fourth item (index 54), between the ObjectName enum and the
-    // impl ObjectName — the last class-D gap the layout-4 tuple-field visibility closes.
+    // impl ObjectName.
     let declaration = project(&lowering.items[54], &lowering.names);
     assert!(
         declaration.ends_with("pub struct TraceEvent(pub ObjectName);"),
         "the class-D declaration is the pub-field TraceEvent tuple struct:\n{declaration}"
-    );
-    assert!(
-        GOLDEN.contains(&declaration),
-        "the TraceEvent declaration is byte-exact against the golden:\n{declaration}"
     );
 }
 

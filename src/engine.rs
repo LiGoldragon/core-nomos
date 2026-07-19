@@ -61,7 +61,7 @@ impl MacroPackage {
     /// Apply this package to a schema through the *enriched* selection: the
     /// per-declaration structural lowering first (the data declarations), then the
     /// generation classes ([`crate::GenerationClass`]) in the package's selection
-    /// order — class A, then B, then C, then D, the golden's own document order. The
+    /// order — class A, then B, then C, then D, the reference fixture's own document order. The
     /// returned items are the whole ordered run, resolved by one continuous logos
     /// NameTable. A package with an empty selection produces exactly what
     /// [`apply`](Self::apply) does.
@@ -282,7 +282,7 @@ impl<'package> Evaluator<'package> {
             name,
             // The structural newtype default emits `pub struct Name(Wrapped);` — a
             // private tuple field. The only `pub`-field tuple struct in the surveyed
-            // goldens is the class-D `TraceEvent` declaration, hand-built by the
+            // reference fixtures is the class-D `TraceEvent` declaration, hand-built by the
             // TraceSupport generator, not a structural default. So the field
             // visibility here is the literal `Private` that projects to nothing.
             wrapped_visibility: Visibility::Private,
@@ -720,7 +720,7 @@ impl<'package> Evaluator<'package> {
     }
 
     /// The Rust head spelling of a single-argument type projection. Vector and
-    /// Optional are verified against the goldens (`Vec<_>`, `Option<_>`); ScopeOf
+    /// Optional are verified against the reference fixtures (`Vec<_>`, `Option<_>`); ScopeOf
     /// is a flagged best guess (absent from the surveyed corpus).
     fn single_projection_head(
         &self,

@@ -11,7 +11,7 @@ use crate::meta::MetaType;
 /// A failure lowering a `CoreSchema` through a [`MacroPackage`](crate::MacroPackage)
 /// into `CoreLogos`. Every variant names the exact structural mismatch, so an
 /// unruled input fails loudly rather than producing quietly-wrong logos — the
-/// acceptance-oracle discipline made typed.
+/// structural discipline made typed.
 #[derive(Debug, Clone, Error)]
 pub enum NomosError {
     /// A schema declaration of this kind has no structural default macro in the

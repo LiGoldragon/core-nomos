@@ -1,19 +1,17 @@
 //! # core-nomos
 //!
-//! The stringless **Core of Nomos**, the macro/transformation language. A macro is
-//! typed data — never text, never Rust — that lowers a stringless `CoreSchema` into
-//! stringless `CoreLogos`. This crate realizes the ruling that governs the whole
-//! language family: *macros define the entire schema→logos lowering, and the Rust
-//! the goldens already emit is the acceptance oracle.*
+//! The stringless encoded form of Nomos, the macro/transformation language. A macro
+//! is typed data — never text, never Rust — that lowers the schema encoded form into
+//! the logos encoded form. Macros define the schema-to-logos lowering; generated
+//! programs, not rendered-source equality, are the acceptance surface.
 //!
-//! ## What is here (CoreNomos), and what is deferred (TextualNomos)
+//! ## What is here (EncodedNomos), and what is deferred (TextualNomos)
 //!
-//! CoreNomos is settled and built here: macros as typed data, the two macro kinds,
-//! the stateful-at-rest package, and the engine. **TextualNomos** — whether an escape
-//! wears a `$` sigil, the meta-type text spellings, Nomos's own delimiters — is
-//! genuinely unsettled and **deferred**: an open design question, not a fixed
-//! spelling. Nothing in this crate parses or prints any Nomos text surface; an escape
-//! is a data node ([`Escape`]), and its text spelling is not this crate's concern.
+//! EncodedNomos is built here: macros as typed data, the two macro kinds, the
+//! stateful-at-rest package, and the engine. **TextualNomos** — including the escape
+//! spelling, meta-type text spellings, and delimiters — remains an open design
+//! question. Nothing in this crate parses or prints a Nomos text surface; an escape
+//! is a data node ([`Escape`]), and its spelling is not this crate's concern.
 //!
 //! ## The two macro kinds
 //!
@@ -33,15 +31,15 @@
 //!
 //! ## The closed escape algebra
 //!
-//! A result template is CoreLogos-shaped data whose non-literal positions are the
+//! A result template is logos-encoded-form data whose non-literal positions are the
 //! closed set [`Escape`] = **Realize** / **Invoke** / **Splice**. Name synthesis is
 //! not a fourth escape but a [`NameTransform`] inside `Realize`, reusing name-table's
 //! single home of the derived-name rule (the psyche's no-fourth-escape ruling).
 //!
 //! ## The engine
 //!
-//! [`MacroPackage::apply`] takes a `CoreSchema` and the schema NameTable and returns
-//! [`Lowering`]: the `CoreLogos` items and the *extended* logos NameTable — one
+//! [`MacroPackage::apply`] takes the schema encoded form and its NameTable and
+//! returns [`Lowering`]: logos encoded items and the *extended* logos NameTable — one
 //! continuous identifier space in which schema indices are preserved and logos names
 //! append. Conversions are typed end to end, outside text.
 
@@ -58,7 +56,7 @@ pub mod prelude;
 pub mod template;
 
 pub use definition::MacroDefinition;
-pub use domain::CoreNomosDomain;
+pub use domain::EncodedNomosDomain;
 pub use engine::Lowering;
 pub use error::NomosError;
 pub use identity::{MacroIdentity, MacroKind, SectionDefault};
