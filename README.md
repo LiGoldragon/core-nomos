@@ -1,17 +1,16 @@
 # core-nomos
 
-The stringless **Core of Nomos**, the macro/transformation language. A macro is
-typed data — never text, never a Rust macro — that lowers a stringless
-`CoreSchema` into stringless `CoreLogos`. This crate is the capstone that proves
-the psyche's five-language pipeline end to end:
+The stringless **encoded form of Nomos**, the macro/transformation language. A
+macro is typed data — never text, never a Rust macro — that lowers the schema
+encoded form into the logos encoded form. This crate is the capstone of the
+five-language pipeline:
 
 ```
-schema TEXT → CoreSchema → Nomos macros → CoreLogos → TextualRust → generated Rust
+schema text → schema encoded form → Nomos macros → logos encoded form → TextualRust → generated Rust
 ```
 
-against the **real** goldens — macro-produced logos lowers to the exact Rust
-`schema-rust` already emits, byte for byte. That byte-exact generated Rust is the
-acceptance oracle.
+Generated programs compiling and passing behavior tests are the acceptance surface;
+rendered-source equality is not an oracle.
 
 ## The shape in one screen
 
@@ -46,26 +45,27 @@ let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
   and portable).
 - **A closed template escape algebra** — `Realize` / `Invoke` / `Splice`. Name
   synthesis is a `NameTransform` inside `Realize`, not a fourth escape.
-- **A typed engine** — `MacroPackage::apply` converts `CoreSchema` → `CoreLogos`
-  entirely outside text: named invocations resolve or error loudly, structural
-  defaults cover plain declarations, recursive invocation is bounded by cycle
-  rejection, and the NameTable is extended continuously (schema indices preserved,
-  logos names appended).
+- **A typed engine** — `MacroPackage::apply` converts schema encoded forms to logos
+  encoded forms entirely outside text: named invocations resolve or error loudly,
+  structural defaults cover plain declarations, recursive invocation is bounded by
+  cycle rejection, and the NameTable is extended continuously (schema indices
+  preserved, logos names appended).
 
 ## What it is not (yet)
 
-**TextualNomos is deferred.** The `$` / `<< >>` escape sigils, the meta-type text
-spellings, and Nomos's own delimiters are in the psyche's review-later pile. This
-crate parses and prints no Nomos text: a macro is authored as data.
+**TextualNomos is deferred.** Its escape spelling, meta-type text spellings, and
+Nomos delimiters remain in the psyche's review-later pile. This crate parses and
+prints no Nomos text: a macro is authored as data.
 
-## The proof
+## Verification
 
-`tests/pipeline.rs` lowers real schema text to real on-disk `textual-rust`
-provenance goldens byte-for-byte (the `runner_generated.rs` newtypes via the plain
-package; `spirit_generated.rs`'s `RecordIdentifier`, `Topic`, `Entry`, `Query` via
-the wire package), runs the illustrative sample pair end to end, and asserts the
-hash discipline (a rename moves neither Core identity while the output text
-changes).
+`tests/pipeline.rs`, `tests/enriched.rs`, and `tests/prelude.rs` exercise typed
+lowering, deterministic field-name derivation, class selection, and valid Rust
+projection without rendered-source fixture comparison. The separate
+`language-engine-witness` process test is the working-program gate: after it is
+pinned to this bootstrap revision, it must compile emitted Rust and pass its public
+behavior tests. A rename preserves encoded-form identity while changing projected
+text.
 
 See `ARCHITECTURE.md` for the design, the rulings, and the flagged forks.
 

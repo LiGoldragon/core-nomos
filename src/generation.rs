@@ -1,5 +1,5 @@
 //! The enriched generation classes: the schema-derived *support surface* the wire
-//! goldens emit alongside the data declarations — impl blocks (with methods,
+//! reference fixtures emit alongside the data declarations — impl blocks (with methods,
 //! associated types, and associated consts), functions, consts, const modules, and
 //! use imports, as stringless CoreLogos data.
 //!
@@ -758,7 +758,7 @@ impl Evaluator<'_> {
 
     // ---- the wire contract: the ordinary-exchange wire vocabulary ---------------
 
-    /// The wire vocabulary, in golden document order: the `short_header` const module,
+    /// The wire vocabulary, in reference fixture document order: the `short_header` const module,
     /// the `SIGNAL_SHORT_HEADER_BYTE_COUNT` byte-count const, the `SignalFrameError`
     /// enum, and the two route enums. These are the types the codec speaks; the
     /// encode/decode bodies over them are the sibling [`Self::generate_wire_exchange_codec`].
@@ -783,7 +783,7 @@ impl Evaluator<'_> {
 
     /// The ordinary-exchange codec: per interface root the `impl` carrying `route`,
     /// `short_header`, `route_from_short_header`, `encode_signal_frame`, and
-    /// `decode_signal_frame`. The bodies are behavioral, not byte-copies of the golden:
+    /// `decode_signal_frame`. The bodies are behavioral, not source copies of the reference fixture:
     /// they mirror the wire the hand-written signal contracts speak (an 8-byte
     /// little-endian short header ahead of an rkyv archive) in a shape the modeled
     /// statement vocabulary expresses directly (an `.ok_or(…)?` in place of an
@@ -810,7 +810,7 @@ impl Evaluator<'_> {
     // ---- the wire exchange envelope: the ordinary-leg envelope surface ----------
 
     /// The ordinary-exchange envelope surface the ported daemon and clients speak over
-    /// the codec, in the golden's document order: the request root's
+    /// the codec, in the reference fixture's document order: the request root's
     /// `signal_frame::RequestPayload`, `SignalOperationHeads`, and `LogVariant` trait
     /// impls; the `Frame` / `FrameBody` / `Request` / `ReplyEnvelope` / `RequestBuilder`
     /// type aliases over `signal_frame::ExchangeFrame` (the ordinary two-way leg); and
@@ -855,7 +855,7 @@ impl Evaluator<'_> {
     /// legacy `ShortHeader::value` byte layout (the root index in byte 7, the variant
     /// index in byte 6). The roots run in document order (input then output) and each
     /// root's variants in declaration order, so the derived constants match the legacy
-    /// emitter's output byte-for-byte. A root or operation index that would not fit
+    /// emitter's output with the prior rendering. A root or operation index that would not fit
     /// its one-byte field is the layout's genuine invariant and fails loudly.
     ///
     /// LEAN `short-header-derivation-mirrors-legacy`: the byte layout is reproduced
@@ -1626,7 +1626,7 @@ impl Evaluator<'_> {
     /// The `pub struct TraceEvent(pub ObjectName);` tuple-struct declaration — a
     /// public newtype whose single tuple field is itself `pub` (layout-4 tuple-field
     /// visibility). It carries the same wire-enum preamble the trace enums carry, and
-    /// sits between the `ObjectName` enum and the `impl ObjectName` in the golden's
+    /// sits between the `ObjectName` enum and the `impl ObjectName` in the reference fixture's
     /// document order.
     fn trace_event_declaration(&mut self) -> Result<CoreItem, NomosError> {
         let name = self.ident("TraceEvent");

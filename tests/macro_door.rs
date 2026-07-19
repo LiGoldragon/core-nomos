@@ -1,23 +1,11 @@
-//! The Nomos raw-NOTA macro door (epic primary-56d1.41): a macro definition decodes
-//! from raw positional NOTA text into a `MacroDefinition` value EQUAL to the one built
-//! in Rust — proven by equality assertion — and re-encodes to the same canonical text.
+//! The Nomos raw structural-codec door (epic primary-56d1.41). It proves a macro
+//! definition passes through the sealed, disjointness-proved structural evaluator as
+//! typed data without a bespoke per-type parser or printer.
 //!
-//! The strict invariant holds: decode and encode both run through the ONE trusted
-//! structural-codec evaluator walking a sealed, disjointness-proved structuretree plus
-//! the nametree. There is no bespoke per-type parse or print path; every spelling is a
-//! `StructuralForm` in the sealed table. (This door uses `StructuralEvaluator`
-//! directly, the exact mechanism the shared `Textual` mouth trait wraps; the
-//! macro-definition door does not adopt that mouth itself because the TextualNomos
-//! surface it would speak — whether an escape wears a `$` sigil is still unsettled —
-//! is deferred — epic .44.)
-//!
-//! The RAW door spells every construct as the positional data record it is (the ruled
-//! Protos laws): a struct is a `{ … }` record, an enum variant carrying a payload is
-//! `Head.payload`, a vector is `[ … ]`, a name is a camelCase atom, a type/kind is a
-//! PascalCase atom. Escapes are ordinary data records — a `Realize` is
-//! `Realize.{ Input.name Identity }`, an `Invoke` is `Invoke.99` — with NO sigil; the
-//! pretty surface — whether an escape wears a `$` sigil is still unsettled — is the
-//! deferred TextualNomos form (.42), not this door.
+//! The TextualNomos macro-definition surface remains unsettled, including escape
+//! spelling. This test does not establish a textual syntax or a Textual mouth trait;
+//! it covers only the existing raw structural codec boundary. The macro text surface
+//! requires a psyche ruling before it can be changed.
 //!
 //! Table-seal site: `TextualNomos::build` -> `AddressedStructuralTable::seal` (proved
 //! disjoint via `validate_disjoint`). Evaluator entry: `TextualNomos::decode_macro` /
@@ -260,7 +248,7 @@ impl TextualNomos {
         StructuralForm::Atom(AtomForm::with_case(CaseExpectation::CamelCase))
     }
 
-    /// `{ <name> <kind> [<params>] <template> }`
+    /// The fixed positional macro-definition record.
     fn macro_definition_entry() -> StructuralEntry {
         Self::solo(
             MACRO_DEFINITION,
@@ -273,7 +261,7 @@ impl TextualNomos {
         )
     }
 
-    /// `Named` | `Structural.<section>`
+    /// The named and structural macro-kind alternatives.
     fn macro_kind_entry(lexicon: &Lexicon) -> StructuralEntry {
         StructuralEntry::new(
             MACRO_KIND,
@@ -318,7 +306,7 @@ impl TextualNomos {
         )
     }
 
-    /// `{ <binding> <meta> }`
+    /// The fixed positional input-parameter record.
     fn input_parameter_entry() -> StructuralEntry {
         Self::solo(
             INPUT_PARAMETER,
@@ -357,7 +345,7 @@ impl TextualNomos {
         )
     }
 
-    /// `Item.<item-template>` (the Attributes result is deferred).
+    /// The item-result branch; the attributes result remains deferred.
     fn result_template_entry(lexicon: &Lexicon) -> StructuralEntry {
         Self::solo(
             RESULT_TEMPLATE,
@@ -365,7 +353,7 @@ impl TextualNomos {
         )
     }
 
-    /// `Newtype.<newtype-template>` (Struct / Enumeration templates deferred).
+    /// The newtype-template branch; struct and enumeration templates remain deferred.
     fn item_template_entry(lexicon: &Lexicon) -> StructuralEntry {
         Self::solo(
             ITEM_TEMPLATE,
@@ -376,7 +364,7 @@ impl TextualNomos {
         )
     }
 
-    /// `{ <visibility> [<attrs>] <name-scalar> <wrapped-scalar> }`
+    /// The fixed positional newtype-template record.
     fn newtype_template_entry() -> StructuralEntry {
         Self::solo(
             NEWTYPE_TEMPLATE,
@@ -389,8 +377,8 @@ impl TextualNomos {
         )
     }
 
-    /// `Escape.<escape>` — a `Scalar` position's escape (the `Literal` scalar surface
-    /// is deferred with the rest of the pretty form).
+    /// A scalar position's escape branch. The literal scalar surface is deferred
+    /// with the rest of the textual form.
     fn scalar_entry(lexicon: &Lexicon) -> StructuralEntry {
         Self::solo(
             SCALAR,
@@ -398,7 +386,7 @@ impl TextualNomos {
         )
     }
 
-    /// `Escape.<escape>` (the `Literal` element is deferred).
+    /// The sequence-item escape branch; the literal element is deferred.
     fn sequence_item_entry(lexicon: &Lexicon) -> StructuralEntry {
         Self::solo(
             SEQUENCE_ITEM,
@@ -406,7 +394,7 @@ impl TextualNomos {
         )
     }
 
-    /// `Realize.<realize>` | `Invoke.<identity>` (Splice deferred).
+    /// The realized and invoked escape branches; splice remains deferred.
     fn escape_entry(lexicon: &Lexicon) -> StructuralEntry {
         StructuralEntry::new(
             ESCAPE,
@@ -431,7 +419,7 @@ impl TextualNomos {
         )
     }
 
-    /// `{ <binding-ref> <transform> }`
+    /// The fixed positional record for a realization.
     fn realize_entry() -> StructuralEntry {
         Self::solo(
             REALIZE,
@@ -442,7 +430,7 @@ impl TextualNomos {
         )
     }
 
-    /// `Input.<binding-name>`
+    /// The top-level input-binding reference.
     fn binding_ref_entry(lexicon: &Lexicon) -> StructuralEntry {
         Self::solo(
             BINDING_REF,
@@ -478,7 +466,7 @@ impl TextualNomos {
         )
     }
 
-    /// `Public` (the golden macro's only visibility; other variants deferred).
+    /// The fixture macro's sole visibility; other variants remain deferred.
     fn visibility_entry(lexicon: &Lexicon) -> StructuralEntry {
         Self::solo(
             VISIBILITY,
@@ -784,7 +772,7 @@ impl TextualNomos {
         )
     }
 
-    /// The escape a `Scalar` position carries (both golden scalars are `Escape`; the
+    /// The escape a `Scalar` position carries (both reference fixture scalars are `Escape`; the
     /// `Literal` scalar surface is deferred with the rest of the pretty form).
     fn scalar_escape<L>(scalar: &Scalar<L>) -> &Escape {
         match scalar {

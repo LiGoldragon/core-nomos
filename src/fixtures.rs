@@ -22,7 +22,7 @@ use crate::template::{
 /// Which attribute preamble a fixture package's macros carry. The wire preamble is
 /// the standard three-node vector (`#[rustfmt::skip]`, the feature-gated NOTA
 /// derive, the rkyv derive); the plain preamble drops the NOTA configuration node,
-/// matching the runner goldens.
+/// matching the runner reference fixtures.
 #[derive(Clone, Copy)]
 enum AttributePreamble {
     Wire,
@@ -55,7 +55,7 @@ impl MacroPackage {
 
     /// The plain package: the same macro shapes carrying the bare two-node
     /// preamble (`#[rustfmt::skip]` + the rkyv derive), which lowers a schema
-    /// newtype to the runner goldens byte-for-byte.
+    /// newtype to the runner reference fixtures with the prior rendering.
     pub fn plain_fixture() -> Self {
         Self::fixture(AttributePreamble::Plain)
     }
@@ -63,7 +63,7 @@ impl MacroPackage {
     /// The enriched wire package: the wire fixture's structural defaults (the data
     /// declarations) plus the generation selection nomos-engine applies. Through
     /// [`MacroPackage::apply_enriched`], it lowers a schema's declarations and then
-    /// emits, in the golden's document order, the newtype ergonomics, the interface
+    /// emits, in the reference fixture's document order, the newtype ergonomics, the interface
     /// ergonomics, the wire-contract vocabulary, the wire exchange codec (the working
     /// `encode_signal_frame` / `decode_signal_frame` bodies for the ordinary exchange
     /// leg), the wire exchange envelope (the `RequestPayload` / `SignalOperationHeads` /

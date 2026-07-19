@@ -1,39 +1,37 @@
 # core-nomos — architecture
 
-The stringless **Core of Nomos**, the macro/transformation language. A macro is
-typed data that lowers a stringless `CoreSchema` into stringless `CoreLogos`. This
-crate is the capstone of the five-language pipeline:
+The stringless **encoded form of Nomos**, the macro/transformation language. A
+macro is typed data that lowers the schema encoded form into the logos encoded form.
+This crate is the capstone of the five-language pipeline:
 
 ```
-schema TEXT → CoreSchema → Nomos macros → CoreLogos → TextualRust → generated Rust
+schema text → schema encoded form → Nomos macros → logos encoded form → TextualRust → generated Rust
 ```
 
-and it proves that pipeline end to end against the real goldens: macro-produced
-logos lowers to the exact Rust `schema-rust` already emits, byte for byte. That is
-the ruling this crate embodies — *macros define the entire schema→logos lowering,
-and the currently generated Rust is the acceptance oracle.*
+Macros define the entire schema-to-logos lowering. Rendered-source equality is not
+an acceptance criterion: generated programs compiling and passing their behavior
+tests are the acceptance surface.
 
-## What is settled here (CoreNomos), and what is deferred (TextualNomos)
+## What is settled here (EncodedNomos), and what is deferred (TextualNomos)
 
-**CoreNomos is built here** and is settled: macros as typed data transforming
-`CoreSchema` → `CoreLogos`, the two macro kinds, the stateful-at-rest package, the
-closed template escape algebra, and the engine.
+**EncodedNomos is built here** and is settled: macros as typed data transforming
+schema encoded forms into logos encoded forms, the two macro kinds, the
+stateful-at-rest package, the closed template escape algebra, and the engine.
 
-**TextualNomos is deferred.** Nomos's text surface — whether an escape wears a
-`$` sigil, the meta-type text spellings, Nomos's own delimiters — is genuinely
-unsettled: an open design question, not a fixed spelling. Nothing in this crate
-parses or prints any Nomos text surface. An escape is a *data* node (`template::Escape`); its text
-spelling is explicitly not this crate's concern. This boundary is why the macro
-engine lifts no grammar: a macro is authored as data (see `fixtures.rs`), exactly
-as a daemon would load it.
+**TextualNomos is deferred.** Nomos's text surface — its escape spelling,
+meta-type text spellings, and delimiters — is genuinely unsettled: an open design
+question, not a fixed spelling. Nothing in this crate parses or prints a Nomos text
+surface. An escape is a *data* node (`template::Escape`); its spelling is explicitly
+not this crate's concern. This boundary is why the macro engine lifts no grammar: a
+macro is authored as data (see `fixtures.rs`), exactly as a daemon would load it.
 
 ## The fixed module head (`ModuleHead`)
 
 Every generated wire module opens with the same, schema-independent head: the
 `// @generated` marker comment, the four scalar type aliases
 (`String`/`Integer`/`Boolean`/`Path`), and the cfg-gated NOTA import. That block is
-a fixed property of the *module shape* the oracle emits, not of any schema, so it
-is Nomos's knowledge, held here (`prelude.rs`) as stringless `CoreLogos` data with a
+a fixed property of the *module shape* the renderer emits, not of any schema, so it
+is Nomos's knowledge, held here (`prelude.rs`) as stringless logos-encoded-form data with a
 sibling NameTable. `ModuleHead::render` projects it through the TextualRust codec —
 the same `prettyplease` pass the pipeline uses for declarations — so the crate now
 takes a `textual-rust` **library** dependency for this one rendering surface. This
@@ -42,7 +40,7 @@ generated-Rust *output* head is rendered, exactly as the declarations are.
 
 The head is two projection blocks: the four scalar aliases pack into one
 `prettyplease` pass (no blank line between them), and the NOTA import is its own
-block; the oracle separates blocks by a blank line, which the render reproduces.
+block; the renderer separates blocks by a blank line, which the render reproduces.
 The marker comment sits outside every item, so it is prepended raw — the one
 raw-text seam (a recorded lean), with `prettyplease` still the sole formatter of the
 item bodies. The projection engine (`logos-engine`) prepends `ModuleHead::render`
@@ -73,7 +71,7 @@ data:
 
 - `MacroDefinitions` (the content pre-image): the revision, a `MacroIdentity`-keyed
   macro table, and the per-section structural defaults. It is stringless (only
-  identifiers), so its content identity under `CoreNomosDomain` is rename-stable by
+  identifiers), so its content identity under `EncodedNomosDomain` is rename-stable by
   construction.
 - an authoring `NameTable` **sibling**, excluded from the content identity exactly
   as everywhere in the family. This is what makes the package portable: it carries
@@ -84,7 +82,7 @@ type and its content identity + revision surfaces.
 
 ## The closed template escape algebra
 
-A macro's result template is **CoreLogos-shaped data with escape nodes**. Each
+A macro's result template is **logos-encoded-form data with escape nodes**. Each
 position is typed by where it sits — a name position holds an `Identifier`, a type
 position a `TypeReference`, an attribute or field position a vector — via the
 generic `Scalar<L>` / `Sequence<L>` wrappers, so the template stays strongly typed
@@ -121,32 +119,27 @@ field (its schema name equals the `field_name` of its type — re-derive through
 walker) from an *explicitly named* one (keep the schema name), matching schema's
 own decode-time Field-rule split.
 
-## The acceptance oracle, realized
+## Verification boundary
 
-`tests/pipeline.rs` proves the whole chain byte-exact against the real
-`textual-rust` provenance goldens (copied from `schema-rust @ 87de872`, the corpus
-textual-rust proved 153 items against):
+`tests/pipeline.rs` and `tests/enriched.rs` exercise schema decoding, typed Nomos
+lowering, identifier continuity, deterministic same-typed-field naming, construct
+selection, and projection to valid Rust. They intentionally contain no rendered
+Rust fixture comparison. `tests/prelude.rs` verifies the required module-head
+surface without treating its formatting as correctness.
 
-- **From real schema TEXT to a real on-disk golden:** `CommitSequence.{ Integer }`
-  and `StateDigest.{ Integer }` decoded by `TextualSchema`, lowered by the *plain*
-  package, project byte-for-byte to the `runner_generated.rs` newtypes.
-- **Byte-exact real goldens, nomos lowering the only new variable:** the wire
-  package reproduces `spirit_generated.rs`'s `RecordIdentifier(Integer)` and
-  `Topic(String)` (the full three-attribute preamble) and the multi-field structs
-  `Entry { topics, kind, description, magnitude }` and `Query { topic, kind }` —
-  every field name derived through name-table's walker.
-- **The illustrative sample pair** (CommitSequence / DatabaseMarker with the private
-  `secret_digest`) runs end to end, clearly labeled sample-not-golden where a shape
-  is not in the on-disk corpus (field visibility is a logos concern CoreSchema does
-  not carry).
-- **Hash discipline:** a rename leaves both the CoreSchema and CoreLogos identities
-  unchanged while the projected Rust text changes — names live only in the
-  projection.
+The process-level `language-engine-witness` is the working-program gate: it drives
+schema, Nomos, and Logos processes, writes the emitted crate under its manifest, and
+runs that crate's public behavior tests. The witness must be re-pinned to this
+bootstrap revision before it can be acceptance evidence for this revision; until
+then its result is historical evidence only.
+
+A rename leaves schema and logos encoded-form identities unchanged while the
+projected Rust text changes — names live only in the projection.
 
 ## The enriched generation classes (the support surface)
 
-The per-declaration structural defaults lower one CoreLogos item per schema
-declaration — the *data* declarations. The wire goldens also carry a schema-derived
+The per-declaration structural defaults lower one logos-encoded item per schema
+declaration — the *data* declarations. The wire reference fixtures also carry a schema-derived
 *support surface* around those declarations: newtype ergonomics, interface
 ergonomics, a thin wire-contract stub, and trace support. These are the enriched
 **generation classes** ([`template::GenerationClass`]), a whole-schema layer above
@@ -175,8 +168,8 @@ the per-declaration lowering:
   `encode_signal_frame`, and `decode_signal_frame`, then the request root's
   `SignalOperationHeads` impl. This is what retires the empty letter placeholders
   (former "classes E/F"): the two codec stages are named by their content — the
-  vocabulary and the codec over it. The bodies are **behavioral, not byte-copies of the
-  golden**: they mirror the *wire* the hand-written signal contracts speak (an 8-byte
+  vocabulary and the codec over it. The bodies are **behavioral, not source copies of the
+  reference fixture**: they mirror the *wire* the hand-written signal contracts speak (an 8-byte
   little-endian short header ahead of an rkyv archive, with a decoded-header-mismatch
   guard) in the shape the modeled statement vocabulary expresses directly — an
   `.ok_or(…)?` in place of an `if … { return … }`, a tuple-variant `UnknownHeader(header)`
@@ -191,8 +184,8 @@ the per-declaration lowering:
   tuple-struct declaration, and the `TraceEvent` impl.
 
 The classes emit the layout-3 item kinds — impl blocks (methods, associated types,
-associated consts), functions, consts, const modules — as stringless CoreLogos data,
-built directly like the fixed [`ModuleHead`] prelude, every identifier interned into
+associated consts), functions, consts, const modules — as stringless logos-encoded
+items, built directly like the fixed [`ModuleHead`] prelude, every identifier interned into
 the one continuous logos NameTable. A package's **enriched selection**
 (`MacroPackage::with_selection`, run by `apply_enriched`) is the ordered class list
 nomos-engine will later select; the wire and plain fixtures keep an empty selection,
@@ -200,28 +193,23 @@ so their behaviour is unchanged, and the selection is outside the content-identi
 pre-image.
 
 **Document-order rule (the eventual full-file assembly follows it):** the data
-declarations first, then class A, B, C, D, derived from the golden's own block order;
-within a class, per declaration / interface root in schema order. `tests/enriched.rs`
-proves it: spirit-min's whole `CoreSchema` lowered through the enriched package emits
-every class item byte-for-byte present in `spirit_generated.rs`, in strictly
-increasing golden offset — so a failure names its class.
+declarations come first, then classes A, B, C, and D; within a class, declarations
+and interface roots stay in schema order. `tests/enriched.rs` asserts the class
+counts and generation order without comparing a rendered fixture.
 
-**The `TraceEvent` tuple-struct declaration (last class-D gap, closed).** The golden
-declares `pub struct TraceEvent(pub ObjectName);` with a `pub` tuple field.
-`core-logos` layout 4 models tuple-field visibility on `Newtype`
-(`wrapped_visibility: Visibility`), so that declaration is byte-exact-projectable and
-class D emits it — a public newtype whose stored tuple-field visibility is `Public`,
-carrying the wire-enum preamble, in document order between the `ObjectName` enum and
-`impl ObjectName`. The enriched test now proves the full class-D surface (44 items).
+**The `TraceEvent` tuple-struct declaration (last class-D gap, closed).** `core-logos`
+layout 4 models tuple-field visibility on `Newtype` (`wrapped_visibility:
+Visibility`), so class D emits a public newtype whose stored tuple-field visibility
+is `Public`, carrying the wire-enum preamble in document order between the
+`ObjectName` enum and `impl ObjectName`.
 
 ## Train status
 
 This crate git-pins the green path of the published stack: `content-identity`,
 `name-table`, `core-schema`, `core-logos` (runtime) and `textual-rust`,
 `structural-codec` (tests), each at an exact rev. The `core-logos` pin string
-matches `textual-rust`'s exactly so Cargo unifies a single `core-logos` — required
-for the byte-exact interop (two copies would be two incompatible `CoreItem`
-types). The Nix flake (`build`/`test`/`clippy`/`fmt`/`doc`) is the durable gate.
+matches `textual-rust`'s exactly so Cargo unifies a single `core-logos`; two
+copies would carry incompatible encoded-item types. The Nix flake (`build`/`test`/`clippy`/`fmt`/`doc`) is the durable gate.
 
 ## Flagged forks (unruled readings, chosen per the rulings)
 
@@ -234,36 +222,33 @@ types). The Nix flake (`build`/`test`/`clippy`/`fmt`/`doc`) is the durable gate.
   only spliced sequence the fixture corpus exercises; generalizing `SpliceElement`
   to variants/attributes is a growth point, left as a real closed-enum sibling.
 - **The field-name derivation runs in Nomos AND in `core-schema`'s decode.** The
-  shipped `core-schema` stores field names in the Core value (deriving elided names
-  at decode); the design corpus places the derivation at the CoreLogos boundary.
+  shipped `core-schema` stores field names in its encoded form (deriving elided names
+  at decode); the design corpus places the derivation at the logos encoded-form boundary.
   The engine re-derives through the walker into the extended table; because
   interning dedups, the two derivations coincide and the identifier is stable — the
   idempotence is a feature, and the continuous-space test asserts it.
-- **Text-spelling never leaks into Core.** The macro-model report's pretty text
-  surface — whether an escape wears a `$` sigil is still unsettled — is absent here
-  by construction; escapes are the data nodes `Realize` / `Invoke` / `Splice`.
-- **The enriched generation classes build CoreLogos directly, not through the escape
-  algebra.** The class-A/B/C/D support surface iterates over schema collections
+- **Text-spelling never leaks into an encoded form.** The macro-model report's text
+  surface remains unsettled and is absent here by construction; escapes are the data
+  nodes `Realize` / `Invoke` / `Splice`.
+- **The enriched generation classes build logos-encoded items directly, not through
+  the escape algebra.** The class-A/B/C/D support surface iterates over schema collections
   (variants into match arms, roots into consts, names into `HEADS` elements) and
   synthesizes derived names and string literals; that is schema-parameterized data,
-  not a fixed skeleton with escape holes. So the classes build stringless CoreLogos
-  directly with interned names — the `ModuleHead` fixed-prelude precedent — rather
+  not a fixed skeleton with escape holes. So the classes build stringless logos-
+  encoded items directly with interned names — the `ModuleHead` fixed-prelude precedent — rather
   than growing the `Realize` / `Splice` template DSL to a second copy of the whole
   CoreLogos algebra. Trigger to revisit: a class shape that a fixed
   skeleton-with-holes expresses cleanly, or a psyche ruling that the classes must be
   authored as escape-templates.
-- **`SignalOperationHeads` is emitted for the request (input) root only.** The golden
+- **`SignalOperationHeads` is emitted for the request (input) root only.** The reference fixture
   carries one `SignalOperationHeads` impl (`Input`), the request payload's operation
   heads; the codec class follows it. `RequestPayload`, `LogVariant`, the `ExchangeFrame`
   type aliases, and the `into_frame` / `into_reply_frame` envelope constructors remain
   out of scope: the delivered codec is the encode/decode leg (`encode_signal_frame` /
   `decode_signal_frame` over the short-header + rkyv wire), not the frame-envelope
   wrapping. Trigger to revisit: a slice that ports the exchange-envelope surface.
-- **The codec bodies are byte-behavioral, not golden-byte-exact.** The `enriched.rs`
-  test byte-checks every *faithful* item against the golden (declarations, A, B, the
-  `short_header` module, the byte-count const, the route enums, `SignalOperationHeads`,
-  and D) and asserts the three codec-shape items (`SignalFrameError` and the two `impl`
-  codec blocks) project to valid Rust carrying the expected signatures and wire logic.
-  The load-bearing round-trip proof (generated-encode / hand-written-decode and the
-  reverse) lives in the four-process `language-engine-witness`, where the emitted crate
-  is compiled.
+- **The codec bodies are behaviorally specified.** `enriched.rs` asserts their
+  signatures and wire logic and projects the assembled module as Rust. The load-bearing
+  round-trip proof (generated-encode / hand-written-decode and the reverse) belongs to
+  the four-process `language-engine-witness`, where the emitted crate is compiled and
+  executed after its producer pins are advanced.
