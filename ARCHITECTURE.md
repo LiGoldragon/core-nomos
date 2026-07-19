@@ -12,6 +12,32 @@ Macros define the entire schema-to-logos lowering. Rendered-source equality is n
 an acceptance criterion: generated programs compiling and passing their behavior
 tests are the acceptance surface.
 
+## The no-strings invariant
+
+The schema-to-logos transformation is stringless by law. The psyche's ruling is
+binding: *"in the nomos transformation (schema to logos), there shall be no string
+manipulation/introduction/reading of any kind."* The transformation reads and
+writes only typed encoded-form values and the encoded identifiers they carry. It
+dispatches on a declaration's Core kind and on `Identifier` indices, and at no point
+parses, compares, concatenates, matches, or emits a string. A macro is typed data;
+its template is logos-encoded-form data with typed escape nodes; its output is a
+logos encoded form. A `NameTransform` is typed intent carried by an escape, never a
+spelling the transform reads.
+
+All name derivation and text materialization lives at the NameTable/emission
+boundary, which sits outside the transformation. `NameTableBoundary` is the single
+home of the derived-name walk; it builds a name's string only as it interns that
+name into the continuous identifier space, and text is materialized only when a
+value is rendered — `ModuleHead::render` and the TextualRust projection. That string
+work is legitimate and required: of the boundary walkers the psyche ruled *"that is
+necessary."*
+
+The invariant is exactly this partition — a stringless transformation over typed
+encoded-form values and identifiers, with every string confined to the interning
+and emission boundary. It is the standing review gate on every macro-engine and
+generation-class change: a transformation step that must read or build a string is
+misplaced, and its string work belongs at the boundary.
+
 ## What is settled here (EncodedNomos), and what is deferred (TextualNomos)
 
 **EncodedNomos is built here** and is settled: macros as typed data transforming
