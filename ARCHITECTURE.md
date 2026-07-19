@@ -97,22 +97,25 @@ while the escape set stays one closed enum (`template::Escape`):
 - **Splice** — expand a bound sequence element by element into the enclosing vector
   (the struct-fields production).
 
-**No fourth escape.** Name synthesis is not a new primitive but a `NameTransform`
-inside `Realize`, reusing name-table's single home of the derived-name walk
-(`Name::field_name` / `screaming` / `pascal_case`). This is the psyche's
-no-fourth-escape ruling made structural.
+**No fourth escape.** A `NameTransform` is typed intent carried by `Realize`,
+not a new primitive. The `NameTableBoundary` executes that intent at the
+NameTable/emission boundary, which is the single home of the derived-name walk
+(`Name::field_name` / `screaming` / `pascal_case`); the typed Nomos transform never
+reads or creates a spelling. This is the psyche's no-fourth-escape ruling made
+structural.
 
 ## The engine and the one continuous identifier space
 
 `MacroPackage::apply(schema, schema_names) → Lowering { items, names }`. The
-returned NameTable begins as `NameTable::extend_from(schema_names)` — every schema
-identifier keeps its exact index — and logos-only names (derive paths, leaf type
-names, derived field names) append at higher indices. Because interning dedups, a
-derived name that reproduces an existing name reuses its identifier: the
+`NameTableBoundary` begins the returned NameTable as
+`NameTable::extend_from(schema_names)` — every schema identifier keeps its exact
+index — and performs all logos-only name allocation (derive paths, leaf type names,
+derived field names) at the NameTable/emission boundary. Because interning dedups,
+a derived name that reproduces an existing name reuses its identifier: the
 continuous space is a genuine runtime operation, not a bookkeeping claim. Every
 template literal is authored against the package's own NameTable and re-interned
-through it into the extension, so a portable package composes with any schema
-table.
+through that boundary into the extension, so a portable package composes with any
+schema table.
 
 The field-name rule (`FieldNameRule::FieldRuleDispatch`) distinguishes an *elided*
 field (its schema name equals the `field_name` of its type — re-derive through the
@@ -221,23 +224,24 @@ copies would carry incompatible encoded-item types. The Nix flake (`build`/`test
 - **`Splice`'s per-element production is specialized to struct fields.** That is the
   only spliced sequence the fixture corpus exercises; generalizing `SpliceElement`
   to variants/attributes is a growth point, left as a real closed-enum sibling.
-- **The field-name derivation runs in Nomos AND in `core-schema`'s decode.** The
-  shipped `core-schema` stores field names in its encoded form (deriving elided names
-  at decode); the design corpus places the derivation at the logos encoded-form boundary.
-  The engine re-derives through the walker into the extended table; because
-  interning dedups, the two derivations coincide and the identifier is stable — the
-  idempotence is a feature, and the continuous-space test asserts it.
-- **Text-spelling never leaks into an encoded form.** The macro-model report's text
-  surface remains unsettled and is absent here by construction; escapes are the data
-  nodes `Realize` / `Invoke` / `Splice`.
-- **The enriched generation classes build logos-encoded items directly, not through
-  the escape algebra.** The class-A/B/C/D support surface iterates over schema collections
+- **Field-name derivation runs at the NameTable/emission boundary, not in the typed
+  Nomos transform.** The shipped `core-schema` still derives its stored field name at
+  decode. `NameTableBoundary` independently derives the logos-emission identifier
+  from field position and type and interns it into the extended logos table; because
+  interning dedups, the two current derivations coincide and the identifier is stable.
+  The continuous-space test asserts that idempotence. A future core-schema change is
+  outside this lane and requires its own coordinated dependency work.
+- **Textual Nomos spelling never enters macro data.** The macro surface remains
+  unsettled and has no parser, printer, fixture, or grammar claim here; escapes are
+  typed data nodes. Emission-only output literals are projected at the
+  NameTable/emission boundary and are not inputs to the Nomos transform.
+- **The enriched generation classes are the emission boundary, not macro
+  evaluation.** The class-A/B/C/D support surface iterates over schema collections
   (variants into match arms, roots into consts, names into `HEADS` elements) and
-  synthesizes derived names and string literals; that is schema-parameterized data,
-  not a fixed skeleton with escape holes. So the classes build stringless logos-
-  encoded items directly with interned names — the `ModuleHead` fixed-prelude precedent — rather
-  than growing the `Realize` / `Splice` template DSL to a second copy of the whole
-  CoreLogos algebra. Trigger to revisit: a class shape that a fixed
+  builds output items after typed macro lowering. Its derived-name and output-literal
+  work is delegated to `NameTableBoundary`; this keeps text out of the schema→logos
+  macro transform without growing the `Realize` / `Splice` template DSL into a second
+  copy of the CoreLogos algebra. Trigger to revisit: a class shape that a fixed
   skeleton-with-holes expresses cleanly, or a psyche ruling that the classes must be
   authored as escape-templates.
 - **`SignalOperationHeads` is emitted for the request (input) root only.** The reference fixture

@@ -22,9 +22,6 @@ structural-codec = { git = "https://github.com/LiGoldragon/structural-codec.git"
 rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror        = "2"
 
-[dev-dependencies]
-raw-discovery    = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "a4e8c6df84e6a487ca6fe2f3641f9bafd0b0d8c8" }
-
 [lints.rust]
 unsafe_code = "forbid"
 unused      = { level = "warn", priority = -1 }

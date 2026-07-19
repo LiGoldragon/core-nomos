@@ -88,9 +88,10 @@ pub enum BindingRef {
     Input(Identifier),
 }
 
-/// A name transform — the derived-name rule as data, reusing name-table's single
-/// home of the walk. This is how "name synthesis reuses the one derived-name rule"
-/// stays inside `Realize` instead of becoming a fourth escape.
+/// A typed name-transform request. `NameTableBoundary` performs its derived-name
+/// walk only at the NameTable/emission boundary; typed macro evaluation carries this
+/// request without reading or creating a spelling. This keeps name synthesis inside
+/// `Realize` instead of becoming a fourth escape.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NameTransform {
     /// Realize the bound value verbatim (a name copied, a type lowered).
@@ -134,12 +135,13 @@ pub enum SpliceElement {
 /// or explicit names per the Field rules").
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FieldNameRule {
-    /// The Field-rule dispatch: an *elided* field (its schema name equals the
-    /// `field_name` of its type) re-derives through name-table's walker into the
-    /// extended logos table; an *explicitly-named* field keeps its schema name.
+    /// The Field-rule dispatch: an *elided* field is re-derived through the
+    /// NameTable/emission boundary into the extended logos table; an explicit field
+    /// identifier is preserved.
     /// This is the particular-struct structural default.
     FieldRuleDispatch,
-    /// Always derive the name from the field's type via the `field_name` walker.
+    /// Always request derivation from the field's type at the NameTable/emission
+    /// boundary.
     AlwaysDeriveFromType,
     /// Always preserve the schema-stored field name verbatim.
     PreserveSchema,
