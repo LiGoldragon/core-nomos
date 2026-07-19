@@ -88,7 +88,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 [[package]]
 name = "content-identity"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/protos.git?rev=18ae746857979c9c01c0d4b315bb8a818056cf09#18ae746857979c9c01c0d4b315bb8a818056cf09"
+source = "git+https://github.com/LiGoldragon/protos.git?rev=7e60f60fbc144265cf5ac1ec238b87744967d4eb#7e60f60fbc144265cf5ac1ec238b87744967d4eb"
 dependencies = [
  "blake3",
  "rkyv",
@@ -98,7 +98,7 @@ dependencies = [
 [[package]]
 name = "core-logos"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/core-logos.git?rev=da56ca488ff1fc8d50a557723cf7355a49ba5d0b#da56ca488ff1fc8d50a557723cf7355a49ba5d0b"
+source = "git+https://github.com/LiGoldragon/core-logos.git?rev=c25b5f58205adc34b9ec940634d0f50fdfb0cc3d#c25b5f58205adc34b9ec940634d0f50fdfb0cc3d"
 dependencies = [
  "content-identity",
  "name-table",
@@ -123,7 +123,7 @@ dependencies = [
 [[package]]
 name = "core-schema"
 version = "0.3.0"
-source = "git+https://github.com/LiGoldragon/core-schema.git?rev=874e2ef1929936b72604f16d9e1b8928f8aa145e#874e2ef1929936b72604f16d9e1b8928f8aa145e"
+source = "git+https://github.com/LiGoldragon/core-schema.git?rev=26a480777a7b95e6bb825ce14d4527596bf95dbf#26a480777a7b95e6bb825ce14d4527596bf95dbf"
 dependencies = [
  "content-identity",
  "name-table",
@@ -234,7 +234,7 @@ dependencies = [
 [[package]]
 name = "name-table"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/protos.git?rev=18ae746857979c9c01c0d4b315bb8a818056cf09#18ae746857979c9c01c0d4b315bb8a818056cf09"
+source = "git+https://github.com/LiGoldragon/protos.git?rev=7e60f60fbc144265cf5ac1ec238b87744967d4eb#7e60f60fbc144265cf5ac1ec238b87744967d4eb"
 dependencies = [
  "content-identity",
  "rkyv",
@@ -313,7 +313,7 @@ dependencies = [
 [[package]]
 name = "raw-discovery"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/protos.git?rev=18ae746857979c9c01c0d4b315bb8a818056cf09#18ae746857979c9c01c0d4b315bb8a818056cf09"
+source = "git+https://github.com/LiGoldragon/protos.git?rev=7e60f60fbc144265cf5ac1ec238b87744967d4eb#7e60f60fbc144265cf5ac1ec238b87744967d4eb"
 dependencies = [
  "content-identity",
  "rkyv",
@@ -386,7 +386,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 [[package]]
 name = "structural-codec"
 version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/protos.git?rev=18ae746857979c9c01c0d4b315bb8a818056cf09#18ae746857979c9c01c0d4b315bb8a818056cf09"
+source = "git+https://github.com/LiGoldragon/protos.git?rev=7e60f60fbc144265cf5ac1ec238b87744967d4eb#7e60f60fbc144265cf5ac1ec238b87744967d4eb"
 dependencies = [
  "content-identity",
  "name-table",
@@ -409,7 +409,7 @@ dependencies = [
 [[package]]
 name = "textual-rust"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/textual-rust.git?rev=0fe3e6cbd3ae679f4af3b44cb27c984ccfff3954#0fe3e6cbd3ae679f4af3b44cb27c984ccfff3954"
+source = "git+https://github.com/LiGoldragon/textual-rust.git?rev=95a8a29ead1d1b41fbf555cabb2c1abb56709c53#95a8a29ead1d1b41fbf555cabb2c1abb56709c53"
 dependencies = [
  "content-identity",
  "core-logos",
