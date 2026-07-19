@@ -13,17 +13,17 @@ name = "core_nomos"
 path = "src/lib.rs"
 
 [dependencies]
-content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "6cc0408cdb96f174cc8fdf6ca23420038de28450" }
-name-table       = { git = "https://github.com/LiGoldragon/name-table.git", rev = "c3237f77c087e6feab49d6cf34971cebc14a11e6" }
-core-schema      = { git = "https://github.com/LiGoldragon/core-schema.git", rev = "2e47dec55e87eed08e7c4acfc1b8d576b303859c" }
-core-logos       = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "2b9ed8fb758de951a76af35a65b4b53b9d210583" }
-textual-rust     = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "ee7859ff10b0710fab9e87672c66d8c889b67c63" }
-structural-codec = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "8ca0418dfa0b2e403833201d10f527fbad38f299" }
+content-identity = { git = "https://github.com/LiGoldragon/protos.git", rev = "18ae746857979c9c01c0d4b315bb8a818056cf09" }
+name-table       = { git = "https://github.com/LiGoldragon/protos.git", rev = "18ae746857979c9c01c0d4b315bb8a818056cf09" }
+core-schema      = { git = "https://github.com/LiGoldragon/core-schema.git", rev = "874e2ef1929936b72604f16d9e1b8928f8aa145e" }
+core-logos       = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "da56ca488ff1fc8d50a557723cf7355a49ba5d0b" }
+textual-rust     = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "0fe3e6cbd3ae679f4af3b44cb27c984ccfff3954" }
+structural-codec = { git = "https://github.com/LiGoldragon/protos.git", rev = "18ae746857979c9c01c0d4b315bb8a818056cf09" }
 rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror        = "2"
 
 [dev-dependencies]
-raw-discovery    = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "a4e8c6df84e6a487ca6fe2f3641f9bafd0b0d8c8" }
+raw-discovery    = { git = "https://github.com/LiGoldragon/protos.git", rev = "18ae746857979c9c01c0d4b315bb8a818056cf09" }
 
 [lints.rust]
 unsafe_code = "forbid"
