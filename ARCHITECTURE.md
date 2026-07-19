@@ -267,7 +267,7 @@ copies would carry incompatible encoded-item types. The Nix flake (`build`/`test
   builds output items after typed macro lowering. Its derived-name and output-literal
   work is delegated to `NameTableBoundary`; this keeps text out of the schema→logos
   macro transform without growing the `Realize` / `Splice` template DSL into a second
-  copy of the CoreLogos algebra. Trigger to revisit: a class shape that a fixed
+  copy of the EncodedLogos algebra. Trigger to revisit: a class shape that a fixed
   skeleton-with-holes expresses cleanly, or a psyche ruling that the classes must be
   authored as escape-templates.
 - **`SignalOperationHeads` is emitted for the request (input) root only.** The reference fixture

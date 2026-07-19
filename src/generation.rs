@@ -1,12 +1,12 @@
 //! The enriched generation classes: the schema-derived *support surface* the wire
 //! reference fixtures emit alongside the data declarations — impl blocks (with methods,
 //! associated types, and associated consts), functions, consts, const modules, and
-//! use imports, as stringless CoreLogos data.
+//! use imports, as stringless EncodedLogos data.
 //!
-//! Where the per-declaration structural defaults lower one CoreLogos item per schema
+//! Where the per-declaration structural defaults lower one EncodedLogos item per schema
 //! declaration, a [`GenerationClass`] is a whole-schema generator. It reads the
 //! schema's newtype catalogue and its interface roots
-//! ([`core_schema::DeclarationRole`]) and appends an ordered run of CoreLogos items
+//! ([`core_schema::DeclarationRole`]) and appends an ordered run of EncodedLogos items
 //! into the same continuous logos NameTable the declaration lowering built. Each
 //! class builds its fixed method and match skeletons directly — exactly as the fixed
 //! module prelude ([`crate::ModuleHead`]) authors its stringless data — with every
@@ -18,7 +18,7 @@
 
 use core_logos::{
     Alias, ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ClosureExpression,
-    ConfigurationAttribute, ConfigurationPredicate, Const, CoreItem, DeriveGroup, Enumeration,
+    ConfigurationAttribute, ConfigurationPredicate, Const, DeriveGroup, EncodedItem, Enumeration,
     Expression, FieldInitializer, Function, Generics, ImplBlock, ImplItem, ImplTraitType,
     IndexExpression, IntegerLiteral, IntegerRepresentation, LetBinding, LetStatement, Match,
     MatchArm, MethodCall, Module, Newtype, Parameter, PathNode, Pattern, PatternElement,
@@ -27,7 +27,9 @@ use core_logos::{
     TupleFieldAccess, TupleType, TupleVariantPattern, TypeApplication, TypeReference, Variant,
     VariantPayload, Visibility,
 };
-use core_schema::{CoreDeclaration, CoreReference, CoreSchema, CoreType, CoreVariant};
+use core_schema::{
+    EncodedDeclaration, EncodedReference, EncodedSchema, EncodedType, EncodedVariant,
+};
 use name_table::{Identifier, Name};
 use std::collections::BTreeMap;
 
@@ -56,9 +58,9 @@ enum Intake {
 }
 
 impl Intake {
-    fn of(wrapped: &CoreReference) -> Self {
+    fn of(wrapped: &EncodedReference) -> Self {
         match wrapped {
-            CoreReference::String => Self::IntoString,
+            EncodedReference::String => Self::IntoString,
             _ => Self::ByValue,
         }
     }
@@ -69,16 +71,16 @@ impl Intake {
 /// is a catalogued newtype is unwrapped: the constructor takes the newtype's inner
 /// type and wraps it through `Newtype::new`. Any other payload is taken directly.
 enum ConstructorSource {
-    Direct(CoreReference),
+    Direct(EncodedReference),
     Unwrap {
         newtype: Identifier,
-        inner: CoreReference,
+        inner: EncodedReference,
     },
 }
 
 impl ConstructorSource {
-    fn of(payload: &CoreReference, catalogue: &BTreeMap<Identifier, CoreReference>) -> Self {
-        if let CoreReference::Plain(identifier) = payload {
+    fn of(payload: &EncodedReference, catalogue: &BTreeMap<Identifier, EncodedReference>) -> Self {
+        if let EncodedReference::Plain(identifier) = payload {
             if let Some(inner) = catalogue.get(identifier) {
                 return Self::Unwrap {
                     newtype: *identifier,
@@ -94,15 +96,15 @@ impl ConstructorSource {
 /// owned so the generator can intern and lower while it walks them.
 struct InterfaceRoot {
     name: Identifier,
-    variants: Vec<CoreVariant>,
+    variants: Vec<EncodedVariant>,
 }
 
 impl InterfaceRoot {
     /// Read a role-tagged declaration as an interface root, rejecting a non-enum root
     /// loudly (an interface root is always an enumeration of its operations).
-    fn of(declaration: &CoreDeclaration) -> Result<Self, NomosError> {
+    fn of(declaration: &EncodedDeclaration) -> Result<Self, NomosError> {
         match declaration.value() {
-            CoreType::Enumeration(enumeration) => Ok(Self {
+            EncodedType::Enumeration(enumeration) => Ok(Self {
                 name: enumeration.identifier(),
                 variants: enumeration.variants().to_vec(),
             }),
@@ -114,12 +116,12 @@ impl InterfaceRoot {
 }
 
 impl Evaluator<'_> {
-    /// Build one generation class's ordered CoreLogos items from the schema.
+    /// Build one generation class's ordered EncodedLogos items from the schema.
     pub(crate) fn generate_class(
         &mut self,
         class: &GenerationClass,
-        schema: &CoreSchema,
-    ) -> Result<Vec<CoreItem>, NomosError> {
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         match class {
             GenerationClass::NewtypeErgonomics => self.generate_newtype_ergonomics(schema),
             GenerationClass::InterfaceErgonomics => self.generate_interface_ergonomics(schema),
@@ -326,9 +328,9 @@ impl Evaluator<'_> {
     }
 
     /// An inherent impl block (`impl <self_type> { <items> }`).
-    fn inherent_impl(&mut self, self_type: TypeReference, items: Vec<ImplItem>) -> CoreItem {
+    fn inherent_impl(&mut self, self_type: TypeReference, items: Vec<ImplItem>) -> EncodedItem {
         let skip = self.rustfmt_skip();
-        CoreItem::ImplBlock(ImplBlock {
+        EncodedItem::ImplBlock(ImplBlock {
             attributes: vec![skip],
             generics: Generics::none(),
             implemented_trait: None,
@@ -344,8 +346,8 @@ impl Evaluator<'_> {
         implemented_trait: TypeReference,
         self_type: TypeReference,
         items: Vec<ImplItem>,
-    ) -> CoreItem {
-        CoreItem::ImplBlock(ImplBlock {
+    ) -> EncodedItem {
+        EncodedItem::ImplBlock(ImplBlock {
             attributes,
             generics: Generics::none(),
             implemented_trait: Some(implemented_trait),
@@ -359,10 +361,10 @@ impl Evaluator<'_> {
     /// The newtype catalogue: every data-type newtype declaration's name mapped to
     /// its wrapped reference. The interface constructors read it to decide whether a
     /// variant payload unwraps.
-    fn newtype_catalogue(schema: &CoreSchema) -> BTreeMap<Identifier, CoreReference> {
+    fn newtype_catalogue(schema: &EncodedSchema) -> BTreeMap<Identifier, EncodedReference> {
         let mut catalogue = BTreeMap::new();
         for declaration in schema.data_declarations() {
-            if let CoreType::Newtype(newtype) = declaration.value() {
+            if let EncodedType::Newtype(newtype) = declaration.value() {
                 catalogue.insert(newtype.identifier(), newtype.reference().clone());
             }
         }
@@ -371,7 +373,7 @@ impl Evaluator<'_> {
 
     /// The interface roots present in the schema, in document order (input then
     /// output). Classes B/C/D gate on these.
-    fn interface_roots(schema: &CoreSchema) -> Result<Vec<InterfaceRoot>, NomosError> {
+    fn interface_roots(schema: &EncodedSchema) -> Result<Vec<InterfaceRoot>, NomosError> {
         [schema.input(), schema.output()]
             .into_iter()
             .flatten()
@@ -383,11 +385,11 @@ impl Evaluator<'_> {
 
     fn generate_newtype_ergonomics(
         &mut self,
-        schema: &CoreSchema,
-    ) -> Result<Vec<CoreItem>, NomosError> {
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         let mut items = Vec::new();
         for declaration in schema.data_declarations() {
-            if let CoreType::Newtype(newtype) = declaration.value() {
+            if let EncodedType::Newtype(newtype) = declaration.value() {
                 let name = newtype.identifier();
                 let wrapped = newtype.reference().clone();
                 items.push(self.newtype_inherent_impl(name, &wrapped)?);
@@ -400,8 +402,8 @@ impl Evaluator<'_> {
     fn newtype_inherent_impl(
         &mut self,
         name: Identifier,
-        wrapped: &CoreReference,
-    ) -> Result<CoreItem, NomosError> {
+        wrapped: &EncodedReference,
+    ) -> Result<EncodedItem, NomosError> {
         let wrapped_type = self.lower_reference(wrapped)?;
         let self_type = TypeReference::Path(self.path_of(&[name]));
 
@@ -494,8 +496,8 @@ impl Evaluator<'_> {
     fn newtype_from_impl(
         &mut self,
         name: Identifier,
-        wrapped: &CoreReference,
-    ) -> Result<CoreItem, NomosError> {
+        wrapped: &EncodedReference,
+    ) -> Result<EncodedItem, NomosError> {
         let wrapped_type = self.lower_reference(wrapped)?;
         let self_type = TypeReference::Path(self.path_of(&[name]));
         let from_head = self.path(&["From"]);
@@ -524,8 +526,8 @@ impl Evaluator<'_> {
 
     fn generate_interface_ergonomics(
         &mut self,
-        schema: &CoreSchema,
-    ) -> Result<Vec<CoreItem>, NomosError> {
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
@@ -556,8 +558,8 @@ impl Evaluator<'_> {
     fn interface_constructor_impl(
         &mut self,
         root: &InterfaceRoot,
-        catalogue: &BTreeMap<Identifier, CoreReference>,
-    ) -> Result<CoreItem, NomosError> {
+        catalogue: &BTreeMap<Identifier, EncodedReference>,
+    ) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[root.name]));
         let self_ident = self.self_ident();
         let mut methods = Vec::with_capacity(root.variants.len());
@@ -604,8 +606,8 @@ impl Evaluator<'_> {
     fn interface_from_impl(
         &mut self,
         root: Identifier,
-        variant: &CoreVariant,
-    ) -> Result<CoreItem, NomosError> {
+        variant: &EncodedVariant,
+    ) -> Result<EncodedItem, NomosError> {
         let payload = variant
             .payload()
             .ok_or(NomosError::Generation(
@@ -637,7 +639,7 @@ impl Evaluator<'_> {
         Ok(self.trait_impl(vec![skip], implemented_trait, self_type, vec![from_method]))
     }
 
-    fn interface_from_str_impl(&mut self, root: Identifier) -> Result<CoreItem, NomosError> {
+    fn interface_from_str_impl(&mut self, root: Identifier) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[root]));
         let implemented_trait = TypeReference::Path(self.path(&["std", "str", "FromStr"]));
 
@@ -696,7 +698,7 @@ impl Evaluator<'_> {
         ))
     }
 
-    fn interface_display_impl(&mut self, root: Identifier) -> Result<CoreItem, NomosError> {
+    fn interface_display_impl(&mut self, root: Identifier) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[root]));
         let implemented_trait = TypeReference::Path(self.path(&["std", "fmt", "Display"]));
 
@@ -762,7 +764,10 @@ impl Evaluator<'_> {
     /// the `SIGNAL_SHORT_HEADER_BYTE_COUNT` byte-count const, the `SignalFrameError`
     /// enum, and the two route enums. These are the types the codec speaks; the
     /// encode/decode bodies over them are the sibling [`Self::generate_wire_exchange_codec`].
-    fn generate_wire_contract(&mut self, schema: &CoreSchema) -> Result<Vec<CoreItem>, NomosError> {
+    fn generate_wire_contract(
+        &mut self,
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
@@ -792,8 +797,8 @@ impl Evaluator<'_> {
     /// [`Self::generate_wire_exchange_envelope`].
     fn generate_wire_exchange_codec(
         &mut self,
-        schema: &CoreSchema,
-    ) -> Result<Vec<CoreItem>, NomosError> {
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
@@ -820,8 +825,8 @@ impl Evaluator<'_> {
     /// rulings.
     fn generate_wire_exchange_envelope(
         &mut self,
-        schema: &CoreSchema,
-    ) -> Result<Vec<CoreItem>, NomosError> {
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         let request = roots.first().ok_or(NomosError::Generation(
             "the wire exchange envelope needs a request (input) root",
@@ -862,7 +867,7 @@ impl Evaluator<'_> {
     /// from schema-rust's existing emitter rule, not authored here. Trigger to
     /// revisit: the short-header byte-layout review-later item settles a different
     /// layout, after which this derivation changes with it.
-    fn short_header_module(&mut self, roots: &[InterfaceRoot]) -> Result<CoreItem, NomosError> {
+    fn short_header_module(&mut self, roots: &[InterfaceRoot]) -> Result<EncodedItem, NomosError> {
         let u64_type = self.type_path(&["u64"]);
         let mut consts = Vec::new();
         for (root_index, root) in roots.iter().enumerate() {
@@ -881,7 +886,7 @@ impl Evaluator<'_> {
                 let const_name = self
                     .names
                     .short_header_const_name(root.name, variant.identifier())?;
-                consts.push(CoreItem::Const(Const {
+                consts.push(EncodedItem::Const(Const {
                     visibility: Visibility::Public,
                     attributes: Vec::new(),
                     name: const_name,
@@ -895,7 +900,7 @@ impl Evaluator<'_> {
         }
         let module_name = self.ident("short_header");
         let skip = self.rustfmt_skip();
-        Ok(CoreItem::Module(Module {
+        Ok(EncodedItem::Module(Module {
             visibility: Visibility::Public,
             attributes: vec![skip],
             name: module_name,
@@ -903,7 +908,7 @@ impl Evaluator<'_> {
         }))
     }
 
-    fn route_enum(&mut self, root: &InterfaceRoot) -> Result<CoreItem, NomosError> {
+    fn route_enum(&mut self, root: &InterfaceRoot) -> Result<EncodedItem, NomosError> {
         let name = self.names.route_enum_name(root.name)?;
         let attributes = self.wire_enum_preamble();
         let variants = root
@@ -914,7 +919,7 @@ impl Evaluator<'_> {
                 payload: VariantPayload::Unit,
             })
             .collect();
-        Ok(CoreItem::Enumeration(Enumeration {
+        Ok(EncodedItem::Enumeration(Enumeration {
             visibility: Visibility::Public,
             attributes,
             name,
@@ -926,7 +931,7 @@ impl Evaluator<'_> {
     fn signal_operation_heads_impl(
         &mut self,
         request: &InterfaceRoot,
-    ) -> Result<CoreItem, NomosError> {
+    ) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[request.name]));
         let implemented_trait =
             TypeReference::Path(self.path(&["signal_frame", "SignalOperationHeads"]));
@@ -963,11 +968,11 @@ impl Evaluator<'_> {
 
     /// `#[rustfmt::skip] const SIGNAL_SHORT_HEADER_BYTE_COUNT: usize = 8;` — the
     /// little-endian short-header width shared by every codec body.
-    fn short_header_byte_count_const(&mut self) -> CoreItem {
+    fn short_header_byte_count_const(&mut self) -> EncodedItem {
         let skip = self.rustfmt_skip();
         let name = self.ident("SIGNAL_SHORT_HEADER_BYTE_COUNT");
         let usize_type = self.type_path(&["usize"]);
-        CoreItem::Const(Const {
+        EncodedItem::Const(Const {
             visibility: Visibility::Private,
             attributes: vec![skip],
             name,
@@ -983,7 +988,7 @@ impl Evaluator<'_> {
     /// carries the offending header; the rest are unit variants. It derives the value
     /// traits only (no rkyv/nota — it is a local error, never on the wire), so a caller
     /// can `unwrap`/compare it.
-    fn signal_frame_error_enum(&mut self) -> CoreItem {
+    fn signal_frame_error_enum(&mut self) -> EncodedItem {
         let skip = self.rustfmt_skip();
         let derive = Attribute::Derive(DeriveGroup {
             paths: vec![
@@ -1017,7 +1022,7 @@ impl Evaluator<'_> {
                 payload: VariantPayload::Unit,
             },
         ];
-        CoreItem::Enumeration(Enumeration {
+        EncodedItem::Enumeration(Enumeration {
             visibility: Visibility::Public,
             attributes: vec![skip, derive],
             name,
@@ -1112,7 +1117,7 @@ impl Evaluator<'_> {
     /// The pattern that matches one interface variant on `self`: `Self::Record(_)` for
     /// a payload-carrying operation, or the unit path `Self::Version` for a unit one —
     /// the payload/no-payload special case dissolved by reading the variant's payload.
-    fn self_variant_pattern(&mut self, variant: &CoreVariant) -> Pattern {
+    fn self_variant_pattern(&mut self, variant: &EncodedVariant) -> Pattern {
         let self_ident = self.self_ident();
         let path = self.path_of(&[self_ident, variant.identifier()]);
         match variant.payload() {
@@ -1126,7 +1131,7 @@ impl Evaluator<'_> {
 
     /// The codec `impl <Root> { route / short_header / route_from_short_header /
     /// encode_signal_frame / decode_signal_frame }`.
-    fn codec_impl(&mut self, root: &InterfaceRoot) -> Result<CoreItem, NomosError> {
+    fn codec_impl(&mut self, root: &InterfaceRoot) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[root.name]));
         let items = vec![
             self.route_method(root)?,
@@ -1428,7 +1433,7 @@ impl Evaluator<'_> {
 
     /// `#[rustfmt::skip] impl signal_frame::RequestPayload for <Root> {}` — the empty
     /// marker impl that admits the request root onto the exchange envelope.
-    fn request_payload_impl(&mut self, request: Identifier) -> CoreItem {
+    fn request_payload_impl(&mut self, request: Identifier) -> EncodedItem {
         let self_type = TypeReference::Path(self.path_of(&[request]));
         let implemented_trait = TypeReference::Path(self.path(&["signal_frame", "RequestPayload"]));
         let skip = self.rustfmt_skip();
@@ -1438,7 +1443,7 @@ impl Evaluator<'_> {
     /// `#[rustfmt::skip] impl signal_frame::LogVariant for <Root> { fn log_variant(&self)
     /// -> u64 { self.short_header() } }` — the log discriminant the frame log reads,
     /// delegating to the codec's `short_header`.
-    fn log_variant_impl(&mut self, request: Identifier) -> CoreItem {
+    fn log_variant_impl(&mut self, request: Identifier) -> EncodedItem {
         let self_type = TypeReference::Path(self.path_of(&[request]));
         let implemented_trait = TypeReference::Path(self.path(&["signal_frame", "LogVariant"]));
         let body = self.method_call(Expression::Receiver, "short_header", Vec::new());
@@ -1460,7 +1465,7 @@ impl Evaluator<'_> {
     /// alias — `Frame` / `FrameBody` over `ExchangeFrame` / `ExchangeFrameBody` (the
     /// ordinary two-way leg), and the `Request` / `ReplyEnvelope` / `RequestBuilder`
     /// aliases over the request or reply root.
-    fn frame_alias(&mut self, name: &str, target: &str, arguments: &[Identifier]) -> CoreItem {
+    fn frame_alias(&mut self, name: &str, target: &str, arguments: &[Identifier]) -> EncodedItem {
         let skip = self.rustfmt_skip();
         let name = self.ident(name);
         let head = self.path(&["signal_frame", target]);
@@ -1472,7 +1477,7 @@ impl Evaluator<'_> {
             head,
             arguments: argument_types,
         });
-        CoreItem::Alias(Alias {
+        EncodedItem::Alias(Alias {
             visibility: Visibility::Public,
             attributes: vec![skip],
             name,
@@ -1523,7 +1528,7 @@ impl Evaluator<'_> {
     /// `#[rustfmt::skip] impl <Root> { pub fn into_frame(self, exchange:
     /// signal_frame::ExchangeIdentifier) -> Frame { … } }` — the request constructor
     /// that wraps the payload into a `FrameBody::Request` exchange frame.
-    fn frame_constructor_impl(&mut self, request: Identifier) -> CoreItem {
+    fn frame_constructor_impl(&mut self, request: Identifier) -> EncodedItem {
         let short_header_value = self.short_header_new_value();
         let statement_short_header =
             self.let_stmt(LetBinding::Immutable, "short_header", short_header_value);
@@ -1566,7 +1571,7 @@ impl Evaluator<'_> {
     /// `#[rustfmt::skip] impl <Root> { pub fn into_reply_frame(self, exchange:
     /// signal_frame::ExchangeIdentifier) -> Frame { … } }` — the reply constructor that
     /// wraps the payload into a committed single-`Ok` `FrameBody::Reply` exchange frame.
-    fn reply_frame_constructor_impl(&mut self, reply: Identifier) -> CoreItem {
+    fn reply_frame_constructor_impl(&mut self, reply: Identifier) -> EncodedItem {
         let short_header_value = self.short_header_new_value();
         let statement_short_header =
             self.let_stmt(LetBinding::Immutable, "short_header", short_header_value);
@@ -1612,7 +1617,10 @@ impl Evaluator<'_> {
 
     // ---- class D: trace support -------------------------------------------------
 
-    fn generate_trace_support(&mut self, schema: &CoreSchema) -> Result<Vec<CoreItem>, NomosError> {
+    fn generate_trace_support(
+        &mut self,
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
@@ -1634,11 +1642,11 @@ impl Evaluator<'_> {
     /// visibility). It carries the same wire-enum preamble the trace enums carry, and
     /// sits between the `ObjectName` enum and the `impl ObjectName` in the reference fixture's
     /// document order.
-    fn trace_event_declaration(&mut self) -> Result<CoreItem, NomosError> {
+    fn trace_event_declaration(&mut self) -> Result<EncodedItem, NomosError> {
         let name = self.ident("TraceEvent");
         let object_name = self.ident("ObjectName");
         let attributes = self.wire_enum_preamble();
-        Ok(CoreItem::Newtype(Newtype {
+        Ok(EncodedItem::Newtype(Newtype {
             visibility: Visibility::Public,
             attributes,
             name,
@@ -1647,7 +1655,10 @@ impl Evaluator<'_> {
         }))
     }
 
-    fn signal_object_name_enum(&mut self, roots: &[InterfaceRoot]) -> Result<CoreItem, NomosError> {
+    fn signal_object_name_enum(
+        &mut self,
+        roots: &[InterfaceRoot],
+    ) -> Result<EncodedItem, NomosError> {
         let name = self.ident("SignalObjectName");
         let attributes = self.wire_enum_preamble();
         let mut variants = Vec::with_capacity(roots.len());
@@ -1660,7 +1671,7 @@ impl Evaluator<'_> {
                 )]),
             });
         }
-        Ok(CoreItem::Enumeration(Enumeration {
+        Ok(EncodedItem::Enumeration(Enumeration {
             visibility: Visibility::Public,
             attributes,
             name,
@@ -1669,7 +1680,10 @@ impl Evaluator<'_> {
         }))
     }
 
-    fn signal_object_name_impl(&mut self, roots: &[InterfaceRoot]) -> Result<CoreItem, NomosError> {
+    fn signal_object_name_impl(
+        &mut self,
+        roots: &[InterfaceRoot],
+    ) -> Result<EncodedItem, NomosError> {
         let signal_object_name = self.ident("SignalObjectName");
         let self_type = TypeReference::Path(self.path_of(&[signal_object_name]));
         let route_binding = self.ident("route");
@@ -1716,12 +1730,12 @@ impl Evaluator<'_> {
         Ok(self.inherent_impl(self_type, vec![name_method]))
     }
 
-    fn object_name_enum(&mut self) -> Result<CoreItem, NomosError> {
+    fn object_name_enum(&mut self) -> Result<EncodedItem, NomosError> {
         let name = self.ident("ObjectName");
         let attributes = self.wire_enum_preamble();
         let signal = self.ident("Signal");
         let signal_object_name = self.ident("SignalObjectName");
-        Ok(CoreItem::Enumeration(Enumeration {
+        Ok(EncodedItem::Enumeration(Enumeration {
             visibility: Visibility::Public,
             attributes,
             name,
@@ -1735,7 +1749,7 @@ impl Evaluator<'_> {
         }))
     }
 
-    fn object_name_impl(&mut self) -> Result<CoreItem, NomosError> {
+    fn object_name_impl(&mut self) -> Result<EncodedItem, NomosError> {
         let object_name = self.ident("ObjectName");
         let self_type = TypeReference::Path(self.path_of(&[object_name]));
         let object_name_binding = self.ident("object_name");
@@ -1771,7 +1785,7 @@ impl Evaluator<'_> {
         Ok(self.inherent_impl(self_type, vec![name_method]))
     }
 
-    fn trace_event_impl(&mut self) -> Result<CoreItem, NomosError> {
+    fn trace_event_impl(&mut self) -> Result<EncodedItem, NomosError> {
         let trace_event = self.ident("TraceEvent");
         let object_name = self.ident("ObjectName");
         let self_type = TypeReference::Path(self.path_of(&[trace_event]));

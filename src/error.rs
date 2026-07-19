@@ -8,8 +8,8 @@ use thiserror::Error;
 use crate::identity::{MacroIdentity, SectionDefault};
 use crate::meta::MetaType;
 
-/// A failure lowering a `CoreSchema` through a [`MacroPackage`](crate::MacroPackage)
-/// into `CoreLogos`. Every variant names the exact structural mismatch, so an
+/// A failure lowering a `EncodedSchema` through a [`MacroPackage`](crate::MacroPackage)
+/// into `EncodedLogos`. Every variant names the exact structural mismatch, so an
 /// unruled input fails loudly rather than producing quietly-wrong logos — the
 /// structural discipline made typed.
 #[derive(Debug, Clone, Error)]
@@ -61,13 +61,13 @@ pub enum NomosError {
     #[error("field visibility {0:?} is not placeable here")]
     FieldVisibility(Visibility),
 
-    /// A schema type reference could not be lowered into a `CoreLogos` type — a
+    /// A schema type reference could not be lowered into a `EncodedLogos` type — a
     /// value application (const generic) has no `TypeReference` home in the
     /// surveyed logos algebra.
-    #[error("schema reference cannot lower to a CoreLogos type: {0}")]
+    #[error("schema reference cannot lower to a EncodedLogos type: {0}")]
     UnsupportedReference(&'static str),
 
-    /// A macro template literal carried a `CoreLogos` type outside the schema-lowering
+    /// A macro template literal carried a `EncodedLogos` type outside the schema-lowering
     /// template vocabulary — a reference or impl-trait type, which belongs to
     /// impl-block signatures, not schema declarations.
     #[error("template type is out of the macro template vocabulary: {0}")]

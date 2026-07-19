@@ -21,16 +21,16 @@ use core_schema::fixture::COMMIT_SEQUENCE;
 use name_table::NameTable;
 use textual_rust::RustSource;
 
-// schema TEXT → CoreSchema
+// schema TEXT → EncodedSchema
 let textual = TextualSchema::fixture()?;
 let mut schema_names = NameTable::new();
 let value = textual.decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }", &mut schema_names)?;
-let schema = core_schema::CoreSchema::new(vec![core_schema::CoreDeclaration::public(value)]);
+let schema = core_schema::EncodedSchema::new(vec![core_schema::EncodedDeclaration::public(value)]);
 
-// CoreSchema → Nomos macros → CoreLogos (+ the extended, continuous NameTable)
+// EncodedSchema → Nomos macros → EncodedLogos (+ the extended, continuous NameTable)
 let lowering = MacroPackage::wire_fixture().apply(&schema, &schema_names)?;
 
-// CoreLogos → TextualRust → generated Rust
+// EncodedLogos → TextualRust → generated Rust
 let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
 ```
 

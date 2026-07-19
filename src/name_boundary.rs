@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 
 use core_logos::{Attribute, PathNode, TypeApplication, TypeReference};
-use core_schema::{CoreField, CoreReference};
+use core_schema::{EncodedField, EncodedReference};
 use name_table::{Identifier, Name, NameTable};
 
 use crate::error::NomosError;
@@ -77,7 +77,7 @@ impl<'package> NameTableBoundary<'package> {
     /// are read solely when the typed field-rule dispatch explicitly preserves one.
     pub(crate) fn field_names(
         &mut self,
-        fields: &[CoreField],
+        fields: &[EncodedField],
         rule: FieldNameRule,
     ) -> Result<Vec<Identifier>, NomosError> {
         let group_names = self.derive_group_names(fields)?;
@@ -91,7 +91,7 @@ impl<'package> NameTableBoundary<'package> {
     /// The deterministic Rust names for an ordered same-typed field group. This
     /// is name work, so its string derivation and allocation belong at the boundary,
     /// not in the typed schema→logos evaluator.
-    fn derive_group_names(&self, fields: &[CoreField]) -> Result<Vec<Name>, NomosError> {
+    fn derive_group_names(&self, fields: &[EncodedField]) -> Result<Vec<Name>, NomosError> {
         let base_names = fields
             .iter()
             .map(|field| field.reference().derived_field_name(&self.names))
@@ -124,7 +124,7 @@ impl<'package> NameTableBoundary<'package> {
     /// Apply a field-name selection rule after the group names have been derived.
     fn field_name(
         &mut self,
-        field: &CoreField,
+        field: &EncodedField,
         group_name: Name,
         rule: FieldNameRule,
     ) -> Result<Identifier, NomosError> {
@@ -145,17 +145,17 @@ impl<'package> NameTableBoundary<'package> {
     /// required fixed projection names at the NameTable boundary.
     pub(crate) fn lower_reference(
         &mut self,
-        reference: &CoreReference,
+        reference: &EncodedReference,
     ) -> Result<TypeReference, NomosError> {
         match reference {
-            CoreReference::Integer => Ok(TypeReference::Path(self.leaf_path("Integer"))),
-            CoreReference::String => Ok(TypeReference::Path(self.leaf_path("String"))),
-            CoreReference::Boolean => Ok(TypeReference::Path(self.leaf_path("Boolean"))),
-            CoreReference::Bytes => Ok(TypeReference::Path(self.leaf_path("Bytes"))),
-            CoreReference::Plain(identifier) => Ok(TypeReference::Path(PathNode {
+            EncodedReference::Integer => Ok(TypeReference::Path(self.leaf_path("Integer"))),
+            EncodedReference::String => Ok(TypeReference::Path(self.leaf_path("String"))),
+            EncodedReference::Boolean => Ok(TypeReference::Path(self.leaf_path("Boolean"))),
+            EncodedReference::Bytes => Ok(TypeReference::Path(self.leaf_path("Bytes"))),
+            EncodedReference::Plain(identifier) => Ok(TypeReference::Path(PathNode {
                 segments: vec![*identifier],
             })),
-            CoreReference::SingleTypeApplication {
+            EncodedReference::SingleTypeApplication {
                 projection,
                 argument,
             } => {
@@ -166,7 +166,7 @@ impl<'package> NameTableBoundary<'package> {
                     arguments: vec![argument],
                 }))
             }
-            CoreReference::MultiTypeApplication {
+            EncodedReference::MultiTypeApplication {
                 projection,
                 arguments,
             } => {
@@ -180,8 +180,8 @@ impl<'package> NameTableBoundary<'package> {
                     arguments,
                 }))
             }
-            CoreReference::ValueApplication { .. } => Err(NomosError::UnsupportedReference(
-                "a byte-length value application has no CoreLogos type-argument home",
+            EncodedReference::ValueApplication { .. } => Err(NomosError::UnsupportedReference(
+                "a byte-length value application has no EncodedLogos type-argument home",
             )),
         }
     }

@@ -1,6 +1,6 @@
 //! Macro identity and the two settled macro kinds.
 
-use core_schema::CoreType;
+use core_schema::EncodedType;
 
 /// A macro's minted, stringless identity — a package-local index the macro table
 /// is keyed on. It is *minted* (allocated when a macro is registered), not derived
@@ -66,7 +66,7 @@ pub enum MacroKind {
 }
 
 /// Which schema declaration section a structural macro is the default for. This is
-/// the declaration-kind selector, disjoint from `core_schema::CoreType`'s variants
+/// the declaration-kind selector, disjoint from `core_schema::EncodedType`'s variants
 /// only in that it is the *lowering side*'s dispatch key.
 #[derive(
     rkyv::Archive,
@@ -95,13 +95,13 @@ pub enum SectionDefault {
 impl SectionDefault {
     /// Which structural section a schema declaration belongs to — the dispatch
     /// from a declaration's Core kind to the default macro that lowers it.
-    /// Exhaustive over `CoreType`, no wildcard, so a new declaration kind is a
+    /// Exhaustive over `EncodedType`, no wildcard, so a new declaration kind is a
     /// compile error until its section is named.
-    pub fn of_core_type(value: &CoreType) -> Self {
+    pub fn of_core_type(value: &EncodedType) -> Self {
         match value {
-            CoreType::Newtype(_) => Self::Newtype,
-            CoreType::Struct(_) => Self::Struct,
-            CoreType::Enumeration(_) => Self::Enumeration,
+            EncodedType::Newtype(_) => Self::Newtype,
+            EncodedType::Struct(_) => Self::Struct,
+            EncodedType::Enumeration(_) => Self::Enumeration,
         }
     }
 }

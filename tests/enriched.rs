@@ -7,8 +7,9 @@
 
 use core_nomos::MacroPackage;
 use core_schema::{
-    CoreDeclaration, CoreEnum, CoreField, CoreNewtype, CoreReference, CoreSchema, CoreStruct,
-    CoreType, CoreVariant, DeclarationRole, SingleTypeReferenceProjection,
+    DeclarationRole, EncodedDeclaration, EncodedEnum, EncodedField, EncodedNewtype,
+    EncodedReference, EncodedSchema, EncodedStruct, EncodedType, EncodedVariant,
+    SingleTypeReferenceProjection,
 };
 use name_table::{Identifier, Name, NameTable};
 use textual_rust::RustSource;
@@ -16,7 +17,7 @@ use textual_rust::RustSource;
 /// The spirit-min schema built by hand through the crate's declaration path: the ten
 /// data declarations in source order, then the two role-tagged interface roots.
 struct SpiritMin {
-    schema: CoreSchema,
+    schema: EncodedSchema,
     names: NameTable,
 }
 
@@ -40,33 +41,33 @@ impl SpiritMin {
         let output = intern("Output");
 
         // Newtypes.
-        let topic_decl = newtype(topic, CoreReference::String);
-        let topics_decl = newtype(topics, vector(CoreReference::Plain(topic)));
-        let description_decl = newtype(description, CoreReference::String);
-        let summary_decl = newtype(summary, CoreReference::Plain(description));
-        let record_identifier_decl = newtype(record_identifier, CoreReference::Integer);
-        let record_set_decl = newtype(record_set, vector(CoreReference::Plain(entry)));
+        let topic_decl = newtype(topic, EncodedReference::String);
+        let topics_decl = newtype(topics, vector(EncodedReference::Plain(topic)));
+        let description_decl = newtype(description, EncodedReference::String);
+        let summary_decl = newtype(summary, EncodedReference::Plain(description));
+        let record_identifier_decl = newtype(record_identifier, EncodedReference::Integer);
+        let record_set_decl = newtype(record_set, vector(EncodedReference::Plain(entry)));
 
         // Structs — field names are the snake_case of their types (elided/derived).
-        let entry_decl = CoreDeclaration::public(CoreType::Struct(CoreStruct::new(
+        let entry_decl = EncodedDeclaration::public(EncodedType::Struct(EncodedStruct::new(
             entry,
             vec![
-                CoreField::new(intern("topics"), CoreReference::Plain(topics)),
-                CoreField::new(intern("kind"), CoreReference::Plain(kind)),
-                CoreField::new(intern("description"), CoreReference::Plain(description)),
-                CoreField::new(intern("magnitude"), CoreReference::Plain(magnitude)),
+                EncodedField::new(intern("topics"), EncodedReference::Plain(topics)),
+                EncodedField::new(intern("kind"), EncodedReference::Plain(kind)),
+                EncodedField::new(intern("description"), EncodedReference::Plain(description)),
+                EncodedField::new(intern("magnitude"), EncodedReference::Plain(magnitude)),
             ],
         )));
-        let query_decl = CoreDeclaration::public(CoreType::Struct(CoreStruct::new(
+        let query_decl = EncodedDeclaration::public(EncodedType::Struct(EncodedStruct::new(
             query,
             vec![
-                CoreField::new(intern("topic"), CoreReference::Plain(topic)),
-                CoreField::new(intern("kind"), CoreReference::Plain(kind)),
+                EncodedField::new(intern("topic"), EncodedReference::Plain(topic)),
+                EncodedField::new(intern("kind"), EncodedReference::Plain(kind)),
             ],
         )));
 
         // Unit enums.
-        let kind_decl = CoreDeclaration::public(CoreType::Enumeration(CoreEnum::new(
+        let kind_decl = EncodedDeclaration::public(EncodedType::Enumeration(EncodedEnum::new(
             kind,
             [
                 "Decision",
@@ -76,48 +77,49 @@ impl SpiritMin {
                 "Constraint",
             ]
             .into_iter()
-            .map(|name| CoreVariant::new(intern(name), None))
+            .map(|name| EncodedVariant::new(intern(name), None))
             .collect(),
         )));
-        let magnitude_decl = CoreDeclaration::public(CoreType::Enumeration(CoreEnum::new(
-            magnitude,
-            [
-                "Minimum", "VeryLow", "Low", "Medium", "High", "VeryHigh", "Maximum",
-            ]
-            .into_iter()
-            .map(|name| CoreVariant::new(intern(name), None))
-            .collect(),
-        )));
+        let magnitude_decl =
+            EncodedDeclaration::public(EncodedType::Enumeration(EncodedEnum::new(
+                magnitude,
+                [
+                    "Minimum", "VeryLow", "Low", "Medium", "High", "VeryHigh", "Maximum",
+                ]
+                .into_iter()
+                .map(|name| EncodedVariant::new(intern(name), None))
+                .collect(),
+            )));
 
         // Interface roots (payload-carrying enums, role-tagged).
-        let input_decl = CoreDeclaration::interface(
+        let input_decl = EncodedDeclaration::interface(
             DeclarationRole::InterfaceInput,
-            CoreType::Enumeration(CoreEnum::new(
+            EncodedType::Enumeration(EncodedEnum::new(
                 input,
                 vec![
-                    CoreVariant::new(intern("Record"), Some(CoreReference::Plain(entry))),
-                    CoreVariant::new(intern("Observe"), Some(CoreReference::Plain(query))),
+                    EncodedVariant::new(intern("Record"), Some(EncodedReference::Plain(entry))),
+                    EncodedVariant::new(intern("Observe"), Some(EncodedReference::Plain(query))),
                 ],
             )),
         );
-        let output_decl = CoreDeclaration::interface(
+        let output_decl = EncodedDeclaration::interface(
             DeclarationRole::InterfaceOutput,
-            CoreType::Enumeration(CoreEnum::new(
+            EncodedType::Enumeration(EncodedEnum::new(
                 output,
                 vec![
-                    CoreVariant::new(
+                    EncodedVariant::new(
                         intern("RecordAccepted"),
-                        Some(CoreReference::Plain(record_identifier)),
+                        Some(EncodedReference::Plain(record_identifier)),
                     ),
-                    CoreVariant::new(
+                    EncodedVariant::new(
                         intern("RecordsObserved"),
-                        Some(CoreReference::Plain(record_set)),
+                        Some(EncodedReference::Plain(record_set)),
                     ),
                 ],
             )),
         );
 
-        let schema = CoreSchema::new(vec![
+        let schema = EncodedSchema::new(vec![
             topic_decl,
             topics_decl,
             description_decl,
@@ -135,19 +137,19 @@ impl SpiritMin {
     }
 }
 
-fn newtype(name: Identifier, reference: CoreReference) -> CoreDeclaration {
-    CoreDeclaration::public(CoreType::Newtype(CoreNewtype::new(name, reference)))
+fn newtype(name: Identifier, reference: EncodedReference) -> EncodedDeclaration {
+    EncodedDeclaration::public(EncodedType::Newtype(EncodedNewtype::new(name, reference)))
 }
 
-fn vector(argument: CoreReference) -> CoreReference {
-    CoreReference::SingleTypeApplication {
+fn vector(argument: EncodedReference) -> EncodedReference {
+    EncodedReference::SingleTypeApplication {
         projection: SingleTypeReferenceProjection::Vector,
         argument: Box::new(argument),
     }
 }
 
 /// Project one item to Rust text with its trailing newline trimmed.
-fn project(item: &core_logos::CoreItem, names: &NameTable) -> String {
+fn project(item: &core_logos::EncodedItem, names: &NameTable) -> String {
     RustSource::project_item(item, names)
         .expect("project item")
         .as_str()
@@ -399,7 +401,7 @@ fn an_enriched_selection_on_a_root_less_schema_errors_loudly() {
     // Class B/C/D gate on interface roots; a schema of one plain newtype has none.
     let mut names = NameTable::new();
     let identifier = names.intern(Name::new("Lonely"));
-    let schema = CoreSchema::new(vec![newtype(identifier, CoreReference::Integer)]);
+    let schema = EncodedSchema::new(vec![newtype(identifier, EncodedReference::Integer)]);
     let error = MacroPackage::enriched_fixture()
         .apply_enriched(&schema, &names)
         .expect_err("interface classes must reject a root-less schema");
@@ -429,7 +431,7 @@ fn the_plain_and_wire_fixtures_keep_an_empty_selection() {
 /// spirit-min values a transcription would have carried. This is the interface shape
 /// the four-process witness drives as `second-min`.
 struct SecondMin {
-    schema: CoreSchema,
+    schema: EncodedSchema,
     names: NameTable,
 }
 
@@ -446,46 +448,46 @@ impl SecondMin {
         let input = intern("Input");
         let output = intern("Output");
 
-        let weight_decl = newtype(weight, CoreReference::Integer);
-        let note_decl = newtype(note, CoreReference::String);
-        let ticket_decl = newtype(ticket, CoreReference::Integer);
-        let priority_decl = CoreDeclaration::public(CoreType::Enumeration(CoreEnum::new(
+        let weight_decl = newtype(weight, EncodedReference::Integer);
+        let note_decl = newtype(note, EncodedReference::String);
+        let ticket_decl = newtype(ticket, EncodedReference::Integer);
+        let priority_decl = EncodedDeclaration::public(EncodedType::Enumeration(EncodedEnum::new(
             priority,
             ["Low", "Normal", "Urgent"]
                 .into_iter()
-                .map(|name| CoreVariant::new(intern(name), None))
+                .map(|name| EncodedVariant::new(intern(name), None))
                 .collect(),
         )));
-        let parcel_decl = CoreDeclaration::public(CoreType::Struct(CoreStruct::new(
+        let parcel_decl = EncodedDeclaration::public(EncodedType::Struct(EncodedStruct::new(
             parcel,
             vec![
-                CoreField::new(intern("weight"), CoreReference::Plain(weight)),
-                CoreField::new(intern("note"), CoreReference::Plain(note)),
-                CoreField::new(intern("priority"), CoreReference::Plain(priority)),
+                EncodedField::new(intern("weight"), EncodedReference::Plain(weight)),
+                EncodedField::new(intern("note"), EncodedReference::Plain(note)),
+                EncodedField::new(intern("priority"), EncodedReference::Plain(priority)),
             ],
         )));
-        let input_decl = CoreDeclaration::interface(
+        let input_decl = EncodedDeclaration::interface(
             DeclarationRole::InterfaceInput,
-            CoreType::Enumeration(CoreEnum::new(
+            EncodedType::Enumeration(EncodedEnum::new(
                 input,
-                vec![CoreVariant::new(
+                vec![EncodedVariant::new(
                     intern("Enqueue"),
-                    Some(CoreReference::Plain(parcel)),
+                    Some(EncodedReference::Plain(parcel)),
                 )],
             )),
         );
-        let output_decl = CoreDeclaration::interface(
+        let output_decl = EncodedDeclaration::interface(
             DeclarationRole::InterfaceOutput,
-            CoreType::Enumeration(CoreEnum::new(
+            EncodedType::Enumeration(EncodedEnum::new(
                 output,
-                vec![CoreVariant::new(
+                vec![EncodedVariant::new(
                     intern("Enqueued"),
-                    Some(CoreReference::Plain(ticket)),
+                    Some(EncodedReference::Plain(ticket)),
                 )],
             )),
         );
 
-        let schema = CoreSchema::new(vec![
+        let schema = EncodedSchema::new(vec![
             weight_decl,
             note_decl,
             priority_decl,

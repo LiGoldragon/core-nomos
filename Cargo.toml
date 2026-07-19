@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.3.0"
+version      = "0.4.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -13,12 +13,12 @@ name = "core_nomos"
 path = "src/lib.rs"
 
 [dependencies]
-content-identity = { git = "https://github.com/LiGoldragon/protos.git", rev = "7e60f60fbc144265cf5ac1ec238b87744967d4eb" }
-name-table       = { git = "https://github.com/LiGoldragon/protos.git", rev = "7e60f60fbc144265cf5ac1ec238b87744967d4eb" }
-core-schema      = { git = "https://github.com/LiGoldragon/core-schema.git", rev = "26a480777a7b95e6bb825ce14d4527596bf95dbf" }
-core-logos       = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "c25b5f58205adc34b9ec940634d0f50fdfb0cc3d" }
-textual-rust     = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "95a8a29ead1d1b41fbf555cabb2c1abb56709c53" }
-structural-codec = { git = "https://github.com/LiGoldragon/protos.git", rev = "7e60f60fbc144265cf5ac1ec238b87744967d4eb" }
+content-identity = { git = "https://github.com/LiGoldragon/protos.git", rev = "f12a80c85d9d27ac4432b86b7d3095e8387c6fa9" }
+name-table       = { git = "https://github.com/LiGoldragon/protos.git", rev = "f12a80c85d9d27ac4432b86b7d3095e8387c6fa9" }
+core-schema      = { git = "https://github.com/LiGoldragon/core-schema.git", rev = "1122370fbe3f65c56957431714a19c3920365466" }
+core-logos       = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "22b12a474c86cf812c89b41054d4e26e870ec70c" }
+textual-rust     = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "f264e9465ad2988550a296419471a4c18386d496" }
+structural-codec = { git = "https://github.com/LiGoldragon/protos.git", rev = "f12a80c85d9d27ac4432b86b7d3095e8387c6fa9" }
 rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror        = "2"
 
