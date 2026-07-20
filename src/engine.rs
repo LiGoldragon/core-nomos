@@ -1,5 +1,5 @@
-//! The lowering engine: apply a macro package to a `CoreSchema` declaration set,
-//! producing `CoreLogos` items and the extended, continuous logos NameTable.
+//! The lowering engine: apply a macro package to a `EncodedSchema` declaration set,
+//! producing `EncodedLogos` items and the extended, continuous logos NameTable.
 //!
 //! Conversions are typed end to end, outside text. Named invocations resolve or
 //! error loudly; structural defaults cover plain declarations; recursive
@@ -9,11 +9,11 @@
 //! literal re-interned through the package's authoring table into the extension.
 
 use core_logos::{
-    Attribute, ConfigurationAttribute, ConfigurationPredicate, CoreItem, DeriveGroup, Enumeration,
-    Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType, Struct,
-    TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
+    Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, EncodedItem,
+    Enumeration, Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType,
+    Struct, TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
-use core_schema::{CoreDeclaration, CoreSchema, CoreType};
+use core_schema::{EncodedDeclaration, EncodedSchema, EncodedType};
 use name_table::{Identifier, NameTable};
 use structural_codec::{Converted, EncodedConversion};
 
@@ -27,15 +27,14 @@ use crate::template::{
     ResultTemplate, Scalar, Sequence, SequenceItem, Splice, SpliceElement, StructTemplate,
 };
 
-/// The result of lowering a schema: the produced `CoreLogos` items, in declaration
+/// The result of lowering a schema: the produced `EncodedLogos` items, in declaration
 /// order, and the extended logos NameTable that resolves every identifier they
-/// carry. The NameTable begins as an `extend_from` of the schema table (schema
-/// indices preserved) and appends logos-only names (derive paths, leaf type names,
-/// derived field names).
+/// carry. The NameTable owns a Logos slice and borrows the completed Schema and
+/// LogosStandard slices; Logos-only names allocate in that owned slice.
 #[derive(Clone, Debug)]
 pub struct Lowering {
     /// The lowered items, one per schema declaration.
-    pub items: Vec<CoreItem>,
+    pub items: Vec<EncodedItem>,
     /// The extended, continuous logos NameTable.
     pub names: NameTable,
 }
@@ -45,14 +44,15 @@ impl MacroPackage {
     /// section's structural default macro.
     pub fn apply(
         &self,
-        schema: &CoreSchema,
+        schema: &EncodedSchema,
         schema_names: &NameTable,
     ) -> Result<Lowering, NomosError> {
-        let mut evaluator = Evaluator::new(self, schema_names);
+        self.ensure_authoring_names()?;
+        let mut evaluator = Evaluator::new(self, schema_names)?;
         let items = evaluator.lower_schema(schema)?;
         Ok(Lowering {
             items,
-            names: evaluator.into_names(),
+            names: evaluator.into_names()?,
         })
     }
 
@@ -65,25 +65,26 @@ impl MacroPackage {
     /// [`apply`](Self::apply) does.
     pub fn apply_enriched(
         &self,
-        schema: &CoreSchema,
+        schema: &EncodedSchema,
         schema_names: &NameTable,
     ) -> Result<Lowering, NomosError> {
-        let mut evaluator = Evaluator::new(self, schema_names);
+        self.ensure_authoring_names()?;
+        let mut evaluator = Evaluator::new(self, schema_names)?;
         let mut items = evaluator.lower_schema(schema)?;
         for class in self.selection() {
             items.extend(evaluator.generate_class(class, schema)?);
         }
         Ok(Lowering {
             items,
-            names: evaluator.into_names(),
+            names: evaluator.into_names()?,
         })
     }
 }
 
-/// A [`Lowering`] IS a [`Converted`] `Vec<CoreItem>`-plus-names: the domain-named
+/// A [`Lowering`] IS a [`Converted`] `Vec<EncodedItem>`-plus-names: the domain-named
 /// result of the lowering and the reusable-trait output of an [`EncodedConversion`] are
 /// the same data, so the trait face costs no new representation.
-impl From<Lowering> for Converted<Vec<CoreItem>> {
+impl From<Lowering> for Converted<Vec<EncodedItem>> {
     fn from(lowering: Lowering) -> Self {
         Converted {
             target: lowering.items,
@@ -95,22 +96,22 @@ impl From<Lowering> for Converted<Vec<CoreItem>> {
 /// The schema→logos lowering IS the reference [`EncodedConversion`] instance — the
 /// psyche's real type conversion `EncodedForm<Schema> -> EncodedForm<Logos>` seated as
 /// the truth-side pairing in `structural-codec`. The source is the schema
-/// [`EncodedForm`](structural_codec::EncodedForm) (`CoreSchema`); the target is the
-/// lowered logos item set (`Vec<CoreItem>`, the logos EncodedForm); and the continuous
+/// [`EncodedForm`](structural_codec::EncodedForm) (`EncodedSchema`); the target is the
+/// lowered logos item set (`Vec<EncodedItem>`, the logos EncodedForm); and the continuous
 /// NameTable threads the layer, schema indices preserved and logos names appended. No
 /// text crosses this path — the signature carries no `&str`/`String`, which is the
 /// structural proof that the conversion is a real type conversion, not string
 /// manipulation. It delegates to the eponymous [`apply`](MacroPackage::apply).
 impl EncodedConversion for MacroPackage {
-    type Source = CoreSchema;
-    type Target = Vec<CoreItem>;
+    type Source = EncodedSchema;
+    type Target = Vec<EncodedItem>;
     type Error = NomosError;
 
     fn convert(
         &self,
-        source: &CoreSchema,
+        source: &EncodedSchema,
         names: &NameTable,
-    ) -> Result<Converted<Vec<CoreItem>>, NomosError> {
+    ) -> Result<Converted<Vec<EncodedItem>>, NomosError> {
         Ok(self.apply(source, names)?.into())
     }
 }
@@ -118,9 +119,9 @@ impl EncodedConversion for MacroPackage {
 /// A produced fragment — what evaluating a result template yields. A structural
 /// default yields an item; a recursively-invoked attribute macro yields a vector.
 enum Fragment {
-    // Boxed: a `CoreItem` now carries whole impl-block/method-body trees, dwarfing
+    // Boxed: a `EncodedItem` now carries whole impl-block/method-body trees, dwarfing
     // the attribute-vector variant, so the box keeps the enum small.
-    Item(Box<CoreItem>),
+    Item(Box<EncodedItem>),
     Attributes(Vec<Attribute>),
 }
 
@@ -138,19 +139,19 @@ pub(crate) struct Evaluator<'package> {
 }
 
 impl<'package> Evaluator<'package> {
-    fn new(package: &'package MacroPackage, schema_names: &NameTable) -> Self {
-        Self {
+    fn new(package: &'package MacroPackage, schema_names: &NameTable) -> Result<Self, NomosError> {
+        Ok(Self {
             package,
-            names: NameTableBoundary::new(package.names(), schema_names),
+            names: NameTableBoundary::new(package.names(), schema_names)?,
             active: Vec::new(),
-        }
+        })
     }
 
-    fn into_names(self) -> NameTable {
+    fn into_names(self) -> Result<NameTable, NomosError> {
         self.names.into_names()
     }
 
-    fn lower_schema(&mut self, schema: &CoreSchema) -> Result<Vec<CoreItem>, NomosError> {
+    fn lower_schema(&mut self, schema: &EncodedSchema) -> Result<Vec<EncodedItem>, NomosError> {
         schema
             .declarations()
             .iter()
@@ -158,9 +159,12 @@ impl<'package> Evaluator<'package> {
             .collect()
     }
 
-    fn lower_declaration(&mut self, declaration: &CoreDeclaration) -> Result<CoreItem, NomosError> {
+    fn lower_declaration(
+        &mut self,
+        declaration: &EncodedDeclaration,
+    ) -> Result<EncodedItem, NomosError> {
         let value = declaration.value();
-        let section = SectionDefault::of_core_type(value);
+        let section = SectionDefault::of_encoded_type(value);
         let identity = self
             .package
             .structural_default(section)
@@ -203,14 +207,14 @@ impl<'package> Evaluator<'package> {
     fn bind_input(
         &self,
         signature: &InputSignature,
-        value: &CoreType,
+        value: &EncodedType,
     ) -> Result<BoundInput, NomosError> {
         let mut bound = BoundInput::new();
         for parameter in &signature.parameters {
             let meta_value = match parameter.meta {
                 MetaType::Name => MetaValue::Name(value.identifier()),
                 MetaType::Type => match value {
-                    CoreType::Newtype(newtype) => MetaValue::Type(newtype.reference().clone()),
+                    EncodedType::Newtype(newtype) => MetaValue::Type(newtype.reference().clone()),
                     _ => {
                         return Err(NomosError::MetaShape {
                             meta: MetaType::Type,
@@ -218,7 +222,9 @@ impl<'package> Evaluator<'package> {
                     }
                 },
                 MetaType::Fields => match value {
-                    CoreType::Struct(structure) => MetaValue::Fields(structure.fields().to_vec()),
+                    EncodedType::Struct(structure) => {
+                        MetaValue::Fields(structure.fields().to_vec())
+                    }
                     _ => {
                         return Err(NomosError::MetaShape {
                             meta: MetaType::Fields,
@@ -226,7 +232,7 @@ impl<'package> Evaluator<'package> {
                     }
                 },
                 MetaType::Variants => match value {
-                    CoreType::Enumeration(enumeration) => {
+                    EncodedType::Enumeration(enumeration) => {
                         MetaValue::Variants(enumeration.variants().to_vec())
                     }
                     _ => {
@@ -260,7 +266,7 @@ impl<'package> Evaluator<'package> {
         &mut self,
         item: &ItemTemplate,
         bound: &BoundInput,
-    ) -> Result<CoreItem, NomosError> {
+    ) -> Result<EncodedItem, NomosError> {
         match item {
             ItemTemplate::Newtype(template) => self.evaluate_newtype(template, bound),
             ItemTemplate::Struct(template) => self.evaluate_struct(template, bound),
@@ -272,11 +278,11 @@ impl<'package> Evaluator<'package> {
         &mut self,
         template: &NewtypeTemplate,
         bound: &BoundInput,
-    ) -> Result<CoreItem, NomosError> {
+    ) -> Result<EncodedItem, NomosError> {
         let attributes = self.evaluate_attributes(&template.attributes)?;
         let name = self.evaluate_name(&template.name, bound)?;
         let wrapped = self.evaluate_type(&template.wrapped, bound)?;
-        Ok(CoreItem::Newtype(Newtype {
+        Ok(EncodedItem::Newtype(Newtype {
             visibility: template.visibility.clone(),
             attributes,
             name,
@@ -294,11 +300,11 @@ impl<'package> Evaluator<'package> {
         &mut self,
         template: &StructTemplate,
         bound: &BoundInput,
-    ) -> Result<CoreItem, NomosError> {
+    ) -> Result<EncodedItem, NomosError> {
         let attributes = self.evaluate_attributes(&template.attributes)?;
         let name = self.evaluate_name(&template.name, bound)?;
         let fields = self.evaluate_fields(&template.fields, bound)?;
-        Ok(CoreItem::Struct(Struct {
+        Ok(EncodedItem::Struct(Struct {
             visibility: template.visibility.clone(),
             attributes,
             name,
@@ -311,7 +317,7 @@ impl<'package> Evaluator<'package> {
         &mut self,
         template: &EnumerationTemplate,
         bound: &BoundInput,
-    ) -> Result<CoreItem, NomosError> {
+    ) -> Result<EncodedItem, NomosError> {
         let mut attributes = self.evaluate_attributes(&template.attributes)?;
         let name = self.evaluate_name(&template.name, bound)?;
         let variants = self.evaluate_variants(&template.variants, bound)?;
@@ -321,7 +327,7 @@ impl<'package> Evaluator<'package> {
         {
             self.names.remove_copy_derive(&mut attributes)?;
         }
-        Ok(CoreItem::Enumeration(Enumeration {
+        Ok(EncodedItem::Enumeration(Enumeration {
             visibility: template.visibility.clone(),
             attributes,
             name,
@@ -569,7 +575,7 @@ impl<'package> Evaluator<'package> {
     /// never reads or introduces a spelling while performing this conversion.
     pub(crate) fn lower_reference(
         &mut self,
-        reference: &core_schema::CoreReference,
+        reference: &core_schema::EncodedReference,
     ) -> Result<TypeReference, NomosError> {
         self.names.lower_reference(reference)
     }

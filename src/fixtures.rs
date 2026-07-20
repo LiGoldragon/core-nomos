@@ -67,7 +67,7 @@ impl MacroPackage {
     /// ergonomics, the wire-contract vocabulary, the wire exchange codec (the working
     /// `encode_signal_frame` / `decode_signal_frame` bodies for the ordinary exchange
     /// leg), the wire exchange envelope (the `RequestPayload` / `SignalOperationHeads` /
-    /// `LogVariant` impls, the `ExchangeFrame` aliases, and the `into_frame` /
+    /// `LogVariant` impls and the direct canonical `into_frame` /
     /// `into_reply_frame` constructors), and the trace support. The wire and plain
     /// fixtures are unchanged — their selection stays empty.
     ///

@@ -118,7 +118,7 @@ pub struct Splice {
 /// The per-element production of a splice.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum SpliceElement {
-    /// Each bound schema field becomes a `CoreLogos` field: the given visibility,
+    /// Each bound schema field becomes a `EncodedLogos` field: the given visibility,
     /// a name selected by the field-name rule, and its lowered type.
     Field {
         /// The visibility placed on every produced field (schema carries none).
@@ -131,7 +131,7 @@ pub enum SpliceElement {
     Variant,
 }
 
-/// How a struct macro selects a field's `CoreLogos` name (deliverable 3: "derived
+/// How a struct macro selects a field's `EncodedLogos` name (deliverable 3: "derived
 /// or explicit names per the Field rules").
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FieldNameRule {
@@ -151,13 +151,13 @@ pub enum FieldNameRule {
 /// default produces an item; `WireAttributes` produces an attribute vector.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum ResultTemplate {
-    /// Produces a single `CoreItem`.
+    /// Produces a single `EncodedItem`.
     Item(ItemTemplate),
     /// Produces an attribute vector (the recursive `Invoke` target).
     Attributes(Sequence<Attribute>),
 }
 
-/// An item template — CoreLogos-shaped, one variant per produced item kind. The
+/// An item template — EncodedLogos-shaped, one variant per produced item kind. The
 /// enum is closed; the fixture corpus exercises newtypes and structs, and a new
 /// item kind is a new variant (the algebra grows by design, no wildcard).
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -201,7 +201,7 @@ pub struct StructTemplate {
     pub fields: Sequence<Field>,
 }
 
-/// The enum result template. Variants are spliced from the bound CoreSchema
+/// The enum result template. Variants are spliced from the bound EncodedSchema
 /// enumeration, while attributes, visibility, and name follow the other item
 /// templates.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -217,16 +217,16 @@ pub struct EnumerationTemplate {
 /// reference fixtures emit alongside the data declarations — impl blocks (with methods,
 /// associated types, and associated consts), functions, consts, const modules, and
 /// use imports. Where the per-declaration structural defaults ([`ItemTemplate`])
-/// lower one CoreLogos item per declaration, a [`GenerationClass`] is a whole-schema
+/// lower one EncodedLogos item per declaration, a [`GenerationClass`] is a whole-schema
 /// generator: it reads the schema's newtype catalogue and interface roots
-/// ([`core_schema::DeclarationRole`]) and emits an ordered run of CoreLogos items.
+/// ([`core_schema::DeclarationRole`]) and emits an ordered run of EncodedLogos items.
 ///
 /// Each class is closed typed data — no head strings, no text. The schema-derived
 /// names, types, and (for the wire stub) transcribed layout values flow from the
 /// bound schema when the package is applied ([`crate::MacroPackage::apply_enriched`]);
-/// the interpreter that turns a class into CoreLogos items builds the fixed method
+/// the interpreter that turns a class into EncodedLogos items builds the fixed method
 /// and match skeletons directly, exactly as the fixed module prelude
-/// ([`crate::ModuleHead`]) authors its stringless CoreLogos data, keeping every
+/// ([`crate::ModuleHead`]) authors its stringless EncodedLogos data, keeping every
 /// identifier interned into the one continuous logos NameTable.
 ///
 /// The document-order rule the eventual full-file assembly follows is the class
@@ -269,9 +269,9 @@ pub enum GenerationClass {
     /// The **wire exchange envelope** — the ordinary-exchange envelope surface the
     /// ported daemon and clients speak, over the codec: the request root's
     /// `signal_frame::RequestPayload`, `SignalOperationHeads`, and `LogVariant` trait
-    /// impls; the `Frame` / `FrameBody` / `Request` / `ReplyEnvelope` / `RequestBuilder`
-    /// type aliases over `signal_frame::ExchangeFrame` (the ordinary two-way leg — no
-    /// `StreamingFrame`, whose subscription envelope waits on pending psyche rulings);
+    /// impls and direct canonical `signal_frame::ExchangeFrame` construction (the
+    /// ordinary two-way leg — no `StreamingFrame`, whose subscription envelope waits
+    /// on pending psyche rulings);
     /// and the request root's `into_frame` and the reply root's `into_reply_frame`
     /// constructors. Named by its content — the envelope over the codec.
     WireExchangeEnvelope,

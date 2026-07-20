@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use content_identity::ContentHash;
-use name_table::{Identifier, Name, NameTable};
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable, NameTableError};
 
 use crate::definition::MacroDefinition;
 use crate::domain::EncodedNomosDomain;
@@ -58,6 +58,7 @@ pub struct MacroPackage {
     definitions: MacroDefinitions,
     names: NameTable,
     selection: Vec<GenerationClass>,
+    authoring_error: Option<NameTableError>,
 }
 
 impl MacroPackage {
@@ -70,15 +71,24 @@ impl MacroPackage {
                 macros: BTreeMap::new(),
                 structural_defaults: BTreeMap::new(),
             },
-            names: NameTable::new(),
+            names: NameTable::new(IdentifierNamespace::Nomos),
             selection: Vec::new(),
+            authoring_error: None,
         }
     }
 
     /// Intern an authoring name (a macro name, a binding name, or a literal in a
     /// template) into this package's NameTable, returning its identifier.
     pub fn author_name(&mut self, text: &str) -> Identifier {
-        self.names.intern(Name::new(text))
+        match self.names.intern(Name::new(text)) {
+            Ok(identifier) => identifier,
+            Err(error) => {
+                if self.authoring_error.is_none() {
+                    self.authoring_error = Some(error);
+                }
+                Identifier::Nomos(0)
+            }
+        }
     }
 
     /// Register a macro, minting its identity. A structural macro is also recorded
@@ -93,6 +103,15 @@ impl MacroPackage {
         }
         self.definitions.macros.insert(identity, definition);
         identity
+    }
+
+    /// Return the first failed authoring allocation before any lowering work can
+    /// expose an encoded result built with its placeholder identifier.
+    pub(crate) fn ensure_authoring_names(&self) -> Result<(), NomosError> {
+        match &self.authoring_error {
+            Some(error) => Err(error.clone().into()),
+            None => Ok(()),
+        }
     }
 
     /// The authoring NameTable sibling.

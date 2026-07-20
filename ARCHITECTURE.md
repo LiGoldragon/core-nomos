@@ -54,8 +54,8 @@ macro is authored as data (see `fixtures.rs`), exactly as a daemon would load it
 ## The fixed module head (`ModuleHead`)
 
 Every generated wire module opens with the same, schema-independent head: the
-`// @generated` marker comment, the four scalar type aliases
-(`String`/`Integer`/`Boolean`/`Path`), and the cfg-gated NOTA import. That block is
+`// @generated` marker comment and the cfg-gated NOTA import. Scalar references
+project directly to canonical Rust types; the module head emits no type aliases. That block is
 a fixed property of the *module shape* the renderer emits, not of any schema, so it
 is Nomos's knowledge, held here (`prelude.rs`) as stringless logos-encoded-form data with a
 sibling NameTable. `ModuleHead::render` projects it through the TextualRust codec —
@@ -64,9 +64,8 @@ takes a `textual-rust` **library** dependency for this one rendering surface. Th
 does not reintroduce a Nomos grammar: the macro engine stays data-only; only the
 generated-Rust *output* head is rendered, exactly as the declarations are.
 
-The head is two projection blocks: the four scalar aliases pack into one
-`prettyplease` pass (no blank line between them), and the NOTA import is its own
-block; the renderer separates blocks by a blank line, which the render reproduces.
+The head is one NOTA-import projection block. The renderer projects it through
+one `prettyplease` pass and leaves a blank line before declarations.
 The marker comment sits outside every item, so it is prepended raw — the one
 raw-text seam (a recorded lean), with `prettyplease` still the sole formatter of the
 item bodies. The projection engine (`logos-engine`) prepends `ModuleHead::render`
@@ -133,15 +132,14 @@ structural.
 ## The engine and the one continuous identifier space
 
 `MacroPackage::apply(schema, schema_names) → Lowering { items, names }`. The
-`NameTableBoundary` begins the returned NameTable as
-`NameTable::extend_from(schema_names)` — every schema identifier keeps its exact
-index — and performs all logos-only name allocation (derive paths, leaf type names,
-derived field names) at the NameTable/emission boundary. Because interning dedups,
-a derived name that reproduces an existing name reuses its identifier: the
-continuous space is a genuine runtime operation, not a bookkeeping claim. Every
-template literal is authored against the package's own NameTable and re-interned
-through that boundary into the extension, so a portable package composes with any
-schema table.
+`NameTableBoundary` begins the returned NameTable as a Logos-owned slice that
+borrows completed Schema and LogosStandard slices. Borrowed identifiers retain
+their namespace variant and local value; no source slice is copied, flattened, or
+renumbered. Logos-only allocation (derive paths, leaf type names, derived field
+names) occurs at the NameTable/emission boundary. Every template literal is
+resolved from Nomos's own NameTable then interned into the Logos-owned slice, so a
+portable package composes with any schema table without putting strings in the
+transform.
 
 The field-name rule (`FieldNameRule::FieldRuleDispatch`) distinguishes an *elided*
 field (its schema name equals the `field_name` of its type — re-derive through the
@@ -267,13 +265,13 @@ copies would carry incompatible encoded-item types. The Nix flake (`build`/`test
   builds output items after typed macro lowering. Its derived-name and output-literal
   work is delegated to `NameTableBoundary`; this keeps text out of the schema→logos
   macro transform without growing the `Realize` / `Splice` template DSL into a second
-  copy of the CoreLogos algebra. Trigger to revisit: a class shape that a fixed
+  copy of the EncodedLogos algebra. Trigger to revisit: a class shape that a fixed
   skeleton-with-holes expresses cleanly, or a psyche ruling that the classes must be
   authored as escape-templates.
 - **`SignalOperationHeads` is emitted for the request (input) root only.** The reference fixture
   carries one `SignalOperationHeads` impl (`Input`), the request payload's operation
   heads; the codec class follows it. `RequestPayload`, `LogVariant`, the `ExchangeFrame`
-  type aliases, and the `into_frame` / `into_reply_frame` envelope constructors remain
+  aliases, and the `into_frame` / `into_reply_frame` envelope constructors remain
   out of scope: the delivered codec is the encode/decode leg (`encode_signal_frame` /
   `decode_signal_frame` over the short-header + rkyv wire), not the frame-envelope
   wrapping. Trigger to revisit: a slice that ports the exchange-envelope surface.

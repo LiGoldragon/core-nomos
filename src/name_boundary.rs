@@ -9,9 +9,9 @@
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 
-use core_logos::{Attribute, PathNode, TypeApplication, TypeReference};
-use core_schema::{CoreField, CoreReference};
-use name_table::{Identifier, Name, NameTable};
+use core_logos::{Attribute, PathNode, TypeApplication, TypeReference, standard_name_table};
+use core_schema::{EncodedField, EncodedReference};
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable, NameTableError};
 
 use crate::error::NomosError;
 use crate::template::{FieldNameRule, NameTransform};
@@ -21,21 +21,50 @@ use crate::template::{FieldNameRule, NameTransform};
 pub(crate) struct NameTableBoundary<'package> {
     package_names: &'package NameTable,
     names: NameTable,
+    deferred_allocation_error: Option<NameTableError>,
 }
 
 impl<'package> NameTableBoundary<'package> {
-    /// Begin the logos table from the schema table so schema identifiers retain
-    /// their indices throughout lowering.
-    pub(crate) fn new(package_names: &'package NameTable, schema_names: &NameTable) -> Self {
-        Self {
+    /// Begin the Logos-owned slice and borrow the completed Schema and standard
+    /// slices. Borrowing preserves their namespaced identifiers without copying or
+    /// renumbering either source table.
+    pub(crate) fn new(
+        package_names: &'package NameTable,
+        schema_names: &NameTable,
+    ) -> Result<Self, NomosError> {
+        let standard_names = standard_name_table()?;
+        let names = NameTable::new(IdentifierNamespace::Logos)
+            .compose(schema_names)?
+            .compose(&standard_names)?;
+        Ok(Self {
             package_names,
-            names: NameTable::extend_from(schema_names),
-        }
+            names,
+            deferred_allocation_error: None,
+        })
     }
 
     /// Finish the boundary and return the completed logos table.
-    pub(crate) fn into_names(self) -> NameTable {
-        self.names
+    pub(crate) fn into_names(self) -> Result<NameTable, NomosError> {
+        if let Some(error) = self.deferred_allocation_error {
+            return Err(error.into());
+        }
+        Ok(self.names)
+    }
+
+    /// Allocate a fixed projection identifier for an item-construction helper.
+    /// Helpers that cannot themselves return a result record the typed failure;
+    /// `into_names` returns it before a lowering is observable. This keeps the
+    /// complete generator boundary fallible without a panic or fabricated text.
+    pub(crate) fn intern(&mut self, name: Name) -> Identifier {
+        match self.names.intern(name) {
+            Ok(identifier) => identifier,
+            Err(error) => {
+                if self.deferred_allocation_error.is_none() {
+                    self.deferred_allocation_error = Some(error);
+                }
+                Identifier::Logos(0)
+            }
+        }
     }
 
     /// Re-intern a template literal from the package's authoring table into the
@@ -45,7 +74,7 @@ impl<'package> NameTableBoundary<'package> {
         identifier: Identifier,
     ) -> Result<Identifier, NomosError> {
         let name = self.package_names.resolve(identifier)?.clone();
-        Ok(self.names.intern(name))
+        Ok(self.names.intern(name)?)
     }
 
     /// Apply a typed name transform and allocate its projected identifier only at
@@ -59,15 +88,15 @@ impl<'package> NameTableBoundary<'package> {
             NameTransform::Identity => Ok(identifier),
             NameTransform::FieldName => {
                 let derived = self.names.resolve(identifier)?.field_name();
-                Ok(self.names.intern(Name::new(derived)))
+                Ok(self.names.intern(Name::new(derived))?)
             }
             NameTransform::Screaming => {
                 let derived = self.names.resolve(identifier)?.screaming();
-                Ok(self.names.intern(Name::new(derived)))
+                Ok(self.names.intern(Name::new(derived))?)
             }
             NameTransform::PascalCase => {
                 let derived = self.names.resolve(identifier)?.pascal_case();
-                Ok(self.names.intern(Name::new(derived)))
+                Ok(self.names.intern(Name::new(derived))?)
             }
         }
     }
@@ -77,7 +106,7 @@ impl<'package> NameTableBoundary<'package> {
     /// are read solely when the typed field-rule dispatch explicitly preserves one.
     pub(crate) fn field_names(
         &mut self,
-        fields: &[CoreField],
+        fields: &[EncodedField],
         rule: FieldNameRule,
     ) -> Result<Vec<Identifier>, NomosError> {
         let group_names = self.derive_group_names(fields)?;
@@ -91,7 +120,7 @@ impl<'package> NameTableBoundary<'package> {
     /// The deterministic Rust names for an ordered same-typed field group. This
     /// is name work, so its string derivation and allocation belong at the boundary,
     /// not in the typed schema→logos evaluator.
-    fn derive_group_names(&self, fields: &[CoreField]) -> Result<Vec<Name>, NomosError> {
+    fn derive_group_names(&self, fields: &[EncodedField]) -> Result<Vec<Name>, NomosError> {
         let base_names = fields
             .iter()
             .map(|field| field.reference().derived_field_name(&self.names))
@@ -124,16 +153,16 @@ impl<'package> NameTableBoundary<'package> {
     /// Apply a field-name selection rule after the group names have been derived.
     fn field_name(
         &mut self,
-        field: &CoreField,
+        field: &EncodedField,
         group_name: Name,
         rule: FieldNameRule,
     ) -> Result<Identifier, NomosError> {
         match rule {
             FieldNameRule::PreserveSchema => Ok(field.identifier()),
-            FieldNameRule::AlwaysDeriveFromType => Ok(self.names.intern(group_name)),
+            FieldNameRule::AlwaysDeriveFromType => Ok(self.names.intern(group_name)?),
             FieldNameRule::FieldRuleDispatch => {
                 if field.name_is_derivable(&self.names)? {
-                    Ok(self.names.intern(group_name))
+                    Ok(self.names.intern(group_name)?)
                 } else {
                     Ok(field.identifier())
                 }
@@ -145,28 +174,46 @@ impl<'package> NameTableBoundary<'package> {
     /// required fixed projection names at the NameTable boundary.
     pub(crate) fn lower_reference(
         &mut self,
-        reference: &CoreReference,
+        reference: &EncodedReference,
     ) -> Result<TypeReference, NomosError> {
         match reference {
-            CoreReference::Integer => Ok(TypeReference::Path(self.leaf_path("Integer"))),
-            CoreReference::String => Ok(TypeReference::Path(self.leaf_path("String"))),
-            CoreReference::Boolean => Ok(TypeReference::Path(self.leaf_path("Boolean"))),
-            CoreReference::Bytes => Ok(TypeReference::Path(self.leaf_path("Bytes"))),
-            CoreReference::Plain(identifier) => Ok(TypeReference::Path(PathNode {
+            // Scalar leaves project directly to their canonical Rust types. The
+            // Logos standard slice supplies the fixed path identifiers; Nomos does
+            // not create scalar aliases in the generated module.
+            EncodedReference::Integer => Ok(TypeReference::Path(PathNode {
+                segments: vec![core_logos::UNSIGNED_64],
+            })),
+            EncodedReference::String => Ok(TypeReference::Path(PathNode {
+                segments: vec![
+                    core_logos::STANDARD_LIBRARY,
+                    core_logos::STRING_MODULE,
+                    core_logos::STRING,
+                ],
+            })),
+            EncodedReference::Boolean => Ok(TypeReference::Path(PathNode {
+                segments: vec![core_logos::RUST_BOOLEAN],
+            })),
+            EncodedReference::Bytes => Ok(TypeReference::Application(TypeApplication {
+                head: PathNode {
+                    segments: vec![core_logos::VECTOR],
+                },
+                arguments: vec![TypeReference::Path(self.leaf_path("u8")?)],
+            })),
+            EncodedReference::Plain(identifier) => Ok(TypeReference::Path(PathNode {
                 segments: vec![*identifier],
             })),
-            CoreReference::SingleTypeApplication {
+            EncodedReference::SingleTypeApplication {
                 projection,
                 argument,
             } => {
                 let head = self.single_projection_head(projection);
                 let argument = self.lower_reference(argument)?;
                 Ok(TypeReference::Application(TypeApplication {
-                    head: self.leaf_path(head),
+                    head: self.leaf_path(head)?,
                     arguments: vec![argument],
                 }))
             }
-            CoreReference::MultiTypeApplication {
+            EncodedReference::MultiTypeApplication {
                 projection,
                 arguments,
             } => {
@@ -176,12 +223,12 @@ impl<'package> NameTableBoundary<'package> {
                     .map(|argument| self.lower_reference(argument))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(TypeReference::Application(TypeApplication {
-                    head: self.leaf_path(head),
+                    head: self.leaf_path(head)?,
                     arguments,
                 }))
             }
-            CoreReference::ValueApplication { .. } => Err(NomosError::UnsupportedReference(
-                "a byte-length value application has no CoreLogos type-argument home",
+            EncodedReference::ValueApplication { .. } => Err(NomosError::UnsupportedReference(
+                "a byte-length value application has no EncodedLogos type-argument home",
             )),
         }
     }
@@ -210,7 +257,7 @@ impl<'package> NameTableBoundary<'package> {
         variant: Identifier,
     ) -> Result<Identifier, NomosError> {
         let derived = self.names.resolve(variant)?.field_name();
-        Ok(self.names.intern(Name::new(derived)))
+        Ok(self.names.intern(Name::new(derived))?)
     }
 
     /// Derive and allocate the short-header constant name from its typed root and
@@ -224,13 +271,13 @@ impl<'package> NameTableBoundary<'package> {
         let variant_screaming = self.names.resolve(variant)?.screaming();
         Ok(self
             .names
-            .intern(Name::new(format!("{root_screaming}_{variant_screaming}"))))
+            .intern(Name::new(format!("{root_screaming}_{variant_screaming}")))?)
     }
 
     /// Derive and allocate an interface route-enum name.
     pub(crate) fn route_enum_name(&mut self, root: Identifier) -> Result<Identifier, NomosError> {
         let root_name = self.names.resolve(root)?.as_str().to_owned();
-        Ok(self.names.intern(Name::new(format!("{root_name}Route"))))
+        Ok(self.names.intern(Name::new(format!("{root_name}Route")))?)
     }
 
     /// Produce an output string literal from typed root and variant identifiers at
@@ -276,10 +323,10 @@ impl<'package> NameTableBoundary<'package> {
     }
 
     /// Intern a fixed logos-only path head.
-    fn leaf_path(&mut self, text: &str) -> PathNode {
-        PathNode {
-            segments: vec![self.names.intern(Name::new(text))],
-        }
+    fn leaf_path(&mut self, text: &str) -> Result<PathNode, NomosError> {
+        Ok(PathNode {
+            segments: vec![self.names.intern(Name::new(text))?],
+        })
     }
 }
 
