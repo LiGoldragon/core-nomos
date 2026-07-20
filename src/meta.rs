@@ -51,6 +51,15 @@ impl InputSignature {
             parameters: Vec::new(),
         }
     }
+
+    /// The declared meta-type of one binding, if that binding belongs to this
+    /// definition. Definition checking uses this before macro expansion begins.
+    pub fn meta_for(&self, binding: Identifier) -> Option<MetaType> {
+        self.parameters
+            .iter()
+            .find(|parameter| parameter.binding == binding)
+            .map(|parameter| parameter.meta)
+    }
 }
 
 /// A value bound into an input parameter when a macro is applied to a declaration.

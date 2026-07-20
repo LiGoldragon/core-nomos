@@ -410,8 +410,8 @@ fn missing_structural_default_errors_loudly() {
 fn unknown_named_invocation_errors_loudly() {
     use core_nomos::{
         BindingRef, Escape, InputParameter, InputSignature, ItemTemplate, MacroDefinition,
-        MacroIdentity, MacroKind, MetaType, NameTransform, NewtypeTemplate, PackageRevision,
-        Realize, ResultTemplate, Scalar, SectionDefault, Sequence, SequenceItem,
+        MacroIdentity, MacroKind, MetaType, NewtypeTemplate, PackageRevision, Realize,
+        ResultTemplate, Scalar, SectionDefault, Sequence, SequenceItem,
     };
 
     let mut package = MacroPackage::new(PackageRevision(1));
@@ -436,14 +436,12 @@ fn unknown_named_invocation_errors_loudly() {
         },
         template: ResultTemplate::Item(ItemTemplate::Newtype(NewtypeTemplate {
             visibility: Visibility::Public,
-            attributes: Sequence::of(SequenceItem::Escape(Escape::Invoke(MacroIdentity::new(99)))),
+            attributes: Sequence::of(SequenceItem::RecursiveInvoke(MacroIdentity::new(99))),
             name: Scalar::Escape(Escape::Realize(Realize {
                 binding: BindingRef::Input(name_binding),
-                transform: NameTransform::Identity,
             })),
             wrapped: Scalar::Escape(Escape::Realize(Realize {
                 binding: BindingRef::Input(type_binding),
-                transform: NameTransform::Identity,
             })),
         })),
     });
@@ -476,9 +474,9 @@ fn recursive_cycle_is_rejected() {
         name: attributes_name,
         kind: MacroKind::Named,
         input: InputSignature::unit(),
-        template: ResultTemplate::Attributes(Sequence::of(SequenceItem::Escape(Escape::Invoke(
+        template: ResultTemplate::Attributes(Sequence::of(SequenceItem::RecursiveInvoke(
             self_identity,
-        )))),
+        ))),
     });
     // A newtype default that invokes the self-invoking attributes macro.
     let name_binding = package.author_name("name");
@@ -486,8 +484,8 @@ fn recursive_cycle_is_rejected() {
     let newtype_name = package.author_name("Newtype");
     {
         use core_nomos::{
-            BindingRef, InputParameter, ItemTemplate, MetaType, NameTransform, NewtypeTemplate,
-            Realize, Scalar, SectionDefault,
+            BindingRef, InputParameter, ItemTemplate, MetaType, NewtypeTemplate, Realize, Scalar,
+            SectionDefault,
         };
         package.register(MacroDefinition {
             name: newtype_name,
@@ -506,14 +504,12 @@ fn recursive_cycle_is_rejected() {
             },
             template: ResultTemplate::Item(ItemTemplate::Newtype(NewtypeTemplate {
                 visibility: Visibility::Public,
-                attributes: Sequence::of(SequenceItem::Escape(Escape::Invoke(self_identity))),
+                attributes: Sequence::of(SequenceItem::RecursiveInvoke(self_identity)),
                 name: Scalar::Escape(Escape::Realize(Realize {
                     binding: BindingRef::Input(name_binding),
-                    transform: NameTransform::Identity,
                 })),
                 wrapped: Scalar::Escape(Escape::Realize(Realize {
                     binding: BindingRef::Input(type_binding),
-                    transform: NameTransform::Identity,
                 })),
             })),
         });
@@ -550,5 +546,5 @@ fn package_is_content_identified_and_revisioned() {
         plain.content_identity().unwrap(),
     );
     // The revision is a truthful, separate surface.
-    assert_eq!(wire.revision(), core_nomos::PackageRevision(1));
+    assert_eq!(wire.revision(), core_nomos::PackageRevision(2));
 }

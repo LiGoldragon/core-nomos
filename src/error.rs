@@ -7,6 +7,7 @@ use thiserror::Error;
 
 use crate::identity::{MacroIdentity, SectionDefault};
 use crate::meta::MetaType;
+use crate::template::{EscapeKind, TemplatePosition};
 
 /// A failure lowering a `EncodedSchema` through a [`MacroPackage`](crate::MacroPackage)
 /// into `EncodedLogos`. Every variant names the exact structural mismatch, so an
@@ -36,6 +37,39 @@ pub enum NomosError {
     #[error("template escape does not fit its position: {0}")]
     EscapeShape(&'static str),
 
+    /// A definition used an escape in a position that cannot accept it. This is
+    /// raised while checking the definition, before expansion starts.
+    #[error("{escape:?} escape is not legal at {position:?}")]
+    EscapePlacement {
+        /// The closed primitive that was rejected.
+        escape: EscapeKind,
+        /// The typed boundary that rejected it.
+        position: TemplatePosition,
+    },
+
+    /// A definition's escape binding has the wrong declared type for its typed
+    /// hole. This is raised while checking the definition, before expansion starts.
+    #[error("{escape:?} escape binding {binding:?} is {actual:?}, expected {expected:?}")]
+    EscapeBinding {
+        /// The closed primitive that was rejected.
+        escape: EscapeKind,
+        /// The named input binding.
+        binding: Identifier,
+        /// The declared type the boundary requires.
+        expected: MetaType,
+        /// The binding's actual declared type.
+        actual: MetaType,
+    },
+
+    /// A definition's escape names no parameter in its own signature.
+    #[error("template definition referenced unavailable binding {0:?}")]
+    DefinitionBinding(Identifier),
+
+    /// A recursive invocation appeared outside its permitted attribute-vector
+    /// surface, or named a macro that does not produce attributes.
+    #[error("recursive invocation is not legal at {0:?}")]
+    RecursiveInvocation(TemplatePosition),
+
     /// An input binding was referenced that the bound input does not carry.
     #[error("template referenced unbound input {0}")]
     UnboundInput(Identifier),
@@ -50,11 +84,6 @@ pub enum NomosError {
     /// invocation that did not produce attributes.
     #[error("macro produced the wrong fragment kind: {0}")]
     FragmentKind(&'static str),
-
-    /// A name transform was applied where its input was not a name — e.g. a field
-    /// name derived from a value position.
-    #[error("name transform applied to a non-name binding")]
-    NameTransformShape,
 
     /// A field carried a visibility the lowering could not place. Retained as a
     /// typed sibling for the field-rule growth points.

@@ -1,12 +1,14 @@
 //! The result template: logos-encoded-form data with escape nodes. A macro's result
 //! is a *quoted* logos skeleton in which specific positions are escapes rather than
-//! literals. The escape set is closed — **Realize**, **Invoke**, **Splice** — and
-//! shared across every position; a position's literal type is fixed by where it
-//! sits (a name slot holds an `Identifier`, a type slot a `TypeReference`), so the
-//! template stays strongly typed while the escape algebra stays one closed set.
+//! literals. The escape set is closed — **Realize** and **Splice** — and shared
+//! across every position; a position's literal type is fixed by where it sits (a
+//! name slot holds an `Identifier`, a type slot a `TypeReference`), so the template
+//! stays strongly typed while the escape algebra stays one closed set.
 //!
-//! The text spelling of an escape is TextualNomos, a genuinely unsettled question,
-//! and is deferred: nothing here parses text. An escape is data.
+//! Nomos has exactly two escape spellings: `$x` realizes one value and `$@xs`
+//! splices one typed vector at a vector-element position. Recursive macro invocation
+//! is a separate template surface form, not an escape. This module stores that
+//! surface as typed data; evaluation remains entirely stringless.
 
 use core_logos::{Attribute, Field, Generics, TypeReference, Variant, Visibility};
 use name_table::Identifier;
@@ -20,13 +22,13 @@ use crate::identity::MacroIdentity;
 pub enum Scalar<Literal> {
     /// A literal Core value, authored against the package's NameTable.
     Literal(Literal),
-    /// A single-valued escape (`Realize` or `Invoke`).
+    /// A single-valued `$x` realize escape.
     Escape(Escape),
 }
 
 /// A vector template position: an ordered list of items, each a literal or an
 /// escape whose production flattens into the vector. This is the one place a
-/// `Splice` (or a multi-valued `Invoke`) belongs.
+/// `$@xs` splice belongs.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct Sequence<Literal> {
     /// The ordered items.
@@ -47,35 +49,85 @@ pub enum SequenceItem<Literal> {
     Literal(Literal),
     /// An escape whose production is flattened into the surrounding vector.
     Escape(Escape),
+    /// A recursive macro invocation. This is a template surface form, not an
+    /// escape primitive. It is meaningful only in the attribute-vector position.
+    RecursiveInvoke(MacroIdentity),
 }
 
-/// The closed template escape algebra (nomos-macro-model-v1 §7). Every non-literal
-/// template position is exactly one of these three. Closed by design: a fourth
-/// escape would be a new variant and a compile error until handled — the psyche
-/// ruled name synthesis is *not* a fourth escape but a transform inside `Realize`.
+/// The two primitive Nomos escapes. This enum is intentionally closed: `$x` and
+/// `$@xs` are the entire escape set. A recursive macro invocation is represented by
+/// [`SequenceItem::RecursiveInvoke`], not by this enum.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum Escape {
-    /// Unquote one bound value at this position, optionally through a derived-name
-    /// transform. Realizes a bound name (with an optional casing walk) into a name
-    /// slot, or a bound type into a type slot.
+    /// `$x`: realize exactly one bound value of the expected hole type.
     Realize(Realize),
-    /// Recursively invoke another macro by identity; its produced fragment is
-    /// realized (in a scalar slot) or spliced (in a vector slot) in place.
-    Invoke(MacroIdentity),
-    /// Unquote a bound sequence, expanded element by element into the enclosing
-    /// vector.
+    /// `$@xs`: flatten exactly one bound typed vector at a vector-element position.
     Splice(Splice),
 }
 
-/// A realize escape: which bound value, and the name transform to apply. For a
-/// type binding the transform must be `Identity`; a name binding may carry a
-/// derived-name walk.
+/// The closed identity of an escape primitive. It is used by definition checking and
+/// errors instead of string predicates.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EscapeKind {
+    /// `$x`, which realizes one typed value.
+    Realize,
+    /// `$@xs`, which concatenates one typed vector.
+    Splice,
+}
+
+impl Escape {
+    /// The primitive kind without inspecting spelling.
+    pub fn kind(&self) -> EscapeKind {
+        match self {
+            Self::Realize(_) => EscapeKind::Realize,
+            Self::Splice(_) => EscapeKind::Splice,
+        }
+    }
+}
+
+impl EscapeKind {
+    /// The only ruled source spelling for this primitive. Parsing belongs to the
+    /// TextualNomos boundary; macro evaluation never reads this spelling.
+    pub const fn spelling(self) -> &'static str {
+        match self {
+            Self::Realize => "$x",
+            Self::Splice => "$@xs",
+        }
+    }
+}
+
+/// A typed template boundary checked before a macro definition can be evaluated.
+/// Fixed-arity slots do not admit `$@xs`; only vector element positions do.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TemplatePosition {
+    /// A fixed declaration-name slot.
+    Name,
+    /// A fixed type or enum-payload slot.
+    Type,
+    /// An attribute-vector element position.
+    AttributeElement,
+    /// A record field-vector element position.
+    FieldElement,
+    /// An enum variant-vector element position.
+    VariantElement,
+}
+
+impl TemplatePosition {
+    /// Whether this boundary is a vector element position.
+    pub const fn accepts_splice(self) -> bool {
+        matches!(
+            self,
+            Self::AttributeElement | Self::FieldElement | Self::VariantElement
+        )
+    }
+}
+
+/// A `$x` realize escape: which bound value fills one expected typed hole. Name
+/// derivation is deliberately absent: it belongs to the NameTable/emission boundary.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Realize {
     /// The bound input this realizes.
     pub binding: BindingRef,
-    /// The name transform applied when realizing a name.
-    pub transform: NameTransform,
 }
 
 /// A reference to a bound input value. The fixture macros need only the top-level
@@ -86,22 +138,6 @@ pub enum BindingRef {
     /// A top-level input parameter, by its binding name (an identifier in the
     /// package's authoring NameTable).
     Input(Identifier),
-}
-
-/// A typed name-transform request. `NameTableBoundary` performs its derived-name
-/// walk only at the NameTable/emission boundary; typed macro evaluation carries this
-/// request without reading or creating a spelling. This keeps name synthesis inside
-/// `Realize` instead of becoming a fourth escape.
-#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NameTransform {
-    /// Realize the bound value verbatim (a name copied, a type lowered).
-    Identity,
-    /// Derive the `snake_case` field name (name-table `Name::field_name`).
-    FieldName,
-    /// Derive the `SCREAMING_SNAKE_CASE` constant name (name-table `Name::screaming`).
-    Screaming,
-    /// Derive the `PascalCase` object spelling (name-table `Name::pascal_case`).
-    PascalCase,
 }
 
 /// A splice escape: a bound sequence, and the per-element production. `Splice` is

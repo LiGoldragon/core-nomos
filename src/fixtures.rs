@@ -15,8 +15,8 @@ use crate::meta::{InputParameter, InputSignature, MetaType};
 use crate::package::{MacroPackage, PackageRevision};
 use crate::template::{
     BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
-    NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,
-    Splice, SpliceElement, StructTemplate,
+    NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
+    SpliceElement, StructTemplate,
 };
 
 /// Which attribute preamble a fixture package's macros carry. The wire preamble is
@@ -87,7 +87,7 @@ impl MacroPackage {
     }
 
     fn fixture(kind: AttributePreamble) -> Self {
-        let mut package = MacroPackage::new(PackageRevision(1));
+        let mut package = MacroPackage::new(PackageRevision(2));
 
         // The input binding names (the derived `{ Name Type }` / `{ Name Fields }`
         // accessors), authored once and shared by every macro's signature.
@@ -145,14 +145,12 @@ impl MacroPackage {
             },
             template: ResultTemplate::Item(ItemTemplate::Newtype(NewtypeTemplate {
                 visibility: Visibility::Public,
-                attributes: Sequence::of(SequenceItem::Escape(Escape::Invoke(attributes_macro))),
+                attributes: Sequence::of(SequenceItem::RecursiveInvoke(attributes_macro)),
                 name: Scalar::Escape(Escape::Realize(Realize {
                     binding: BindingRef::Input(name_binding),
-                    transform: NameTransform::Identity,
                 })),
                 wrapped: Scalar::Escape(Escape::Realize(Realize {
                     binding: BindingRef::Input(type_binding),
-                    transform: NameTransform::Identity,
                 })),
             })),
         });
@@ -177,10 +175,9 @@ impl MacroPackage {
             },
             template: ResultTemplate::Item(ItemTemplate::Struct(StructTemplate {
                 visibility: Visibility::Public,
-                attributes: Sequence::of(SequenceItem::Escape(Escape::Invoke(attributes_macro))),
+                attributes: Sequence::of(SequenceItem::RecursiveInvoke(attributes_macro)),
                 name: Scalar::Escape(Escape::Realize(Realize {
                     binding: BindingRef::Input(name_binding),
-                    transform: NameTransform::Identity,
                 })),
                 generics: Generics::none(),
                 fields: Sequence::of(SequenceItem::Escape(Escape::Splice(Splice {
@@ -213,12 +210,11 @@ impl MacroPackage {
             },
             template: ResultTemplate::Item(ItemTemplate::Enumeration(EnumerationTemplate {
                 visibility: Visibility::Public,
-                attributes: Sequence::of(SequenceItem::Escape(Escape::Invoke(
+                attributes: Sequence::of(SequenceItem::RecursiveInvoke(
                     enumeration_attributes_macro,
-                ))),
+                )),
                 name: Scalar::Escape(Escape::Realize(Realize {
                     binding: BindingRef::Input(name_binding),
-                    transform: NameTransform::Identity,
                 })),
                 generics: Generics::none(),
                 variants: Sequence::of(SequenceItem::Escape(Escape::Splice(Splice {

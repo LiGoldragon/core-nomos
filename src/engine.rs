@@ -23,7 +23,7 @@ use crate::meta::{BoundInput, InputSignature, MetaType, MetaValue};
 use crate::name_boundary::NameTableBoundary;
 use crate::package::MacroPackage;
 use crate::template::{
-    BindingRef, EnumerationTemplate, Escape, ItemTemplate, NameTransform, NewtypeTemplate, Realize,
+    BindingRef, EnumerationTemplate, Escape, ItemTemplate, NewtypeTemplate, Realize,
     ResultTemplate, Scalar, Sequence, SequenceItem, Splice, SpliceElement, StructTemplate,
 };
 
@@ -47,7 +47,7 @@ impl MacroPackage {
         schema: &EncodedSchema,
         schema_names: &NameTable,
     ) -> Result<Lowering, NomosError> {
-        self.ensure_authoring_names()?;
+        self.check()?;
         let mut evaluator = Evaluator::new(self, schema_names)?;
         let items = evaluator.lower_schema(schema)?;
         Ok(Lowering {
@@ -68,7 +68,7 @@ impl MacroPackage {
         schema: &EncodedSchema,
         schema_names: &NameTable,
     ) -> Result<Lowering, NomosError> {
-        self.ensure_authoring_names()?;
+        self.check()?;
         let mut evaluator = Evaluator::new(self, schema_names)?;
         let mut items = evaluator.lower_schema(schema)?;
         for class in self.selection() {
@@ -344,9 +344,6 @@ impl<'package> Evaluator<'package> {
         match slot {
             Scalar::Literal(identifier) => self.names.place_literal_name(*identifier),
             Scalar::Escape(Escape::Realize(realize)) => self.realize_name(realize, bound),
-            Scalar::Escape(Escape::Invoke(_)) => Err(NomosError::EscapeShape(
-                "an invoke cannot fill a name position",
-            )),
             Scalar::Escape(Escape::Splice(_)) => Err(NomosError::EscapeShape(
                 "a splice cannot fill a name position",
             )),
@@ -363,10 +360,10 @@ impl<'package> Evaluator<'package> {
             .value(binding)
             .ok_or(NomosError::UnboundInput(binding))?
         {
-            MetaValue::Name(identifier) => {
-                self.names.transform_name(*identifier, realize.transform)
-            }
-            _ => Err(NomosError::NameTransformShape),
+            MetaValue::Name(identifier) => Ok(*identifier),
+            _ => Err(NomosError::EscapeShape(
+                "a realize of a non-name binding cannot fill a name position",
+            )),
         }
     }
 
@@ -378,11 +375,6 @@ impl<'package> Evaluator<'package> {
         match slot {
             Scalar::Literal(reference) => self.remap_type_reference(reference),
             Scalar::Escape(Escape::Realize(realize)) => {
-                if realize.transform != NameTransform::Identity {
-                    return Err(NomosError::EscapeShape(
-                        "a realized type takes no name transform",
-                    ));
-                }
                 let BindingRef::Input(binding) = realize.binding;
                 match bound
                     .value(binding)
@@ -397,9 +389,6 @@ impl<'package> Evaluator<'package> {
                     )),
                 }
             }
-            Scalar::Escape(Escape::Invoke(_)) => Err(NomosError::EscapeShape(
-                "an invoke cannot fill a type position",
-            )),
             Scalar::Escape(Escape::Splice(_)) => Err(NomosError::EscapeShape(
                 "a splice cannot fill a type position",
             )),
@@ -414,7 +403,7 @@ impl<'package> Evaluator<'package> {
         for item in &sequence.items {
             match item {
                 SequenceItem::Literal(attribute) => out.push(self.remap_attribute(attribute)?),
-                SequenceItem::Escape(Escape::Invoke(identity)) => {
+                SequenceItem::RecursiveInvoke(identity) => {
                     out.extend(self.invoke_attributes(*identity)?);
                 }
                 SequenceItem::Escape(Escape::Realize(_)) => {
@@ -474,9 +463,9 @@ impl<'package> Evaluator<'package> {
                         "a realize cannot fill the fields position; fields splice",
                     ));
                 }
-                SequenceItem::Escape(Escape::Invoke(_)) => {
+                SequenceItem::RecursiveInvoke(_) => {
                     return Err(NomosError::EscapeShape(
-                        "an invoke into the fields position is a growth point, unsupported",
+                        "a recursive invocation cannot fill the fields position",
                     ));
                 }
             }
@@ -563,7 +552,7 @@ impl<'package> Evaluator<'package> {
                         });
                     }
                 }
-                SequenceItem::Escape(_) => {
+                SequenceItem::Escape(_) | SequenceItem::RecursiveInvoke(_) => {
                     return Err(NomosError::EscapeShape("enum variants require a splice"));
                 }
             }

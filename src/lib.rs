@@ -5,13 +5,13 @@
 //! the logos encoded form. Macros define the schema-to-logos lowering; generated
 //! programs, not rendered-source equality, are the acceptance surface.
 //!
-//! ## What is here (EncodedNomos), and what is deferred (TextualNomos)
+//! ## What is here (EncodedNomos) and the ruled escape spelling
 //!
 //! EncodedNomos is built here: macros as typed data, the two macro kinds, the
-//! stateful-at-rest package, and the engine. **TextualNomos** — including the escape
-//! spelling, meta-type text spellings, and delimiters — remains an open design
-//! question. Nothing in this crate parses or prints a Nomos text surface; an escape
-//! is a data node ([`Escape`]), and its spelling is not this crate's concern.
+//! stateful-at-rest package, and the engine. The escape spellings are settled: `$x`
+//! realizes one typed value and `$@xs` splices one typed vector at a vector-element
+//! position. This crate stores and validates those typed nodes; a future TextualNomos
+//! parser must accept no additional escape spelling.
 //!
 //! ## The two macro kinds
 //!
@@ -31,10 +31,10 @@
 //!
 //! ## The closed escape algebra
 //!
-//! A result template is logos-encoded-form data whose non-literal positions are the
-//! closed set [`Escape`] = **Realize** / **Invoke** / **Splice**. A [`NameTransform`]
-//! is typed intent carried by `Realize`, not a fourth escape; `NameTableBoundary`
-//! performs the derived-name work at the NameTable/emission boundary.
+//! A result template is logos-encoded-form data whose non-literal positions use the
+//! closed [`Escape`] set: **Realize** (`$x`) or **Splice** (`$@xs`). Recursive
+//! invocation is a separate `SequenceItem` surface form, not an escape. The
+//! `NameTableBoundary` performs all derived-name work at the emission boundary.
 //!
 //! ## The engine
 //!
@@ -65,7 +65,7 @@ pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
 pub use template::{
-    BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
-    NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,
-    Splice, SpliceElement, StructTemplate,
+    BindingRef, EnumerationTemplate, Escape, EscapeKind, FieldNameRule, GenerationClass,
+    ItemTemplate, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem, Splice,
+    SpliceElement, StructTemplate, TemplatePosition,
 };

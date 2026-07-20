@@ -1,11 +1,11 @@
 [package]
 name         = "core-nomos"
-version      = "0.4.0"
+version      = "0.5.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/core-nomos"
-description  = "The stringless encoded form of Nomos: macros as typed data transforming the schema encoded form into the logos encoded form. Two macro kinds (named + structural), a stateful-at-rest content-identified MacroPackage, and a closed template escape algebra (Realize / Splice / Invoke). TextualNomos remains deferred."
+description  = "The stringless encoded form of Nomos: macros as typed data transforming the schema encoded form into the logos encoded form. Two macro kinds (named + structural), a stateful-at-rest content-identified MacroPackage, and a closed template escape algebra (`$x` realize / `$@xs` splice)."
 publish      = false
 
 [lib]

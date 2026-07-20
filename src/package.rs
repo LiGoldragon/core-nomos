@@ -105,6 +105,30 @@ impl MacroPackage {
         identity
     }
 
+    /// Check every macro definition before expansion begins. The check is over
+    /// closed typed data: each `$x` must match its single expected hole type, and
+    /// each `$@xs` must match a vector-element position and vector input. Recursive
+    /// invocation is separately resolved as a non-escape surface form.
+    pub fn check(&self) -> Result<(), NomosError> {
+        self.ensure_authoring_names()?;
+        for definition in self.definitions.macros.values() {
+            for identity in definition.check()? {
+                let invoked = self
+                    .definition(identity)
+                    .ok_or(NomosError::UnknownMacro(identity))?;
+                if !matches!(
+                    invoked.template,
+                    crate::template::ResultTemplate::Attributes(_)
+                ) {
+                    return Err(NomosError::RecursiveInvocation(
+                        crate::template::TemplatePosition::AttributeElement,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Return the first failed authoring allocation before any lowering work can
     /// expose an encoded result built with its placeholder identifier.
     pub(crate) fn ensure_authoring_names(&self) -> Result<(), NomosError> {

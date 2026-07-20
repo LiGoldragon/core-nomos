@@ -18,11 +18,10 @@ The schema-to-logos transformation is stringless by law. The psyche's ruling is
 binding: *"in the nomos transformation (schema to logos), there shall be no string
 manipulation/introduction/reading of any kind."* The transformation reads and
 writes only typed encoded-form values and the encoded identifiers they carry. It
-dispatches on a declaration's Core kind and on `Identifier` indices, and at no point
-parses, compares, concatenates, matches, or emits a string. A macro is typed data;
-its template is logos-encoded-form data with typed escape nodes; its output is a
-logos encoded form. A `NameTransform` is typed intent carried by an escape, never a
-spelling the transform reads.
+dispatches on a declaration's encoded kind and on `Identifier` indices, and at no
+point parses, compares, concatenates, matches, or emits a string. A macro is typed
+data; its template is logos-encoded-form data with typed escape nodes; its output is
+a logos encoded form.
 
 All name derivation and text materialization lives at the NameTable/emission
 boundary, which sits outside the transformation. `NameTableBoundary` is the single
@@ -107,27 +106,21 @@ type and its content identity + revision surfaces.
 
 ## The closed template escape algebra
 
-A macro's result template is **logos-encoded-form data with escape nodes**. Each
-position is typed by where it sits — a name position holds an `Identifier`, a type
-position a `TypeReference`, an attribute or field position a vector — via the
-generic `Scalar<L>` / `Sequence<L>` wrappers, so the template stays strongly typed
-while the escape set stays one closed enum (`template::Escape`):
+A macro result template is logos-encoded-form data with typed holes. There are
+exactly two escapes:
 
-- **Realize** — unquote one bound value at this position, optionally through a
-  derived-name transform.
-- **Invoke** — recursively invoke another macro by identity; its produced fragment
-  is realized (scalar) or spliced (vector) in place. *Recursive invocation is
-  required* — WireNewtype invokes WireAttributes — and is bounded by cycle
-  rejection (`NomosError::RecursionCycle`).
-- **Splice** — expand a bound sequence element by element into the enclosing vector
-  (the struct-fields production).
+- **Realize (`$x`)** inserts one bound value whose declared meta-type equals the
+  expected type of its fixed scalar hole.
+- **Splice (`$@xs`)** concatenates one bound typed vector at a vector-element
+  position, flattening exactly one level and permitting an empty vector.
 
-**No fourth escape.** A `NameTransform` is typed intent carried by `Realize`,
-not a new primitive. The `NameTableBoundary` executes that intent at the
-NameTable/emission boundary, which is the single home of the derived-name walk
-(`Name::field_name` / `screaming` / `pascal_case`); the typed Nomos transform never
-reads or creates a spelling. This is the psyche's no-fourth-escape ruling made
-structural.
+A definition is checked before expansion: a wrong binding type, a non-vector splice
+input, a splice in a fixed-arity record or enum-payload slot, and a recursive
+invocation outside its attribute-vector surface all fail as typed errors. Derived
+names remain solely a NameTable/emission-boundary operation; no name transform or
+fresh-name escape exists. Recursive macro invocation remains a separate typed
+`SequenceItem::RecursiveInvoke` surface form and is cycle-checked; it is not a
+third escape.
 
 ## The engine and the one continuous identifier space
 

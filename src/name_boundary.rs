@@ -14,7 +14,7 @@ use core_schema::{EncodedField, EncodedReference};
 use name_table::{Identifier, IdentifierNamespace, Name, NameTable, NameTableError};
 
 use crate::error::NomosError;
-use crate::template::{FieldNameRule, NameTransform};
+use crate::template::FieldNameRule;
 
 /// The owned logos NameTable under construction, paired with the package's
 /// authoring table. All text-bearing name operations are confined here.
@@ -75,30 +75,6 @@ impl<'package> NameTableBoundary<'package> {
     ) -> Result<Identifier, NomosError> {
         let name = self.package_names.resolve(identifier)?.clone();
         Ok(self.names.intern(name)?)
-    }
-
-    /// Apply a typed name transform and allocate its projected identifier only at
-    /// this NameTable boundary.
-    pub(crate) fn transform_name(
-        &mut self,
-        identifier: Identifier,
-        transform: NameTransform,
-    ) -> Result<Identifier, NomosError> {
-        match transform {
-            NameTransform::Identity => Ok(identifier),
-            NameTransform::FieldName => {
-                let derived = self.names.resolve(identifier)?.field_name();
-                Ok(self.names.intern(Name::new(derived))?)
-            }
-            NameTransform::Screaming => {
-                let derived = self.names.resolve(identifier)?.screaming();
-                Ok(self.names.intern(Name::new(derived))?)
-            }
-            NameTransform::PascalCase => {
-                let derived = self.names.resolve(identifier)?.pascal_case();
-                Ok(self.names.intern(Name::new(derived))?)
-            }
-        }
     }
 
     /// Derive and allocate every field identifier for an ordered struct field
