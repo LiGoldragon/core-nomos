@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::identity::{MacroIdentity, SectionDefault};
 use crate::meta::MetaType;
 
-/// A failure lowering a `CoreSchema` through a [`MacroPackage`](crate::MacroPackage)
+/// A failure lowering a `EncodedSchema` through a [`MacroPackage`](crate::MacroPackage)
 /// into `CoreLogos`. Every variant names the exact structural mismatch, so an
 /// unruled input fails loudly rather than producing quietly-wrong logos — the
 /// structural discipline made typed.

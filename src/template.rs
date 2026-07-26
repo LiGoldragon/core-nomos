@@ -151,7 +151,7 @@ pub enum FieldNameRule {
 /// default produces an item; `WireAttributes` produces an attribute vector.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum ResultTemplate {
-    /// Produces a single `CoreItem`.
+    /// Produces a single `EncodedItem`.
     Item(ItemTemplate),
     /// Produces an attribute vector (the recursive `Invoke` target).
     Attributes(Sequence<Attribute>),
@@ -201,7 +201,7 @@ pub struct StructTemplate {
     pub fields: Sequence<Field>,
 }
 
-/// The enum result template. Variants are spliced from the bound CoreSchema
+/// The enum result template. Variants are spliced from the bound EncodedSchema
 /// enumeration, while attributes, visibility, and name follow the other item
 /// templates.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
