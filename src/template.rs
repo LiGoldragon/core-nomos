@@ -18,7 +18,7 @@ use crate::identity::MacroIdentity;
 /// typed error.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum Scalar<Literal> {
-    /// A literal Core value, authored against the package's NameTable.
+    /// A literal encoded value, authored against the package's NameTable.
     Literal(Literal),
     /// A single-valued escape (`Realize` or `Invoke`).
     Escape(Escape),
@@ -50,9 +50,9 @@ pub enum SequenceItem<Literal> {
 }
 
 /// The closed template escape algebra (nomos-macro-model-v1 §7). Every non-literal
-/// template position is exactly one of these three. Closed by design: a fourth
-/// escape would be a new variant and a compile error until handled — the psyche
-/// ruled name synthesis is *not* a fourth escape but a transform inside `Realize`.
+/// template position is exactly one of these three. A fourth escape would be a new
+/// variant and a compile error until handled; derived-name synthesis is a transform
+/// inside `Realize`.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum Escape {
     /// Unquote one bound value at this position, optionally through a derived-name
@@ -118,7 +118,7 @@ pub struct Splice {
 /// The per-element production of a splice.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum SpliceElement {
-    /// Each bound schema field becomes a `CoreLogos` field: the given visibility,
+    /// Each bound schema field becomes an encoded logos field: the given visibility,
     /// a name selected by the field-name rule, and its lowered type.
     Field {
         /// The visibility placed on every produced field (schema carries none).
@@ -131,12 +131,12 @@ pub enum SpliceElement {
     Variant,
 }
 
-/// How a struct macro selects a field's `CoreLogos` name (deliverable 3: "derived
+/// How a struct macro selects a field's encoded logos name (deliverable 3: "derived
 /// or explicit names per the Field rules").
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FieldNameRule {
     /// The Field-rule dispatch: an *elided* field is re-derived through the
-    /// NameTable/emission boundary into the extended logos table; an explicit field
+    /// NameTable/emission boundary into the Logos table composed with Schema; an explicit field
     /// identifier is preserved.
     /// This is the particular-struct structural default.
     FieldRuleDispatch,
@@ -157,7 +157,7 @@ pub enum ResultTemplate {
     Attributes(Sequence<Attribute>),
 }
 
-/// An item template — CoreLogos-shaped, one variant per produced item kind. The
+/// An item template — encoded-logos-shaped, one variant per produced item kind. The
 /// enum is closed; the fixture corpus exercises newtypes and structs, and a new
 /// item kind is a new variant (the algebra grows by design, no wildcard).
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -175,7 +175,7 @@ pub enum ItemTemplate {
 /// realized from the input.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct NewtypeTemplate {
-    /// The item visibility (a literal Core value).
+    /// The item visibility (a literal encoded value).
     pub visibility: Visibility,
     /// The attribute preamble — literals and/or a recursive attribute invocation.
     pub attributes: Sequence<Attribute>,
@@ -217,17 +217,17 @@ pub struct EnumerationTemplate {
 /// reference fixtures emit alongside the data declarations — impl blocks (with methods,
 /// associated types, and associated consts), functions, consts, const modules, and
 /// use imports. Where the per-declaration structural defaults ([`ItemTemplate`])
-/// lower one CoreLogos item per declaration, a [`GenerationClass`] is a whole-schema
+/// lower one `EncodedItem` per declaration, a [`GenerationClass`] is a whole-schema
 /// generator: it reads the schema's newtype catalogue and interface roots
-/// ([`core_schema::DeclarationRole`]) and emits an ordered run of CoreLogos items.
+/// ([`core_schema::DeclarationRole`]) and emits an ordered run of `EncodedItem` values.
 ///
 /// Each class is closed typed data — no head strings, no text. The schema-derived
 /// names, types, and (for the wire stub) transcribed layout values flow from the
 /// bound schema when the package is applied ([`crate::MacroPackage::apply_enriched`]);
-/// the interpreter that turns a class into CoreLogos items builds the fixed method
+/// the interpreter that turns a class into `EncodedItem` values builds the fixed method
 /// and match skeletons directly, exactly as the fixed module prelude
-/// ([`crate::ModuleHead`]) authors its stringless CoreLogos data, keeping every
-/// identifier interned into the one continuous logos NameTable.
+/// ([`crate::ModuleHead`]) authors its stringless encoded logos data, keeping every
+/// identifier in a Logos table composed with the Schema slice.
 ///
 /// The document-order rule the eventual full-file assembly follows is the class
 /// order of this enum: the data declarations first, then [`NewtypeErgonomics`],
@@ -271,7 +271,7 @@ pub enum GenerationClass {
     /// `signal_frame::RequestPayload`, `SignalOperationHeads`, and `LogVariant` trait
     /// impls; the `Frame` / `FrameBody` / `Request` / `ReplyEnvelope` / `RequestBuilder`
     /// type aliases over `signal_frame::ExchangeFrame` (the ordinary two-way leg — no
-    /// `StreamingFrame`, whose subscription envelope waits on pending psyche rulings);
+    /// `StreamingFrame`, whose subscription envelope is outside this surface);
     /// and the request root's `into_frame` and the reply root's `into_reply_frame`
     /// constructors. Named by its content — the envelope over the codec.
     WireExchangeEnvelope,

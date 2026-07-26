@@ -11,7 +11,7 @@ use std::ops::{Deref, DerefMut};
 
 use core_logos::{Attribute, PathNode, TypeApplication, TypeReference};
 use core_schema::{EncodedField, EncodedReference};
-use name_table::{Identifier, Name, NameTable};
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 
 use crate::error::NomosError;
 use crate::template::{FieldNameRule, NameTransform};
@@ -24,13 +24,16 @@ pub(crate) struct NameTableBoundary<'package> {
 }
 
 impl<'package> NameTableBoundary<'package> {
-    /// Begin the logos table from the schema table so schema identifiers retain
-    /// their indices throughout lowering.
-    pub(crate) fn new(package_names: &'package NameTable, schema_names: &NameTable) -> Self {
-        Self {
+    /// Begin the Logos table with the Schema table composed into it, retaining
+    /// the source identifiers in their respective namespace slices.
+    pub(crate) fn new(
+        package_names: &'package NameTable,
+        schema_names: &NameTable,
+    ) -> Result<Self, NomosError> {
+        Ok(Self {
             package_names,
-            names: NameTable::extend_from(schema_names),
-        }
+            names: NameTable::new(IdentifierNamespace::Logos).compose(schema_names)?,
+        })
     }
 
     /// Finish the boundary and return the completed logos table.
@@ -45,7 +48,7 @@ impl<'package> NameTableBoundary<'package> {
         identifier: Identifier,
     ) -> Result<Identifier, NomosError> {
         let name = self.package_names.resolve(identifier)?.clone();
-        Ok(self.names.intern(name))
+        Ok(self.names.intern(name)?)
     }
 
     /// Apply a typed name transform and allocate its projected identifier only at
@@ -59,15 +62,15 @@ impl<'package> NameTableBoundary<'package> {
             NameTransform::Identity => Ok(identifier),
             NameTransform::FieldName => {
                 let derived = self.names.resolve(identifier)?.field_name();
-                Ok(self.names.intern(Name::new(derived)))
+                Ok(self.names.intern(Name::new(derived))?)
             }
             NameTransform::Screaming => {
                 let derived = self.names.resolve(identifier)?.screaming();
-                Ok(self.names.intern(Name::new(derived)))
+                Ok(self.names.intern(Name::new(derived))?)
             }
             NameTransform::PascalCase => {
                 let derived = self.names.resolve(identifier)?.pascal_case();
-                Ok(self.names.intern(Name::new(derived)))
+                Ok(self.names.intern(Name::new(derived))?)
             }
         }
     }
@@ -130,10 +133,10 @@ impl<'package> NameTableBoundary<'package> {
     ) -> Result<Identifier, NomosError> {
         match rule {
             FieldNameRule::PreserveSchema => Ok(field.identifier()),
-            FieldNameRule::AlwaysDeriveFromType => Ok(self.names.intern(group_name)),
+            FieldNameRule::AlwaysDeriveFromType => Ok(self.names.intern(group_name)?),
             FieldNameRule::FieldRuleDispatch => {
                 if field.name_is_derivable(&self.names)? {
-                    Ok(self.names.intern(group_name))
+                    Ok(self.names.intern(group_name)?)
                 } else {
                     Ok(field.identifier())
                 }
@@ -148,10 +151,10 @@ impl<'package> NameTableBoundary<'package> {
         reference: &EncodedReference,
     ) -> Result<TypeReference, NomosError> {
         match reference {
-            EncodedReference::Integer => Ok(TypeReference::Path(self.leaf_path("Integer"))),
-            EncodedReference::String => Ok(TypeReference::Path(self.leaf_path("String"))),
-            EncodedReference::Boolean => Ok(TypeReference::Path(self.leaf_path("Boolean"))),
-            EncodedReference::Bytes => Ok(TypeReference::Path(self.leaf_path("Bytes"))),
+            EncodedReference::Integer => Ok(TypeReference::Path(self.leaf_path("Integer")?)),
+            EncodedReference::String => Ok(TypeReference::Path(self.leaf_path("String")?)),
+            EncodedReference::Boolean => Ok(TypeReference::Path(self.leaf_path("Boolean")?)),
+            EncodedReference::Bytes => Ok(TypeReference::Path(self.leaf_path("Bytes")?)),
             EncodedReference::Plain(identifier) => Ok(TypeReference::Path(PathNode {
                 segments: vec![*identifier],
             })),
@@ -162,7 +165,7 @@ impl<'package> NameTableBoundary<'package> {
                 let head = self.single_projection_head(projection);
                 let argument = self.lower_reference(argument)?;
                 Ok(TypeReference::Application(TypeApplication {
-                    head: self.leaf_path(head),
+                    head: self.leaf_path(head)?,
                     arguments: vec![argument],
                 }))
             }
@@ -176,12 +179,12 @@ impl<'package> NameTableBoundary<'package> {
                     .map(|argument| self.lower_reference(argument))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(TypeReference::Application(TypeApplication {
-                    head: self.leaf_path(head),
+                    head: self.leaf_path(head)?,
                     arguments,
                 }))
             }
             EncodedReference::ValueApplication { .. } => Err(NomosError::UnsupportedReference(
-                "a byte-length value application has no CoreLogos type-argument home",
+                "a byte-length value application has no encoded logos type-argument home",
             )),
         }
     }
@@ -195,10 +198,17 @@ impl<'package> NameTableBoundary<'package> {
     ) -> Result<(), NomosError> {
         for attribute in attributes {
             if let Attribute::Derive(group) = attribute {
-                group.paths.retain(|path| match path.resolve(&self.names) {
-                    Ok(segments) => segments.as_slice() != [Name::new("Copy")],
-                    Err(_) => true,
-                });
+                let retain = group
+                    .paths
+                    .iter()
+                    .map(|path| Ok(path.resolve(&self.names)?.as_slice() != [Name::new("Copy")]))
+                    .collect::<Result<Vec<_>, NomosError>>()?;
+                group.paths = group
+                    .paths
+                    .drain(..)
+                    .zip(retain)
+                    .filter_map(|(path, retain)| retain.then_some(path))
+                    .collect();
             }
         }
         Ok(())
@@ -210,7 +220,7 @@ impl<'package> NameTableBoundary<'package> {
         variant: Identifier,
     ) -> Result<Identifier, NomosError> {
         let derived = self.names.resolve(variant)?.field_name();
-        Ok(self.names.intern(Name::new(derived)))
+        Ok(self.names.intern(Name::new(derived))?)
     }
 
     /// Derive and allocate the short-header constant name from its typed root and
@@ -224,13 +234,13 @@ impl<'package> NameTableBoundary<'package> {
         let variant_screaming = self.names.resolve(variant)?.screaming();
         Ok(self
             .names
-            .intern(Name::new(format!("{root_screaming}_{variant_screaming}"))))
+            .intern(Name::new(format!("{root_screaming}_{variant_screaming}")))?)
     }
 
     /// Derive and allocate an interface route-enum name.
     pub(crate) fn route_enum_name(&mut self, root: Identifier) -> Result<Identifier, NomosError> {
         let root_name = self.names.resolve(root)?.as_str().to_owned();
-        Ok(self.names.intern(Name::new(format!("{root_name}Route"))))
+        Ok(self.names.intern(Name::new(format!("{root_name}Route")))?)
     }
 
     /// Produce an output string literal from typed root and variant identifiers at
@@ -276,10 +286,10 @@ impl<'package> NameTableBoundary<'package> {
     }
 
     /// Intern a fixed logos-only path head.
-    fn leaf_path(&mut self, text: &str) -> PathNode {
-        PathNode {
-            segments: vec![self.names.intern(Name::new(text))],
-        }
+    fn leaf_path(&mut self, text: &str) -> Result<PathNode, NomosError> {
+        Ok(PathNode {
+            segments: vec![self.names.intern(Name::new(text))?],
+        })
     }
 }
 
@@ -385,5 +395,35 @@ impl SameTypeOrdinal {
             }
         }
         unreachable!("counts below 100 are handled above")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core_logos::{Attribute, DeriveGroup, PathNode};
+    use name_table::{IdentifierNamespace, NameTable};
+
+    use super::NameTableBoundary;
+    use crate::error::NomosError;
+
+    #[test]
+    fn invalid_derive_path_resolution_is_terminal() -> Result<(), NomosError> {
+        let package_names = NameTable::new(IdentifierNamespace::Nomos);
+        let schema_names = NameTable::new(IdentifierNamespace::Schema);
+        let boundary = NameTableBoundary::new(&package_names, &schema_names)?;
+        let unknown = IdentifierNamespace::Fixture.identifier(0);
+        let mut attributes = [Attribute::Derive(DeriveGroup {
+            paths: vec![PathNode {
+                segments: vec![unknown],
+            }],
+        })];
+
+        match boundary.remove_copy_derive(&mut attributes) {
+            Err(NomosError::NameResolution(_)) => Ok(()),
+            Err(error) => Err(error),
+            Ok(()) => Err(NomosError::Generation(
+                "invalid derive paths must not be silently retained",
+            )),
+        }
     }
 }

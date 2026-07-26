@@ -18,19 +18,19 @@ rendered-source equality is not an oracle.
 use core_nomos::MacroPackage;
 use core_schema::TextualSchema;
 use core_schema::fixture::COMMIT_SEQUENCE;
-use name_table::NameTable;
+use name_table::{IdentifierNamespace, NameTable};
 use textual_rust::RustSource;
 
 // schema TEXT → EncodedSchema
 let textual = TextualSchema::fixture()?;
-let mut schema_names = NameTable::new();
+let mut schema_names = NameTable::new(IdentifierNamespace::Schema);
 let value = textual.decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }", &mut schema_names)?;
 let schema = core_schema::EncodedSchema::new(vec![core_schema::EncodedDeclaration::public(value)]);
 
-// EncodedSchema → Nomos macros → CoreLogos (+ the extended, continuous NameTable)
-let lowering = MacroPackage::wire_fixture().apply(&schema, &schema_names)?;
+// EncodedSchema → Nomos macros → encoded logos form (+ Logos composed with Schema)
+let lowering = MacroPackage::wire_fixture()?.apply(&schema, &schema_names)?;
 
-// CoreLogos → TextualRust → generated Rust
+// encoded logos form → TextualRust → generated Rust
 let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
 ```
 
@@ -50,13 +50,13 @@ let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
   encoded forms without string manipulation in its macro transform: named
   invocations resolve or error loudly, structural defaults cover plain declarations,
   recursive invocation is bounded by cycle rejection, and the NameTable/emission
-  boundary extends the identifier space (schema indices preserved, logos names
-  appended).
+  boundary composes the Schema slice into a Logos-owned table. Identifiers retain
+  their namespace tag, and generated names allocate only in Logos.
 
 ## What it is not (yet)
 
 **TextualNomos is deferred.** Its escape spelling, meta-type text spellings, and
-Nomos delimiters remain in the psyche's review-later pile. This crate parses and
+Nomos delimiters remain deferred. This crate parses and
 prints no Nomos text: a macro is authored as data.
 
 ## Verification
@@ -69,7 +69,7 @@ pinned to this bootstrap revision, it must compile emitted Rust and pass its pub
 behavior tests. A rename preserves encoded-form identity while changing projected
 text.
 
-See `ARCHITECTURE.md` for the design, the rulings, and the flagged forks.
+See `ARCHITECTURE.md` for the design decisions and flagged forks.
 
 ## Build
 

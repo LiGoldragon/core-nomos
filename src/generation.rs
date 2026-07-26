@@ -1,13 +1,14 @@
 //! The enriched generation classes: the schema-derived *support surface* the wire
 //! reference fixtures emit alongside the data declarations — impl blocks (with methods,
 //! associated types, and associated consts), functions, consts, const modules, and
-//! use imports, as stringless CoreLogos data.
+//! use imports, as stringless encoded logos data.
 //!
-//! Where the per-declaration structural defaults lower one CoreLogos item per schema
+//! Where the per-declaration structural defaults lower one `EncodedItem` per schema
 //! declaration, a [`GenerationClass`] is a whole-schema generator. It reads the
 //! schema's newtype catalogue and its interface roots
-//! ([`core_schema::DeclarationRole`]) and appends an ordered run of CoreLogos items
-//! into the same continuous logos NameTable the declaration lowering built. Each
+//! ([`core_schema::DeclarationRole`]) and appends an ordered run of `EncodedItem`
+//! values into the Logos NameTable composed with Schema that declaration lowering
+//! built. Each
 //! class builds its fixed method and match skeletons directly — exactly as the fixed
 //! module prelude ([`crate::ModuleHead`]) authors its stringless data — with every
 //! identifier interned into that one table, no head strings and no text.
@@ -18,7 +19,7 @@
 
 use core_logos::{
     Alias, ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ClosureExpression,
-    ConfigurationAttribute, ConfigurationPredicate, Const, EncodedItem, DeriveGroup, Enumeration,
+    ConfigurationAttribute, ConfigurationPredicate, Const, DeriveGroup, EncodedItem, Enumeration,
     Expression, FieldInitializer, Function, Generics, ImplBlock, ImplItem, ImplTraitType,
     IndexExpression, IntegerLiteral, IntegerRepresentation, LetBinding, LetStatement, Match,
     MatchArm, MethodCall, Module, Newtype, Parameter, PathNode, Pattern, PatternElement,
@@ -27,7 +28,9 @@ use core_logos::{
     TupleFieldAccess, TupleType, TupleVariantPattern, TypeApplication, TypeReference, Variant,
     VariantPayload, Visibility,
 };
-use core_schema::{EncodedDeclaration, EncodedReference, EncodedSchema, EncodedType, EncodedVariant};
+use core_schema::{
+    EncodedDeclaration, EncodedReference, EncodedSchema, EncodedType, EncodedVariant,
+};
 use name_table::{Identifier, Name};
 use std::collections::BTreeMap;
 
@@ -114,7 +117,7 @@ impl InterfaceRoot {
 }
 
 impl Evaluator<'_> {
-    /// Build one generation class's ordered CoreLogos items from the schema.
+    /// Build one generation class's ordered `EncodedItem` values from the schema.
     pub(crate) fn generate_class(
         &mut self,
         class: &GenerationClass,
@@ -132,17 +135,20 @@ impl Evaluator<'_> {
 
     // ---- shared stringless builders ---------------------------------------------
 
-    /// Intern a fixed generation name into the extended logos table (dedup, so a name
-    /// a declaration already carries reuses its identifier).
-    fn ident(&mut self, text: &str) -> Identifier {
-        self.names.intern(Name::new(text))
+    /// Intern a fixed generation name into the Logos-owned table (dedup, so a name
+    /// already carried by the composed Schema slice reuses its identifier).
+    fn ident(&mut self, text: &str) -> Result<Identifier, NomosError> {
+        Ok(self.names.intern(Name::new(text))?)
     }
 
     /// A path over fixed name segments.
-    fn path(&mut self, segments: &[&str]) -> PathNode {
-        PathNode {
-            segments: segments.iter().map(|segment| self.ident(segment)).collect(),
-        }
+    fn path(&mut self, segments: &[&str]) -> Result<PathNode, NomosError> {
+        Ok(PathNode {
+            segments: segments
+                .iter()
+                .map(|segment| self.ident(segment))
+                .collect::<Result<Vec<_>, _>>()?,
+        })
     }
 
     /// A path over already-interned identifier segments.
@@ -153,67 +159,67 @@ impl Evaluator<'_> {
     }
 
     /// A single-segment path type over a fixed name (`Self`, `String`).
-    fn type_path(&mut self, segments: &[&str]) -> TypeReference {
-        TypeReference::Path(self.path(segments))
+    fn type_path(&mut self, segments: &[&str]) -> Result<TypeReference, NomosError> {
+        Ok(TypeReference::Path(self.path(segments)?))
     }
 
     /// The `Self` type, the return type of every constructor.
-    fn self_type(&mut self) -> TypeReference {
+    fn self_type(&mut self) -> Result<TypeReference, NomosError> {
         self.type_path(&["Self"])
     }
 
     /// The `&'static str` type shared by every `name()` return and the `HEADS`
     /// element type.
-    fn static_str(&mut self) -> TypeReference {
-        let lifetime = self.ident("static");
-        let referent = self.type_path(&["str"]);
-        TypeReference::Reference(ReferenceType {
+    fn static_str(&mut self) -> Result<TypeReference, NomosError> {
+        let lifetime = self.ident("static")?;
+        let referent = self.type_path(&["str"])?;
+        Ok(TypeReference::Reference(ReferenceType {
             lifetime: Some(lifetime),
             mutability: ReferenceMutability::Shared,
             referent: Box::new(referent),
-        })
+        }))
     }
 
     /// The `#[rustfmt::skip]` attribute every generated item carries.
-    fn rustfmt_skip(&mut self) -> Attribute {
-        Attribute::ToolPath(self.path(&["rustfmt", "skip"]))
+    fn rustfmt_skip(&mut self) -> Result<Attribute, NomosError> {
+        Ok(Attribute::ToolPath(self.path(&["rustfmt", "skip"])?))
     }
 
     /// The `#[cfg(feature = "nota-text")]` gate on the `FromStr` / `Display` impls.
-    fn cfg_nota(&mut self) -> Attribute {
-        let feature = self.ident("nota-text");
-        Attribute::Cfg(ConfigurationPredicate::Feature(feature))
+    fn cfg_nota(&mut self) -> Result<Attribute, NomosError> {
+        let feature = self.ident("nota-text")?;
+        Ok(Attribute::Cfg(ConfigurationPredicate::Feature(feature)))
     }
 
     /// The wire enum preamble the route enums and the trace enums carry — the same
     /// three-node preamble as the data enums, with `Copy` (a route/trace enum is
     /// unit- or newtype-payloaded and stays `Copy`).
-    fn wire_enum_preamble(&mut self) -> Vec<Attribute> {
-        let skip = self.rustfmt_skip();
-        let feature = self.ident("nota-text");
+    fn wire_enum_preamble(&mut self) -> Result<Vec<Attribute>, NomosError> {
+        let skip = self.rustfmt_skip()?;
+        let feature = self.ident("nota-text")?;
         let nota = Attribute::Configuration(ConfigurationAttribute {
             predicate: ConfigurationPredicate::Feature(feature),
             inner: Box::new(Attribute::Derive(DeriveGroup {
                 paths: vec![
-                    self.path(&["nota", "NotaDecode"]),
-                    self.path(&["nota", "NotaDecodeTraced"]),
-                    self.path(&["nota", "NotaEncode"]),
+                    self.path(&["nota", "NotaDecode"])?,
+                    self.path(&["nota", "NotaDecodeTraced"])?,
+                    self.path(&["nota", "NotaEncode"])?,
                 ],
             })),
         });
         let derive = Attribute::Derive(DeriveGroup {
             paths: vec![
-                self.path(&["rkyv", "Archive"]),
-                self.path(&["rkyv", "Serialize"]),
-                self.path(&["rkyv", "Deserialize"]),
-                self.path(&["Clone"]),
-                self.path(&["Copy"]),
-                self.path(&["Debug"]),
-                self.path(&["PartialEq"]),
-                self.path(&["Eq"]),
+                self.path(&["rkyv", "Archive"])?,
+                self.path(&["rkyv", "Serialize"])?,
+                self.path(&["rkyv", "Deserialize"])?,
+                self.path(&["Clone"])?,
+                self.path(&["Copy"])?,
+                self.path(&["Debug"])?,
+                self.path(&["PartialEq"])?,
+                self.path(&["Eq"])?,
             ],
         });
-        vec![skip, nota, derive]
+        Ok(vec![skip, nota, derive])
     }
 
     /// A method (associated function) node: the shared shape of every generated
@@ -269,26 +275,33 @@ impl Evaluator<'_> {
     }
 
     /// A `payload` parameter of a given type.
-    fn payload_parameter(&mut self, type_reference: TypeReference) -> Parameter {
-        Parameter {
-            name: self.ident("payload"),
+    fn payload_parameter(
+        &mut self,
+        type_reference: TypeReference,
+    ) -> Result<Parameter, NomosError> {
+        Ok(Parameter {
+            name: self.ident("payload")?,
             type_reference,
-        }
+        })
     }
 
     /// The `payload` value expression.
-    fn payload_value(&mut self) -> Expression {
-        Expression::Path(self.path(&["payload"]))
+    fn payload_value(&mut self) -> Result<Expression, NomosError> {
+        Ok(Expression::Path(self.path(&["payload"])?))
     }
 
     /// A call of a fixed-name path callee.
-    fn call_path(&mut self, segments: &[&str], arguments: Vec<Expression>) -> Expression {
-        let callee = Callee::Path(self.path(segments));
-        Expression::Call(Call {
+    fn call_path(
+        &mut self,
+        segments: &[&str],
+        arguments: Vec<Expression>,
+    ) -> Result<Expression, NomosError> {
+        let callee = Callee::Path(self.path(segments)?);
+        Ok(Expression::Call(Call {
             callee,
             type_arguments: Vec::new(),
             arguments,
-        })
+        }))
     }
 
     /// A call of a fixed-name path callee with a turbofish
@@ -298,13 +311,13 @@ impl Evaluator<'_> {
         segments: &[&str],
         type_arguments: Vec<TypeReference>,
         arguments: Vec<Expression>,
-    ) -> Expression {
-        let callee = Callee::Path(self.path(segments));
-        Expression::Call(Call {
+    ) -> Result<Expression, NomosError> {
+        let callee = Callee::Path(self.path(segments)?);
+        Ok(Expression::Call(Call {
             callee,
             type_arguments,
             arguments,
-        })
+        }))
     }
 
     /// A call of a callee path built from interned identifiers (a variant path such
@@ -326,15 +339,19 @@ impl Evaluator<'_> {
     }
 
     /// An inherent impl block (`impl <self_type> { <items> }`).
-    fn inherent_impl(&mut self, self_type: TypeReference, items: Vec<ImplItem>) -> EncodedItem {
-        let skip = self.rustfmt_skip();
-        EncodedItem::ImplBlock(ImplBlock {
+    fn inherent_impl(
+        &mut self,
+        self_type: TypeReference,
+        items: Vec<ImplItem>,
+    ) -> Result<EncodedItem, NomosError> {
+        let skip = self.rustfmt_skip()?;
+        Ok(EncodedItem::ImplBlock(ImplBlock {
             attributes: vec![skip],
             generics: Generics::none(),
             implemented_trait: None,
             self_type,
             items,
-        })
+        }))
     }
 
     /// A trait impl block with the given attribute preamble.
@@ -414,8 +431,8 @@ impl Evaluator<'_> {
                 let into_head = self.path(&["Into"]);
                 let param_type = TypeReference::ImplTrait(ImplTraitType {
                     bounds: vec![TypeReference::Application(TypeApplication {
-                        head: into_head,
-                        arguments: vec![string],
+                        head: into_head?,
+                        arguments: vec![string?],
                     })],
                 });
                 let parameter = self.payload_parameter(param_type);
@@ -424,32 +441,32 @@ impl Evaluator<'_> {
                 let body = self.call_path(
                     &["Self"],
                     vec![Expression::MethodCall(MethodCall {
-                        receiver: Box::new(payload),
-                        method: into,
+                        receiver: Box::new(payload?),
+                        method: into?,
                         type_arguments: Vec::new(),
                         arguments: Vec::new(),
                     })],
                 );
                 self.method(
-                    new_name,
+                    new_name?,
                     Visibility::Public,
                     None,
-                    vec![parameter],
-                    Some(self_return),
-                    body,
+                    vec![parameter?],
+                    Some(self_return?),
+                    body?,
                 )
             }
             Intake::ByValue => {
                 let parameter = self.payload_parameter(wrapped_type.clone());
                 let payload = self.payload_value();
-                let body = self.call_path(&["Self"], vec![payload]);
+                let body = self.call_path(&["Self"], vec![payload?]);
                 self.method(
-                    new_name,
+                    new_name?,
                     Visibility::Public,
                     None,
-                    vec![parameter],
-                    Some(self_return),
-                    body,
+                    vec![parameter?],
+                    Some(self_return?),
+                    body?,
                 )
             }
         };
@@ -465,7 +482,7 @@ impl Evaluator<'_> {
             referent: Box::new(self.self_field_zero()),
         });
         let payload_method = self.method(
-            payload_name,
+            payload_name?,
             Visibility::Public,
             Some(Receiver::Reference),
             Vec::new(),
@@ -477,7 +494,7 @@ impl Evaluator<'_> {
         let into_payload_name = self.ident("into_payload");
         let into_payload_body = self.self_field_zero();
         let into_payload_method = self.method(
-            into_payload_name,
+            into_payload_name?,
             Visibility::Public,
             Some(Receiver::Value),
             Vec::new(),
@@ -485,10 +502,10 @@ impl Evaluator<'_> {
             into_payload_body,
         );
 
-        Ok(self.inherent_impl(
+        self.inherent_impl(
             self_type,
             vec![new_method, payload_method, into_payload_method],
-        ))
+        )
     }
 
     fn newtype_from_impl(
@@ -500,24 +517,24 @@ impl Evaluator<'_> {
         let self_type = TypeReference::Path(self.path_of(&[name]));
         let from_head = self.path(&["From"]);
         let implemented_trait = TypeReference::Application(TypeApplication {
-            head: from_head,
+            head: from_head?,
             arguments: vec![wrapped_type.clone()],
         });
         let from_name = self.ident("from");
         let parameter = self.payload_parameter(wrapped_type);
         let self_return = self.self_type();
         let payload = self.payload_value();
-        let body = self.call_path(&["Self", "new"], vec![payload]);
+        let body = self.call_path(&["Self", "new"], vec![payload?]);
         let from_method = self.method(
-            from_name,
+            from_name?,
             Visibility::Private,
             None,
-            vec![parameter],
-            Some(self_return),
-            body,
+            vec![parameter?],
+            Some(self_return?),
+            body?,
         );
         let skip = self.rustfmt_skip();
-        Ok(self.trait_impl(vec![skip], implemented_trait, self_type, vec![from_method]))
+        Ok(self.trait_impl(vec![skip?], implemented_trait, self_type, vec![from_method]))
     }
 
     // ---- class B: interface ergonomics ------------------------------------------
@@ -559,7 +576,7 @@ impl Evaluator<'_> {
         catalogue: &BTreeMap<Identifier, EncodedReference>,
     ) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[root.name]));
-        let self_ident = self.self_ident();
+        let self_ident = self.self_ident()?;
         let mut methods = Vec::with_capacity(root.variants.len());
         for variant in &root.variants {
             let payload = variant
@@ -575,8 +592,8 @@ impl Evaluator<'_> {
                     let parameter_type = self.lower_reference(&reference)?;
                     let parameter = self.payload_parameter(parameter_type);
                     let payload_value = self.payload_value();
-                    let body =
-                        self.call_path_of(&[self_ident, variant.identifier()], vec![payload_value]);
+                    let body = self
+                        .call_path_of(&[self_ident, variant.identifier()], vec![payload_value?]);
                     (parameter, body)
                 }
                 ConstructorSource::Unwrap { newtype, inner } => {
@@ -584,7 +601,7 @@ impl Evaluator<'_> {
                     let parameter = self.payload_parameter(parameter_type);
                     let payload_value = self.payload_value();
                     let new = self.ident("new");
-                    let wrap = self.call_path_of(&[newtype, new], vec![payload_value]);
+                    let wrap = self.call_path_of(&[newtype, new?], vec![payload_value?]);
                     let body = self.call_path_of(&[self_ident, variant.identifier()], vec![wrap]);
                     (parameter, body)
                 }
@@ -593,12 +610,12 @@ impl Evaluator<'_> {
                 method_name,
                 Visibility::Public,
                 None,
-                vec![parameter],
-                Some(self_return),
+                vec![parameter?],
+                Some(self_return?),
                 body,
             ));
         }
-        Ok(self.inherent_impl(self_type, methods))
+        self.inherent_impl(self_type, methods)
     }
 
     fn interface_from_impl(
@@ -616,45 +633,45 @@ impl Evaluator<'_> {
         let self_type = TypeReference::Path(self.path_of(&[root]));
         let from_head = self.path(&["From"]);
         let implemented_trait = TypeReference::Application(TypeApplication {
-            head: from_head,
+            head: from_head?,
             arguments: vec![payload_type.clone()],
         });
         let from_name = self.ident("from");
         let parameter = self.payload_parameter(payload_type);
         let self_return = self.self_type();
         let payload_value = self.payload_value();
-        let self_ident = self.self_ident();
-        let body = self.call_path_of(&[self_ident, variant.identifier()], vec![payload_value]);
+        let self_ident = self.self_ident()?;
+        let body = self.call_path_of(&[self_ident, variant.identifier()], vec![payload_value?]);
         let from_method = self.method(
-            from_name,
+            from_name?,
             Visibility::Private,
             None,
-            vec![parameter],
-            Some(self_return),
+            vec![parameter?],
+            Some(self_return?),
             body,
         );
         let skip = self.rustfmt_skip();
-        Ok(self.trait_impl(vec![skip], implemented_trait, self_type, vec![from_method]))
+        Ok(self.trait_impl(vec![skip?], implemented_trait, self_type, vec![from_method]))
     }
 
     fn interface_from_str_impl(&mut self, root: Identifier) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[root]));
-        let implemented_trait = TypeReference::Path(self.path(&["std", "str", "FromStr"]));
+        let implemented_trait = TypeReference::Path(self.path(&["std", "str", "FromStr"])?);
 
         let err_name = self.ident("Err");
         let err_value = self.type_path(&["NotaDecodeError"]);
         let associated_type = ImplItem::AssociatedType(AssociatedType {
-            name: err_name,
-            value: err_value,
+            name: err_name?,
+            value: err_value?,
         });
 
         // fn from_str(source: &str) -> Result<Self, Self::Err>
         let from_str_name = self.ident("from_str");
-        let source_name = self.ident("source");
+        let source_name = self.ident("source")?;
         let str_ref = TypeReference::Reference(ReferenceType {
             lifetime: None,
             mutability: ReferenceMutability::Shared,
-            referent: Box::new(self.type_path(&["str"])),
+            referent: Box::new(self.type_path(&["str"])?),
         });
         let parameter = Parameter {
             name: source_name,
@@ -662,23 +679,23 @@ impl Evaluator<'_> {
         };
         let result_head = self.path(&["Result"]);
         let self_arg = self.self_type();
-        let self_err = TypeReference::Path(self.path(&["Self", "Err"]));
+        let self_err = TypeReference::Path(self.path(&["Self", "Err"])?);
         let return_type = TypeReference::Application(TypeApplication {
-            head: result_head,
-            arguments: vec![self_arg, self_err],
+            head: result_head?,
+            arguments: vec![self_arg?, self_err],
         });
         let source_value = Expression::Path(self.path_of(&[source_name]));
         let nota_source_new = self.call_path(&["NotaSource", "new"], vec![source_value]);
         let parse = self.ident("parse");
         let self_turbofish = self.self_type();
         let body = Expression::MethodCall(MethodCall {
-            receiver: Box::new(nota_source_new),
-            method: parse,
-            type_arguments: vec![self_turbofish],
+            receiver: Box::new(nota_source_new?),
+            method: parse?,
+            type_arguments: vec![self_turbofish?],
             arguments: Vec::new(),
         });
         let from_str = self.method(
-            from_str_name,
+            from_str_name?,
             Visibility::Private,
             None,
             vec![parameter],
@@ -689,7 +706,7 @@ impl Evaluator<'_> {
         let skip = self.rustfmt_skip();
         let cfg = self.cfg_nota();
         Ok(self.trait_impl(
-            vec![skip, cfg],
+            vec![skip?, cfg?],
             implemented_trait,
             self_type,
             vec![associated_type, from_str],
@@ -698,26 +715,26 @@ impl Evaluator<'_> {
 
     fn interface_display_impl(&mut self, root: Identifier) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[root]));
-        let implemented_trait = TypeReference::Path(self.path(&["std", "fmt", "Display"]));
+        let implemented_trait = TypeReference::Path(self.path(&["std", "fmt", "Display"])?);
 
         // fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
         let fmt_name = self.ident("fmt");
-        let formatter_name = self.ident("formatter");
+        let formatter_name = self.ident("formatter")?;
         let underscore = self.ident("_");
         let formatter_head = self.path(&["std", "fmt", "Formatter"]);
         let formatter_type = TypeReference::Reference(ReferenceType {
             lifetime: None,
             mutability: ReferenceMutability::Mutable,
             referent: Box::new(TypeReference::Application(TypeApplication {
-                head: formatter_head,
-                arguments: vec![TypeReference::Lifetime(underscore)],
+                head: formatter_head?,
+                arguments: vec![TypeReference::Lifetime(underscore?)],
             })),
         });
         let parameter = Parameter {
             name: formatter_name,
             type_reference: formatter_type,
         };
-        let return_type = TypeReference::Path(self.path(&["std", "fmt", "Result"]));
+        let return_type = TypeReference::Path(self.path(&["std", "fmt", "Result"])?);
 
         // formatter.write_str(&<Self as NotaEncode>::to_nota(self))
         let self_qualified = self.self_type();
@@ -725,9 +742,9 @@ impl Evaluator<'_> {
         let to_nota = self.ident("to_nota");
         let qualified_call = Expression::Call(Call {
             callee: Callee::Qualified(QualifiedPath {
-                self_type: self_qualified,
-                trait_path: nota_encode,
-                member: vec![to_nota],
+                self_type: self_qualified?,
+                trait_path: nota_encode?,
+                member: vec![to_nota?],
             }),
             type_arguments: Vec::new(),
             arguments: vec![Expression::Receiver],
@@ -736,14 +753,14 @@ impl Evaluator<'_> {
         let formatter_value = Expression::Path(self.path_of(&[formatter_name]));
         let body = Expression::MethodCall(MethodCall {
             receiver: Box::new(formatter_value),
-            method: write_str,
+            method: write_str?,
             type_arguments: Vec::new(),
             arguments: vec![Expression::Reference(ReferenceExpression {
                 referent: Box::new(qualified_call),
             })],
         });
         let fmt = self.method(
-            fmt_name,
+            fmt_name?,
             Visibility::Private,
             Some(Receiver::Reference),
             vec![parameter],
@@ -753,7 +770,7 @@ impl Evaluator<'_> {
 
         let skip = self.rustfmt_skip();
         let cfg = self.cfg_nota();
-        Ok(self.trait_impl(vec![skip, cfg], implemented_trait, self_type, vec![fmt]))
+        Ok(self.trait_impl(vec![skip?, cfg?], implemented_trait, self_type, vec![fmt]))
     }
 
     // ---- the wire contract: the ordinary-exchange wire vocabulary ---------------
@@ -762,7 +779,10 @@ impl Evaluator<'_> {
     /// the `SIGNAL_SHORT_HEADER_BYTE_COUNT` byte-count const, the `SignalFrameError`
     /// enum, and the two route enums. These are the types the codec speaks; the
     /// encode/decode bodies over them are the sibling [`Self::generate_wire_exchange_codec`].
-    fn generate_wire_contract(&mut self, schema: &EncodedSchema) -> Result<Vec<EncodedItem>, NomosError> {
+    fn generate_wire_contract(
+        &mut self,
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
@@ -771,8 +791,8 @@ impl Evaluator<'_> {
         }
         let mut items = Vec::new();
         items.push(self.short_header_module(&roots)?);
-        items.push(self.short_header_byte_count_const());
-        items.push(self.signal_frame_error_enum());
+        items.push(self.short_header_byte_count_const()?);
+        items.push(self.signal_frame_error_enum()?);
         for root in &roots {
             items.push(self.route_enum(root)?);
         }
@@ -816,8 +836,7 @@ impl Evaluator<'_> {
     /// type aliases over `signal_frame::ExchangeFrame` (the ordinary two-way leg); and
     /// the request root's `into_frame` and the reply root's `into_reply_frame`
     /// constructors. Scope is the ordinary leg only — the aliases name `ExchangeFrame`,
-    /// never `StreamingFrame`, whose subscription envelope waits on pending psyche
-    /// rulings.
+    /// never `StreamingFrame`, whose subscription envelope is outside this surface.
     fn generate_wire_exchange_envelope(
         &mut self,
         schema: &EncodedSchema,
@@ -832,20 +851,20 @@ impl Evaluator<'_> {
         let request_name = request.name;
         let reply_name = reply.name;
         Ok(vec![
-            self.request_payload_impl(request_name),
+            self.request_payload_impl(request_name)?,
             self.signal_operation_heads_impl(request)?,
-            self.log_variant_impl(request_name),
-            self.frame_alias("Frame", "ExchangeFrame", &[request_name, reply_name]),
+            self.log_variant_impl(request_name)?,
+            self.frame_alias("Frame", "ExchangeFrame", &[request_name, reply_name])?,
             self.frame_alias(
                 "FrameBody",
                 "ExchangeFrameBody",
                 &[request_name, reply_name],
-            ),
-            self.frame_alias("Request", "Request", &[request_name]),
-            self.frame_alias("ReplyEnvelope", "Reply", &[reply_name]),
-            self.frame_alias("RequestBuilder", "RequestBuilder", &[request_name]),
-            self.frame_constructor_impl(request_name),
-            self.reply_frame_constructor_impl(reply_name),
+            )?,
+            self.frame_alias("Request", "Request", &[request_name])?,
+            self.frame_alias("ReplyEnvelope", "Reply", &[reply_name])?,
+            self.frame_alias("RequestBuilder", "RequestBuilder", &[request_name])?,
+            self.frame_constructor_impl(request_name)?,
+            self.reply_frame_constructor_impl(reply_name)?,
         ])
     }
 
@@ -885,7 +904,7 @@ impl Evaluator<'_> {
                     visibility: Visibility::Public,
                     attributes: Vec::new(),
                     name: const_name,
-                    type_reference: u64_type.clone(),
+                    type_reference: u64_type.clone()?,
                     value: Expression::IntegerLiteral(IntegerLiteral {
                         value: u128::from(value),
                         representation: IntegerRepresentation::Hexadecimal { minimum_digits: 16 },
@@ -897,8 +916,8 @@ impl Evaluator<'_> {
         let skip = self.rustfmt_skip();
         Ok(EncodedItem::Module(Module {
             visibility: Visibility::Public,
-            attributes: vec![skip],
-            name: module_name,
+            attributes: vec![skip?],
+            name: module_name?,
             items: consts,
         }))
     }
@@ -916,7 +935,7 @@ impl Evaluator<'_> {
             .collect();
         Ok(EncodedItem::Enumeration(Enumeration {
             visibility: Visibility::Public,
-            attributes,
+            attributes: attributes?,
             name,
             generics: Generics::none(),
             variants,
@@ -929,14 +948,14 @@ impl Evaluator<'_> {
     ) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[request.name]));
         let implemented_trait =
-            TypeReference::Path(self.path(&["signal_frame", "SignalOperationHeads"]));
+            TypeReference::Path(self.path(&["signal_frame", "SignalOperationHeads"])?);
         let heads_name = self.ident("HEADS");
         let static_str = self.static_str();
         let heads_type = TypeReference::Reference(ReferenceType {
-            lifetime: Some(self.ident("static")),
+            lifetime: Some(self.ident("static")?),
             mutability: ReferenceMutability::Shared,
             referent: Box::new(TypeReference::Slice(SliceType {
-                element: Box::new(static_str),
+                element: Box::new(static_str?),
             })),
         });
         let mut elements = Vec::with_capacity(request.variants.len());
@@ -951,23 +970,23 @@ impl Evaluator<'_> {
         let heads = ImplItem::AssociatedConst(Const {
             visibility: Visibility::Private,
             attributes: Vec::new(),
-            name: heads_name,
+            name: heads_name?,
             type_reference: heads_type,
             value: heads_value,
         });
         let skip = self.rustfmt_skip();
-        Ok(self.trait_impl(vec![skip], implemented_trait, self_type, vec![heads]))
+        Ok(self.trait_impl(vec![skip?], implemented_trait, self_type, vec![heads]))
     }
 
     // ---- wire-contract vocabulary builders --------------------------------------
 
     /// `#[rustfmt::skip] const SIGNAL_SHORT_HEADER_BYTE_COUNT: usize = 8;` — the
     /// little-endian short-header width shared by every codec body.
-    fn short_header_byte_count_const(&mut self) -> EncodedItem {
-        let skip = self.rustfmt_skip();
-        let name = self.ident("SIGNAL_SHORT_HEADER_BYTE_COUNT");
-        let usize_type = self.type_path(&["usize"]);
-        EncodedItem::Const(Const {
+    fn short_header_byte_count_const(&mut self) -> Result<EncodedItem, NomosError> {
+        let skip = self.rustfmt_skip()?;
+        let name = self.ident("SIGNAL_SHORT_HEADER_BYTE_COUNT")?;
+        let usize_type = self.type_path(&["usize"])?;
+        Ok(EncodedItem::Const(Const {
             visibility: Visibility::Private,
             attributes: vec![skip],
             name,
@@ -976,61 +995,61 @@ impl Evaluator<'_> {
                 value: u128::from(SHORT_HEADER_BYTE_COUNT),
                 representation: IntegerRepresentation::Decimal,
             }),
-        })
+        }))
     }
 
     /// The `SignalFrameError` enum — the codec's fallible result. A tuple `UnknownHeader`
     /// carries the offending header; the rest are unit variants. It derives the value
     /// traits only (no rkyv/nota — it is a local error, never on the wire), so a caller
     /// can `unwrap`/compare it.
-    fn signal_frame_error_enum(&mut self) -> EncodedItem {
-        let skip = self.rustfmt_skip();
+    fn signal_frame_error_enum(&mut self) -> Result<EncodedItem, NomosError> {
+        let skip = self.rustfmt_skip()?;
         let derive = Attribute::Derive(DeriveGroup {
             paths: vec![
-                self.path(&["Clone"]),
-                self.path(&["Debug"]),
-                self.path(&["PartialEq"]),
-                self.path(&["Eq"]),
+                self.path(&["Clone"])?,
+                self.path(&["Debug"])?,
+                self.path(&["PartialEq"])?,
+                self.path(&["Eq"])?,
             ],
         });
-        let name = self.ident("SignalFrameError");
-        let u64_type = self.type_path(&["u64"]);
+        let name = self.ident("SignalFrameError")?;
+        let u64_type = self.type_path(&["u64"])?;
         let variants = vec![
             Variant {
-                name: self.ident("ArchiveEncode"),
+                name: self.ident("ArchiveEncode")?,
                 payload: VariantPayload::Unit,
             },
             Variant {
-                name: self.ident("ArchiveDecode"),
+                name: self.ident("ArchiveDecode")?,
                 payload: VariantPayload::Unit,
             },
             Variant {
-                name: self.ident("FrameTooShort"),
+                name: self.ident("FrameTooShort")?,
                 payload: VariantPayload::Unit,
             },
             Variant {
-                name: self.ident("UnknownHeader"),
+                name: self.ident("UnknownHeader")?,
                 payload: VariantPayload::Tuple(vec![u64_type]),
             },
             Variant {
-                name: self.ident("HeaderMismatch"),
+                name: self.ident("HeaderMismatch")?,
                 payload: VariantPayload::Unit,
             },
         ];
-        EncodedItem::Enumeration(Enumeration {
+        Ok(EncodedItem::Enumeration(Enumeration {
             visibility: Visibility::Public,
             attributes: vec![skip, derive],
             name,
             generics: Generics::none(),
             variants,
-        })
+        }))
     }
 
     // ---- small expression/statement builders (verbs on the growing table) -------
 
     /// A value path expression over fixed name segments (`SignalFrameError::ArchiveEncode`).
-    fn path_expr(&mut self, segments: &[&str]) -> Expression {
-        Expression::Path(self.path(segments))
+    fn path_expr(&mut self, segments: &[&str]) -> Result<Expression, NomosError> {
+        Ok(Expression::Path(self.path(segments)?))
     }
 
     /// A method call `<receiver>.<method>(<arguments>)` with no turbofish.
@@ -1039,14 +1058,14 @@ impl Evaluator<'_> {
         receiver: Expression,
         method: &str,
         arguments: Vec<Expression>,
-    ) -> Expression {
-        let method = self.ident(method);
-        Expression::MethodCall(MethodCall {
+    ) -> Result<Expression, NomosError> {
+        let method = self.ident(method)?;
+        Ok(Expression::MethodCall(MethodCall {
             receiver: Box::new(receiver),
             method,
             type_arguments: Vec::new(),
             arguments,
-        })
+        }))
     }
 
     /// The `?` try operator over a fallible expression.
@@ -1072,39 +1091,48 @@ impl Evaluator<'_> {
     }
 
     /// A `let <binding> <name> = <value>;` statement.
-    fn let_stmt(&mut self, binding: LetBinding, name: &str, value: Expression) -> Statement {
-        let name = self.ident(name);
-        Statement::Let(LetStatement {
+    fn let_stmt(
+        &mut self,
+        binding: LetBinding,
+        name: &str,
+        value: Expression,
+    ) -> Result<Statement, NomosError> {
+        let name = self.ident(name)?;
+        Ok(Statement::Let(LetStatement {
             binding,
             name,
             value,
-        })
+        }))
     }
 
     /// The `Result<<ok>, <err>>` return type.
-    fn result_type(&mut self, ok: TypeReference, err: TypeReference) -> TypeReference {
-        let head = self.path(&["Result"]);
-        TypeReference::Application(TypeApplication {
+    fn result_type(
+        &mut self,
+        ok: TypeReference,
+        err: TypeReference,
+    ) -> Result<TypeReference, NomosError> {
+        let head = self.path(&["Result"])?;
+        Ok(TypeReference::Application(TypeApplication {
             head,
             arguments: vec![ok, err],
-        })
+        }))
     }
 
     /// The `SignalFrameError` type — the error half of every codec return.
-    fn signal_frame_error_type(&mut self) -> TypeReference {
+    fn signal_frame_error_type(&mut self) -> Result<TypeReference, NomosError> {
         self.type_path(&["SignalFrameError"])
     }
 
     /// The `&[u8]` byte-slice parameter type of `decode_signal_frame`.
-    fn byte_slice_type(&mut self) -> TypeReference {
-        let u8_type = self.type_path(&["u8"]);
-        TypeReference::Reference(ReferenceType {
+    fn byte_slice_type(&mut self) -> Result<TypeReference, NomosError> {
+        let u8_type = self.type_path(&["u8"])?;
+        Ok(TypeReference::Reference(ReferenceType {
             lifetime: None,
             mutability: ReferenceMutability::Shared,
             referent: Box::new(TypeReference::Slice(SliceType {
                 element: Box::new(u8_type),
             })),
-        })
+        }))
     }
 
     // ---- wire exchange codec builders -------------------------------------------
@@ -1112,16 +1140,16 @@ impl Evaluator<'_> {
     /// The pattern that matches one interface variant on `self`: `Self::Record(_)` for
     /// a payload-carrying operation, or the unit path `Self::Version` for a unit one —
     /// the payload/no-payload special case dissolved by reading the variant's payload.
-    fn self_variant_pattern(&mut self, variant: &EncodedVariant) -> Pattern {
-        let self_ident = self.self_ident();
+    fn self_variant_pattern(&mut self, variant: &EncodedVariant) -> Result<Pattern, NomosError> {
+        let self_ident = self.self_ident()?;
         let path = self.path_of(&[self_ident, variant.identifier()]);
-        match variant.payload() {
+        Ok(match variant.payload() {
             Some(_) => Pattern::TupleVariant(TupleVariantPattern {
                 path,
                 elements: vec![PatternElement::Wildcard],
             }),
             None => Pattern::Path(path),
-        }
+        })
     }
 
     /// The codec `impl <Root> { route / short_header / route_from_short_header /
@@ -1132,10 +1160,10 @@ impl Evaluator<'_> {
             self.route_method(root)?,
             self.short_header_method(root)?,
             self.route_from_short_header_method(root)?,
-            self.encode_signal_frame_method(),
+            self.encode_signal_frame_method()?,
             self.decode_signal_frame_method(root)?,
         ];
-        Ok(self.inherent_impl(self_type, items))
+        self.inherent_impl(self_type, items)
     }
 
     /// `pub fn route(&self) -> <Root>Route { match self { Self::V(_) => <Root>Route::V, … } }`.
@@ -1143,7 +1171,7 @@ impl Evaluator<'_> {
         let route_enum = self.names.route_enum_name(root.name)?;
         let mut arms = Vec::with_capacity(root.variants.len());
         for variant in &root.variants {
-            let pattern = self.self_variant_pattern(variant);
+            let pattern = self.self_variant_pattern(variant)?;
             let body = Expression::Path(self.path_of(&[route_enum, variant.identifier()]));
             arms.push(MatchArm { pattern, body });
         }
@@ -1154,7 +1182,7 @@ impl Evaluator<'_> {
         let name = self.ident("route");
         let return_type = TypeReference::Path(self.path_of(&[route_enum]));
         Ok(self.method(
-            name,
+            name?,
             Visibility::Public,
             Some(Receiver::Reference),
             Vec::new(),
@@ -1165,10 +1193,10 @@ impl Evaluator<'_> {
 
     /// `pub fn short_header(&self) -> u64 { match self { Self::V(_) => short_header::ROOT_V, … } }`.
     fn short_header_method(&mut self, root: &InterfaceRoot) -> Result<ImplItem, NomosError> {
-        let short_header = self.ident("short_header");
+        let short_header = self.ident("short_header")?;
         let mut arms = Vec::with_capacity(root.variants.len());
         for variant in &root.variants {
-            let pattern = self.self_variant_pattern(variant);
+            let pattern = self.self_variant_pattern(variant)?;
             let const_name = self
                 .names
                 .short_header_const_name(root.name, variant.identifier())?;
@@ -1182,11 +1210,11 @@ impl Evaluator<'_> {
         let name = self.ident("short_header");
         let return_type = self.type_path(&["u64"]);
         Ok(self.method(
-            name,
+            name?,
             Visibility::Public,
             Some(Receiver::Reference),
             Vec::new(),
-            Some(return_type),
+            Some(return_type?),
             body,
         ))
     }
@@ -1198,9 +1226,9 @@ impl Evaluator<'_> {
         &mut self,
         root: &InterfaceRoot,
     ) -> Result<ImplItem, NomosError> {
-        let short_header = self.ident("short_header");
+        let short_header = self.ident("short_header")?;
         let route_enum = self.names.route_enum_name(root.name)?;
-        let header = self.ident("header");
+        let header = self.ident("header")?;
         let mut arms = Vec::with_capacity(root.variants.len() + 1);
         for variant in &root.variants {
             let const_name = self
@@ -1209,15 +1237,18 @@ impl Evaluator<'_> {
             let pattern = Pattern::Path(self.path_of(&[short_header, const_name]));
             let route_value = Expression::Path(self.path_of(&[route_enum, variant.identifier()]));
             let body = self.call_path(&["Ok"], vec![route_value]);
-            arms.push(MatchArm { pattern, body });
+            arms.push(MatchArm {
+                pattern,
+                body: body?,
+            });
         }
         // _ => Err(SignalFrameError::UnknownHeader(header))
         let header_value = Expression::Path(self.path_of(&[header]));
         let unknown = self.call_path(&["SignalFrameError", "UnknownHeader"], vec![header_value]);
-        let wildcard_body = self.call_path(&["Err"], vec![unknown]);
+        let wildcard_body = self.call_path(&["Err"], vec![unknown?]);
         arms.push(MatchArm {
             pattern: Pattern::Wildcard,
-            body: wildcard_body,
+            body: wildcard_body?,
         });
         let scrutinee = Expression::Path(self.path_of(&[header]));
         let body = Expression::Match(Match {
@@ -1226,14 +1257,14 @@ impl Evaluator<'_> {
         });
         let parameter = Parameter {
             name: header,
-            type_reference: self.type_path(&["u64"]),
+            type_reference: self.type_path(&["u64"])?,
         };
         let route_type = TypeReference::Path(self.path_of(&[route_enum]));
-        let error_type = self.signal_frame_error_type();
-        let return_type = self.result_type(route_type, error_type);
+        let error_type = self.signal_frame_error_type()?;
+        let return_type = self.result_type(route_type, error_type)?;
         let name = self.ident("route_from_short_header");
         Ok(self.method(
-            name,
+            name?,
             Visibility::Public,
             None,
             vec![parameter],
@@ -1245,59 +1276,60 @@ impl Evaluator<'_> {
     /// `pub fn encode_signal_frame(&self) -> Result<Vec<u8>, SignalFrameError>` — rkyv
     /// the payload, then prepend the little-endian short header. Mirrors the wire the
     /// hand-written contracts speak (header bytes then archive).
-    fn encode_signal_frame_method(&mut self) -> ImplItem {
+    fn encode_signal_frame_method(&mut self) -> Result<ImplItem, NomosError> {
         // let archive = rkyv::to_bytes::<rkyv::rancor::Error>(self)
         //     .map_err(|_| SignalFrameError::ArchiveEncode)?;
         let rancor_error = self.type_path(&["rkyv", "rancor", "Error"]);
         let to_bytes = self.call_path_turbofish(
             &["rkyv", "to_bytes"],
-            vec![rancor_error],
+            vec![rancor_error?],
             vec![Expression::Receiver],
         );
         let archive_error = self.path_expr(&["SignalFrameError", "ArchiveEncode"]);
-        let closure = self.closure_discard(archive_error);
-        let map_err = self.method_call(to_bytes, "map_err", vec![closure]);
+        let closure = self.closure_discard(archive_error?);
+        let map_err = self.method_call(to_bytes?, "map_err", vec![closure])?;
         let archive_value = self.try_expr(map_err);
-        let statement_archive = self.let_stmt(LetBinding::Immutable, "archive", archive_value);
+        let statement_archive = self.let_stmt(LetBinding::Immutable, "archive", archive_value)?;
 
         // let mut frame = self.short_header().to_le_bytes().to_vec();
-        let short_header_call = self.method_call(Expression::Receiver, "short_header", Vec::new());
-        let to_le_bytes = self.method_call(short_header_call, "to_le_bytes", Vec::new());
-        let to_vec = self.method_call(to_le_bytes, "to_vec", Vec::new());
-        let statement_frame = self.let_stmt(LetBinding::Mutable, "frame", to_vec);
+        let short_header_call =
+            self.method_call(Expression::Receiver, "short_header", Vec::new())?;
+        let to_le_bytes = self.method_call(short_header_call, "to_le_bytes", Vec::new())?;
+        let to_vec = self.method_call(to_le_bytes, "to_vec", Vec::new())?;
+        let statement_frame = self.let_stmt(LetBinding::Mutable, "frame", to_vec)?;
 
         // frame.extend_from_slice(&archive);
-        let archive_path = self.path_expr(&["archive"]);
+        let archive_path = self.path_expr(&["archive"])?;
         let archive_reference = self.reference_expr(archive_path);
-        let frame_path = self.path_expr(&["frame"]);
-        let extend = self.method_call(frame_path, "extend_from_slice", vec![archive_reference]);
+        let frame_path = self.path_expr(&["frame"])?;
+        let extend = self.method_call(frame_path, "extend_from_slice", vec![archive_reference])?;
         let statement_extend = Statement::Expression(extend);
 
         // Ok(frame)
-        let frame_tail = self.path_expr(&["frame"]);
-        let tail = self.call_path(&["Ok"], vec![frame_tail]);
+        let frame_tail = self.path_expr(&["frame"])?;
+        let tail = self.call_path(&["Ok"], vec![frame_tail])?;
 
         let block = Block {
             statements: vec![statement_archive, statement_frame, statement_extend],
             tail_expression: tail,
         };
-        let u8_type = self.type_path(&["u8"]);
-        let vec_head = self.path(&["Vec"]);
+        let u8_type = self.type_path(&["u8"])?;
+        let vec_head = self.path(&["Vec"])?;
         let vec_u8 = TypeReference::Application(TypeApplication {
             head: vec_head,
             arguments: vec![u8_type],
         });
-        let error_type = self.signal_frame_error_type();
-        let return_type = self.result_type(vec_u8, error_type);
-        let name = self.ident("encode_signal_frame");
-        self.method_block(
+        let error_type = self.signal_frame_error_type()?;
+        let return_type = self.result_type(vec_u8, error_type)?;
+        let name = self.ident("encode_signal_frame")?;
+        Ok(self.method_block(
             name,
             Visibility::Public,
             Some(Receiver::Reference),
             Vec::new(),
             Some(return_type),
             block,
-        )
+        ))
     }
 
     /// `pub fn decode_signal_frame(frame: &[u8]) -> Result<(<Root>Route, Self), SignalFrameError>`
@@ -1311,30 +1343,30 @@ impl Evaluator<'_> {
         //         .try_into()
         //         .map_err(|_| SignalFrameError::FrameTooShort)?,
         // );
-        let byte_count = self.path_expr(&["SIGNAL_SHORT_HEADER_BYTE_COUNT"]);
+        let byte_count = self.path_expr(&["SIGNAL_SHORT_HEADER_BYTE_COUNT"])?;
         let range_to = Expression::Range(RangeExpression {
             start: None,
             end: Some(Box::new(byte_count)),
         });
-        let frame_get = self.path_expr(&["frame"]);
-        let get = self.method_call(frame_get, "get", vec![range_to]);
-        let frame_too_short = self.path_expr(&["SignalFrameError", "FrameTooShort"]);
-        let ok_or = self.method_call(get, "ok_or", vec![frame_too_short]);
+        let frame_get = self.path_expr(&["frame"])?;
+        let get = self.method_call(frame_get, "get", vec![range_to])?;
+        let frame_too_short = self.path_expr(&["SignalFrameError", "FrameTooShort"])?;
+        let ok_or = self.method_call(get, "ok_or", vec![frame_too_short])?;
         let ok_or_try = self.try_expr(ok_or);
-        let try_into = self.method_call(ok_or_try, "try_into", Vec::new());
-        let frame_too_short_two = self.path_expr(&["SignalFrameError", "FrameTooShort"]);
+        let try_into = self.method_call(ok_or_try, "try_into", Vec::new())?;
+        let frame_too_short_two = self.path_expr(&["SignalFrameError", "FrameTooShort"])?;
         let try_into_closure = self.closure_discard(frame_too_short_two);
-        let try_into_map_err = self.method_call(try_into, "map_err", vec![try_into_closure]);
+        let try_into_map_err = self.method_call(try_into, "map_err", vec![try_into_closure])?;
         let header_bytes = self.try_expr(try_into_map_err);
-        let from_le_bytes = self.call_path(&["u64", "from_le_bytes"], vec![header_bytes]);
-        let statement_header = self.let_stmt(LetBinding::Immutable, "header", from_le_bytes);
+        let from_le_bytes = self.call_path(&["u64", "from_le_bytes"], vec![header_bytes])?;
+        let statement_header = self.let_stmt(LetBinding::Immutable, "header", from_le_bytes)?;
 
         // let route = Self::route_from_short_header(header)?;
-        let header_argument = self.path_expr(&["header"]);
+        let header_argument = self.path_expr(&["header"])?;
         let route_call =
             self.call_path(&["Self", "route_from_short_header"], vec![header_argument]);
-        let route_value = self.try_expr(route_call);
-        let statement_route = self.let_stmt(LetBinding::Immutable, "route", route_value);
+        let route_value = self.try_expr(route_call?);
+        let statement_route = self.let_stmt(LetBinding::Immutable, "route", route_value)?;
 
         // let value = rkyv::from_bytes::<Self, rkyv::rancor::Error>(
         //     &frame[SIGNAL_SHORT_HEADER_BYTE_COUNT..],
@@ -1342,12 +1374,12 @@ impl Evaluator<'_> {
         // .map_err(|_| SignalFrameError::ArchiveDecode)?;
         let self_argument = self.self_type();
         let rancor_error = self.type_path(&["rkyv", "rancor", "Error"]);
-        let byte_count_from = self.path_expr(&["SIGNAL_SHORT_HEADER_BYTE_COUNT"]);
+        let byte_count_from = self.path_expr(&["SIGNAL_SHORT_HEADER_BYTE_COUNT"])?;
         let range_from = Expression::Range(RangeExpression {
             start: Some(Box::new(byte_count_from)),
             end: None,
         });
-        let frame_base = self.path_expr(&["frame"]);
+        let frame_base = self.path_expr(&["frame"])?;
         let index = Expression::Index(IndexExpression {
             base: Box::new(frame_base),
             index: Box::new(range_from),
@@ -1355,36 +1387,36 @@ impl Evaluator<'_> {
         let index_reference = self.reference_expr(index);
         let from_bytes = self.call_path_turbofish(
             &["rkyv", "from_bytes"],
-            vec![self_argument, rancor_error],
+            vec![self_argument?, rancor_error?],
             vec![index_reference],
         );
-        let archive_decode = self.path_expr(&["SignalFrameError", "ArchiveDecode"]);
+        let archive_decode = self.path_expr(&["SignalFrameError", "ArchiveDecode"])?;
         let decode_closure = self.closure_discard(archive_decode);
-        let decode_map_err = self.method_call(from_bytes, "map_err", vec![decode_closure]);
+        let decode_map_err = self.method_call(from_bytes?, "map_err", vec![decode_closure])?;
         let value_value = self.try_expr(decode_map_err);
-        let statement_value = self.let_stmt(LetBinding::Immutable, "value", value_value);
+        let statement_value = self.let_stmt(LetBinding::Immutable, "value", value_value)?;
 
         // let expected = value.short_header();
-        let value_receiver = self.path_expr(&["value"]);
-        let expected_call = self.method_call(value_receiver, "short_header", Vec::new());
-        let statement_expected = self.let_stmt(LetBinding::Immutable, "expected", expected_call);
+        let value_receiver = self.path_expr(&["value"])?;
+        let expected_call = self.method_call(value_receiver, "short_header", Vec::new())?;
+        let statement_expected = self.let_stmt(LetBinding::Immutable, "expected", expected_call)?;
 
         // let value = expected.eq(&header).then_some(value)
         //     .ok_or(SignalFrameError::HeaderMismatch)?;
-        let expected_receiver = self.path_expr(&["expected"]);
-        let header_reference_inner = self.path_expr(&["header"]);
+        let expected_receiver = self.path_expr(&["expected"])?;
+        let header_reference_inner = self.path_expr(&["header"])?;
         let header_reference = self.reference_expr(header_reference_inner);
-        let equals = self.method_call(expected_receiver, "eq", vec![header_reference]);
-        let value_argument = self.path_expr(&["value"]);
-        let then_some = self.method_call(equals, "then_some", vec![value_argument]);
-        let mismatch = self.path_expr(&["SignalFrameError", "HeaderMismatch"]);
-        let checked_ok_or = self.method_call(then_some, "ok_or", vec![mismatch]);
+        let equals = self.method_call(expected_receiver, "eq", vec![header_reference])?;
+        let value_argument = self.path_expr(&["value"])?;
+        let then_some = self.method_call(equals, "then_some", vec![value_argument])?;
+        let mismatch = self.path_expr(&["SignalFrameError", "HeaderMismatch"])?;
+        let checked_ok_or = self.method_call(then_some, "ok_or", vec![mismatch])?;
         let checked_value = self.try_expr(checked_ok_or);
-        let statement_checked = self.let_stmt(LetBinding::Immutable, "value", checked_value);
+        let statement_checked = self.let_stmt(LetBinding::Immutable, "value", checked_value)?;
 
         // Ok((route, value))
-        let route_element = self.path_expr(&["route"]);
-        let value_element = self.path_expr(&["value"]);
+        let route_element = self.path_expr(&["route"])?;
+        let value_element = self.path_expr(&["value"])?;
         let pair = Expression::Tuple(TupleExpression {
             elements: vec![route_element, value_element],
         });
@@ -1398,24 +1430,24 @@ impl Evaluator<'_> {
                 statement_expected,
                 statement_checked,
             ],
-            tail_expression: tail,
+            tail_expression: tail?,
         };
 
         let route_enum = self.names.route_enum_name(root.name)?;
         let route_type = TypeReference::Path(self.path_of(&[route_enum]));
         let self_type = self.self_type();
         let pair_type = TypeReference::Tuple(TupleType {
-            elements: vec![route_type, self_type],
+            elements: vec![route_type, self_type?],
         });
-        let error_type = self.signal_frame_error_type();
-        let return_type = self.result_type(pair_type, error_type);
+        let error_type = self.signal_frame_error_type()?;
+        let return_type = self.result_type(pair_type, error_type)?;
         let frame_parameter = Parameter {
-            name: self.ident("frame"),
-            type_reference: self.byte_slice_type(),
+            name: self.ident("frame")?,
+            type_reference: self.byte_slice_type()?,
         };
         let name = self.ident("decode_signal_frame");
         Ok(self.method_block(
-            name,
+            name?,
             Visibility::Public,
             None,
             vec![frame_parameter],
@@ -1428,22 +1460,23 @@ impl Evaluator<'_> {
 
     /// `#[rustfmt::skip] impl signal_frame::RequestPayload for <Root> {}` — the empty
     /// marker impl that admits the request root onto the exchange envelope.
-    fn request_payload_impl(&mut self, request: Identifier) -> EncodedItem {
+    fn request_payload_impl(&mut self, request: Identifier) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[request]));
-        let implemented_trait = TypeReference::Path(self.path(&["signal_frame", "RequestPayload"]));
-        let skip = self.rustfmt_skip();
-        self.trait_impl(vec![skip], implemented_trait, self_type, Vec::new())
+        let implemented_trait =
+            TypeReference::Path(self.path(&["signal_frame", "RequestPayload"])?);
+        let skip = self.rustfmt_skip()?;
+        Ok(self.trait_impl(vec![skip], implemented_trait, self_type, Vec::new()))
     }
 
     /// `#[rustfmt::skip] impl signal_frame::LogVariant for <Root> { fn log_variant(&self)
     /// -> u64 { self.short_header() } }` — the log discriminant the frame log reads,
     /// delegating to the codec's `short_header`.
-    fn log_variant_impl(&mut self, request: Identifier) -> EncodedItem {
+    fn log_variant_impl(&mut self, request: Identifier) -> Result<EncodedItem, NomosError> {
         let self_type = TypeReference::Path(self.path_of(&[request]));
-        let implemented_trait = TypeReference::Path(self.path(&["signal_frame", "LogVariant"]));
-        let body = self.method_call(Expression::Receiver, "short_header", Vec::new());
-        let name = self.ident("log_variant");
-        let return_type = self.type_path(&["u64"]);
+        let implemented_trait = TypeReference::Path(self.path(&["signal_frame", "LogVariant"])?);
+        let body = self.method_call(Expression::Receiver, "short_header", Vec::new())?;
+        let name = self.ident("log_variant")?;
+        let return_type = self.type_path(&["u64"])?;
         let method = self.method(
             name,
             Visibility::Private,
@@ -1452,18 +1485,23 @@ impl Evaluator<'_> {
             Some(return_type),
             body,
         );
-        let skip = self.rustfmt_skip();
-        self.trait_impl(vec![skip], implemented_trait, self_type, vec![method])
+        let skip = self.rustfmt_skip()?;
+        Ok(self.trait_impl(vec![skip], implemented_trait, self_type, vec![method]))
     }
 
     /// A `#[rustfmt::skip] pub type <name> = signal_frame::<target><arguments>;` envelope
     /// alias — `Frame` / `FrameBody` over `ExchangeFrame` / `ExchangeFrameBody` (the
     /// ordinary two-way leg), and the `Request` / `ReplyEnvelope` / `RequestBuilder`
     /// aliases over the request or reply root.
-    fn frame_alias(&mut self, name: &str, target: &str, arguments: &[Identifier]) -> EncodedItem {
-        let skip = self.rustfmt_skip();
-        let name = self.ident(name);
-        let head = self.path(&["signal_frame", target]);
+    fn frame_alias(
+        &mut self,
+        name: &str,
+        target: &str,
+        arguments: &[Identifier],
+    ) -> Result<EncodedItem, NomosError> {
+        let skip = self.rustfmt_skip()?;
+        let name = self.ident(name)?;
+        let head = self.path(&["signal_frame", target])?;
         let mut argument_types = Vec::with_capacity(arguments.len());
         for argument in arguments {
             argument_types.push(TypeReference::Path(self.path_of(&[*argument])));
@@ -1472,19 +1510,20 @@ impl Evaluator<'_> {
             head,
             arguments: argument_types,
         });
-        EncodedItem::Alias(Alias {
+        Ok(EncodedItem::Alias(Alias {
             visibility: Visibility::Public,
             attributes: vec![skip],
             name,
             generics: Generics::none(),
             target,
-        })
+        }))
     }
 
     /// `signal_frame::ShortHeader::new(self.short_header())` — the short-header value
     /// both envelope constructors prepend, derived from the codec's `short_header`.
-    fn short_header_new_value(&mut self) -> Expression {
-        let short_header_call = self.method_call(Expression::Receiver, "short_header", Vec::new());
+    fn short_header_new_value(&mut self) -> Result<Expression, NomosError> {
+        let short_header_call =
+            self.method_call(Expression::Receiver, "short_header", Vec::new())?;
         self.call_path(
             &["signal_frame", "ShortHeader", "new"],
             vec![short_header_call],
@@ -1493,13 +1532,13 @@ impl Evaluator<'_> {
 
     /// The `exchange: signal_frame::ExchangeIdentifier` parameter both envelope
     /// constructors take.
-    fn exchange_parameter(&mut self) -> Parameter {
-        let name = self.ident("exchange");
-        let type_reference = self.type_path(&["signal_frame", "ExchangeIdentifier"]);
-        Parameter {
+    fn exchange_parameter(&mut self) -> Result<Parameter, NomosError> {
+        let name = self.ident("exchange")?;
+        let type_reference = self.type_path(&["signal_frame", "ExchangeIdentifier"])?;
+        Ok(Parameter {
             name,
             type_reference,
-        }
+        })
     }
 
     /// A struct-variant literal in shorthand-field form over interned segments:
@@ -1510,35 +1549,35 @@ impl Evaluator<'_> {
         &mut self,
         path_segments: &[&str],
         field_names: &[&str],
-    ) -> Expression {
-        let path = self.path(path_segments);
+    ) -> Result<Expression, NomosError> {
+        let path = self.path(path_segments)?;
         let mut fields = Vec::with_capacity(field_names.len());
         for field in field_names {
-            let name = self.ident(field);
+            let name = self.ident(field)?;
             fields.push(FieldInitializer { name, value: None });
         }
-        Expression::StructLiteral(StructLiteral { path, fields })
+        Ok(Expression::StructLiteral(StructLiteral { path, fields }))
     }
 
     /// `#[rustfmt::skip] impl <Root> { pub fn into_frame(self, exchange:
     /// signal_frame::ExchangeIdentifier) -> Frame { … } }` — the request constructor
     /// that wraps the payload into a `FrameBody::Request` exchange frame.
-    fn frame_constructor_impl(&mut self, request: Identifier) -> EncodedItem {
-        let short_header_value = self.short_header_new_value();
+    fn frame_constructor_impl(&mut self, request: Identifier) -> Result<EncodedItem, NomosError> {
+        let short_header_value = self.short_header_new_value()?;
         let statement_short_header =
-            self.let_stmt(LetBinding::Immutable, "short_header", short_header_value);
+            self.let_stmt(LetBinding::Immutable, "short_header", short_header_value)?;
 
         // let request = signal_frame::Request::from_payload(self);
         let request_value = self.call_path(
             &["signal_frame", "Request", "from_payload"],
             vec![Expression::Receiver],
         );
-        let statement_request = self.let_stmt(LetBinding::Immutable, "request", request_value);
+        let statement_request = self.let_stmt(LetBinding::Immutable, "request", request_value?)?;
 
         // Frame::with_short_header(short_header, FrameBody::Request { exchange, request })
-        let short_header_argument = self.path_expr(&["short_header"]);
+        let short_header_argument = self.path_expr(&["short_header"])?;
         let body_literal =
-            self.struct_literal_shorthand(&["FrameBody", "Request"], &["exchange", "request"]);
+            self.struct_literal_shorthand(&["FrameBody", "Request"], &["exchange", "request"])?;
         let tail = self.call_path(
             &["Frame", "with_short_header"],
             vec![short_header_argument, body_literal],
@@ -1546,11 +1585,11 @@ impl Evaluator<'_> {
 
         let block = Block {
             statements: vec![statement_short_header, statement_request],
-            tail_expression: tail,
+            tail_expression: tail?,
         };
-        let exchange_parameter = self.exchange_parameter();
-        let return_type = self.type_path(&["Frame"]);
-        let name = self.ident("into_frame");
+        let exchange_parameter = self.exchange_parameter()?;
+        let return_type = self.type_path(&["Frame"])?;
+        let name = self.ident("into_frame")?;
         let method = self.method_block(
             name,
             Visibility::Public,
@@ -1566,10 +1605,13 @@ impl Evaluator<'_> {
     /// `#[rustfmt::skip] impl <Root> { pub fn into_reply_frame(self, exchange:
     /// signal_frame::ExchangeIdentifier) -> Frame { … } }` — the reply constructor that
     /// wraps the payload into a committed single-`Ok` `FrameBody::Reply` exchange frame.
-    fn reply_frame_constructor_impl(&mut self, reply: Identifier) -> EncodedItem {
-        let short_header_value = self.short_header_new_value();
+    fn reply_frame_constructor_impl(
+        &mut self,
+        reply: Identifier,
+    ) -> Result<EncodedItem, NomosError> {
+        let short_header_value = self.short_header_new_value()?;
         let statement_short_header =
-            self.let_stmt(LetBinding::Immutable, "short_header", short_header_value);
+            self.let_stmt(LetBinding::Immutable, "short_header", short_header_value)?;
 
         // let reply = signal_frame::Reply::committed(
         //     signal_frame::NonEmpty::single(signal_frame::SubReply::Ok(self)),
@@ -1578,14 +1620,14 @@ impl Evaluator<'_> {
             &["signal_frame", "SubReply", "Ok"],
             vec![Expression::Receiver],
         );
-        let single = self.call_path(&["signal_frame", "NonEmpty", "single"], vec![ok]);
-        let committed = self.call_path(&["signal_frame", "Reply", "committed"], vec![single]);
-        let statement_reply = self.let_stmt(LetBinding::Immutable, "reply", committed);
+        let single = self.call_path(&["signal_frame", "NonEmpty", "single"], vec![ok?])?;
+        let committed = self.call_path(&["signal_frame", "Reply", "committed"], vec![single])?;
+        let statement_reply = self.let_stmt(LetBinding::Immutable, "reply", committed)?;
 
         // Frame::with_short_header(short_header, FrameBody::Reply { exchange, reply })
-        let short_header_argument = self.path_expr(&["short_header"]);
+        let short_header_argument = self.path_expr(&["short_header"])?;
         let body_literal =
-            self.struct_literal_shorthand(&["FrameBody", "Reply"], &["exchange", "reply"]);
+            self.struct_literal_shorthand(&["FrameBody", "Reply"], &["exchange", "reply"])?;
         let tail = self.call_path(
             &["Frame", "with_short_header"],
             vec![short_header_argument, body_literal],
@@ -1593,11 +1635,11 @@ impl Evaluator<'_> {
 
         let block = Block {
             statements: vec![statement_short_header, statement_reply],
-            tail_expression: tail,
+            tail_expression: tail?,
         };
-        let exchange_parameter = self.exchange_parameter();
-        let return_type = self.type_path(&["Frame"]);
-        let name = self.ident("into_reply_frame");
+        let exchange_parameter = self.exchange_parameter()?;
+        let return_type = self.type_path(&["Frame"])?;
+        let name = self.ident("into_reply_frame")?;
         let method = self.method_block(
             name,
             Visibility::Public,
@@ -1612,7 +1654,10 @@ impl Evaluator<'_> {
 
     // ---- class D: trace support -------------------------------------------------
 
-    fn generate_trace_support(&mut self, schema: &EncodedSchema) -> Result<Vec<EncodedItem>, NomosError> {
+    fn generate_trace_support(
+        &mut self,
+        schema: &EncodedSchema,
+    ) -> Result<Vec<EncodedItem>, NomosError> {
         let roots = Self::interface_roots(schema)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
@@ -1640,14 +1685,17 @@ impl Evaluator<'_> {
         let attributes = self.wire_enum_preamble();
         Ok(EncodedItem::Newtype(Newtype {
             visibility: Visibility::Public,
-            attributes,
-            name,
+            attributes: attributes?,
+            name: name?,
             wrapped_visibility: Visibility::Public,
-            wrapped: TypeReference::Path(self.path_of(&[object_name])),
+            wrapped: TypeReference::Path(self.path_of(&[object_name?])),
         }))
     }
 
-    fn signal_object_name_enum(&mut self, roots: &[InterfaceRoot]) -> Result<EncodedItem, NomosError> {
+    fn signal_object_name_enum(
+        &mut self,
+        roots: &[InterfaceRoot],
+    ) -> Result<EncodedItem, NomosError> {
         let name = self.ident("SignalObjectName");
         let attributes = self.wire_enum_preamble();
         let mut variants = Vec::with_capacity(roots.len());
@@ -1662,18 +1710,21 @@ impl Evaluator<'_> {
         }
         Ok(EncodedItem::Enumeration(Enumeration {
             visibility: Visibility::Public,
-            attributes,
-            name,
+            attributes: attributes?,
+            name: name?,
             generics: Generics::none(),
             variants,
         }))
     }
 
-    fn signal_object_name_impl(&mut self, roots: &[InterfaceRoot]) -> Result<EncodedItem, NomosError> {
-        let signal_object_name = self.ident("SignalObjectName");
+    fn signal_object_name_impl(
+        &mut self,
+        roots: &[InterfaceRoot],
+    ) -> Result<EncodedItem, NomosError> {
+        let signal_object_name = self.ident("SignalObjectName")?;
         let self_type = TypeReference::Path(self.path_of(&[signal_object_name]));
-        let route_binding = self.ident("route");
-        let self_ident = self.self_ident();
+        let route_binding = self.ident("route")?;
+        let self_ident = self.self_ident()?;
         let mut outer_arms = Vec::with_capacity(roots.len());
         for root in roots {
             let route_enum = self.names.route_enum_name(root.name)?;
@@ -1706,14 +1757,14 @@ impl Evaluator<'_> {
         let name = self.ident("name");
         let return_type = self.static_str();
         let name_method = self.method(
-            name,
+            name?,
             Visibility::Public,
             Some(Receiver::Value),
             Vec::new(),
-            Some(return_type),
+            Some(return_type?),
             body,
         );
-        Ok(self.inherent_impl(self_type, vec![name_method]))
+        self.inherent_impl(self_type, vec![name_method])
     }
 
     fn object_name_enum(&mut self) -> Result<EncodedItem, NomosError> {
@@ -1723,13 +1774,13 @@ impl Evaluator<'_> {
         let signal_object_name = self.ident("SignalObjectName");
         Ok(EncodedItem::Enumeration(Enumeration {
             visibility: Visibility::Public,
-            attributes,
-            name,
+            attributes: attributes?,
+            name: name?,
             generics: Generics::none(),
             variants: vec![Variant {
-                name: signal,
+                name: signal?,
                 payload: VariantPayload::Tuple(vec![TypeReference::Path(
-                    self.path_of(&[signal_object_name]),
+                    self.path_of(&[signal_object_name?]),
                 )]),
             }],
         }))
@@ -1737,11 +1788,11 @@ impl Evaluator<'_> {
 
     fn object_name_impl(&mut self) -> Result<EncodedItem, NomosError> {
         let object_name = self.ident("ObjectName");
-        let self_type = TypeReference::Path(self.path_of(&[object_name]));
-        let object_name_binding = self.ident("object_name");
-        let name_method_name = self.ident("name");
+        let self_type = TypeReference::Path(self.path_of(&[object_name?]));
+        let object_name_binding = self.ident("object_name")?;
+        let name_method_name = self.ident("name")?;
         let signal = self.ident("Signal");
-        let self_ident = self.self_ident();
+        let self_ident = self.self_ident()?;
         let delegate = Expression::MethodCall(MethodCall {
             receiver: Box::new(Expression::Path(self.path_of(&[object_name_binding]))),
             method: name_method_name,
@@ -1750,7 +1801,7 @@ impl Evaluator<'_> {
         });
         let arm = MatchArm {
             pattern: Pattern::TupleVariant(TupleVariantPattern {
-                path: self.path_of(&[self_ident, signal]),
+                path: self.path_of(&[self_ident, signal?]),
                 elements: vec![PatternElement::Binding(object_name_binding)],
             }),
             body: delegate,
@@ -1765,21 +1816,21 @@ impl Evaluator<'_> {
             Visibility::Public,
             Some(Receiver::Value),
             Vec::new(),
-            Some(return_type),
+            Some(return_type?),
             body,
         );
-        Ok(self.inherent_impl(self_type, vec![name_method]))
+        self.inherent_impl(self_type, vec![name_method])
     }
 
     fn trace_event_impl(&mut self) -> Result<EncodedItem, NomosError> {
         let trace_event = self.ident("TraceEvent");
         let object_name = self.ident("ObjectName");
-        let self_type = TypeReference::Path(self.path_of(&[trace_event]));
-        let object_name_type = TypeReference::Path(self.path_of(&[object_name]));
+        let self_type = TypeReference::Path(self.path_of(&[trace_event?]));
+        let object_name_type = TypeReference::Path(self.path_of(&[object_name?]));
 
         // new(object_name: ObjectName) -> Self { Self(object_name) }
         let new_name = self.ident("new");
-        let object_name_param_name = self.ident("object_name");
+        let object_name_param_name = self.ident("object_name")?;
         let new_parameter = Parameter {
             name: object_name_param_name,
             type_reference: object_name_type.clone(),
@@ -1790,19 +1841,19 @@ impl Evaluator<'_> {
             vec![Expression::Path(self.path_of(&[object_name_param_name]))],
         );
         let new_method = self.method(
-            new_name,
+            new_name?,
             Visibility::Public,
             None,
             vec![new_parameter],
-            Some(self_return),
-            new_body,
+            Some(self_return?),
+            new_body?,
         );
 
         // object_name(&self) -> ObjectName { self.0 }
         let object_name_accessor = self.ident("object_name");
         let object_name_body = self.self_field_zero();
         let object_name_method = self.method(
-            object_name_accessor,
+            object_name_accessor?,
             Visibility::Public,
             Some(Receiver::Reference),
             Vec::new(),
@@ -1811,7 +1862,7 @@ impl Evaluator<'_> {
         );
 
         // name(&self) -> &'static str { self.0.name() }
-        let name_name = self.ident("name");
+        let name_name = self.ident("name")?;
         let name_return = self.static_str();
         let name_body = Expression::MethodCall(MethodCall {
             receiver: Box::new(self.self_field_zero()),
@@ -1824,18 +1875,18 @@ impl Evaluator<'_> {
             Visibility::Public,
             Some(Receiver::Reference),
             Vec::new(),
-            Some(name_return),
+            Some(name_return?),
             name_body,
         );
 
-        Ok(self.inherent_impl(self_type, vec![new_method, object_name_method, name_method]))
+        self.inherent_impl(self_type, vec![new_method, object_name_method, name_method])
     }
 
     // ---- name synthesis (single home for every derived generation name) ---------
 
     /// The interned `Self` identifier — the keyword path head of every variant
     /// construction and pattern.
-    fn self_ident(&mut self) -> Identifier {
+    fn self_ident(&mut self) -> Result<Identifier, NomosError> {
         self.ident("Self")
     }
 }

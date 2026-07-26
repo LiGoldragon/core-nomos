@@ -7,10 +7,11 @@
 
 use core_nomos::MacroPackage;
 use core_schema::{
-    EncodedDeclaration, EncodedEnum, EncodedField, EncodedNewtype, EncodedReference, EncodedSchema, EncodedStruct,
-    EncodedType, EncodedVariant, DeclarationRole, SingleTypeReferenceProjection,
+    DeclarationRole, EncodedDeclaration, EncodedEnum, EncodedField, EncodedNewtype,
+    EncodedReference, EncodedSchema, EncodedStruct, EncodedType, EncodedVariant,
+    SingleTypeReferenceProjection,
 };
-use name_table::{Identifier, Name, NameTable};
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 use textual_rust::RustSource;
 
 /// The spirit-min schema built by hand through the crate's declaration path: the ten
@@ -22,8 +23,8 @@ struct SpiritMin {
 
 impl SpiritMin {
     fn build() -> Self {
-        let mut names = NameTable::new();
-        let mut intern = |text: &str| names.intern(Name::new(text));
+        let mut names = NameTable::new(IdentifierNamespace::Schema);
+        let mut intern = |text: &str| names.intern(Name::new(text)).expect("intern test name");
 
         // Type names.
         let topic = intern("Topic");
@@ -79,15 +80,16 @@ impl SpiritMin {
             .map(|name| EncodedVariant::new(intern(name), None))
             .collect(),
         )));
-        let magnitude_decl = EncodedDeclaration::public(EncodedType::Enumeration(EncodedEnum::new(
-            magnitude,
-            [
-                "Minimum", "VeryLow", "Low", "Medium", "High", "VeryHigh", "Maximum",
-            ]
-            .into_iter()
-            .map(|name| EncodedVariant::new(intern(name), None))
-            .collect(),
-        )));
+        let magnitude_decl =
+            EncodedDeclaration::public(EncodedType::Enumeration(EncodedEnum::new(
+                magnitude,
+                [
+                    "Minimum", "VeryLow", "Low", "Medium", "High", "VeryHigh", "Maximum",
+                ]
+                .into_iter()
+                .map(|name| EncodedVariant::new(intern(name), None))
+                .collect(),
+            )));
 
         // Interface roots (payload-carrying enums, role-tagged).
         let input_decl = EncodedDeclaration::interface(
@@ -171,6 +173,7 @@ const CLASS_LAYOUT: &[(&str, usize)] = &[
 fn the_enriched_run_projects_valid_rust_in_the_expected_class_shape() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
+        .expect("build enriched fixture")
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("enriched lowering");
 
@@ -196,6 +199,7 @@ fn the_enriched_run_projects_valid_rust_in_the_expected_class_shape() {
 fn the_wire_exchange_codec_emits_working_encode_decode_bodies() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
+        .expect("build enriched fixture")
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("enriched lowering");
 
@@ -265,6 +269,7 @@ fn the_wire_exchange_codec_emits_working_encode_decode_bodies() {
 fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
+        .expect("build enriched fixture")
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("enriched lowering");
 
@@ -293,8 +298,8 @@ fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
         );
     }
 
-    // The ordinary leg names `ExchangeFrame`, never the streaming envelope, whose
-    // `StreamingFrame` / `SubscriptionEvent` surface waits on pending psyche rulings.
+    // The ordinary leg names `ExchangeFrame`, never the streaming envelope. The
+    // `StreamingFrame` / `SubscriptionEvent` surface is outside this test.
     for item in &envelope {
         assert!(
             !item.contains("StreamingFrame") && !item.contains("SubscriptionEvent"),
@@ -322,6 +327,7 @@ fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
 fn class_a_covers_every_data_newtype_in_declaration_order() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
+        .expect("build enriched fixture")
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("lower");
     // Class A begins after the 12 declarations: six inherent-and-From pairs.
@@ -361,6 +367,7 @@ fn class_a_covers_every_data_newtype_in_declaration_order() {
 fn the_wire_stub_derives_the_short_header_module_from_operation_positions() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
+        .expect("build enriched fixture")
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("lower");
     // Class C begins after declarations (12) + class A (12) + class B (10) = 34.
@@ -381,6 +388,7 @@ fn the_wire_stub_derives_the_short_header_module_from_operation_positions() {
 fn class_d_emits_the_public_field_trace_event_declaration() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
+        .expect("build enriched fixture")
         .apply_enriched(&spirit.schema, &spirit.names)
         .expect("lower");
     // Class D begins after declarations (12) + A (12) + B (10) + wire contract (5) +
@@ -397,10 +405,11 @@ fn class_d_emits_the_public_field_trace_event_declaration() {
 #[test]
 fn an_enriched_selection_on_a_root_less_schema_errors_loudly() {
     // Class B/C/D gate on interface roots; a schema of one plain newtype has none.
-    let mut names = NameTable::new();
-    let identifier = names.intern(Name::new("Lonely"));
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
+    let identifier = names.intern(Name::new("Lonely")).expect("intern test name");
     let schema = EncodedSchema::new(vec![newtype(identifier, EncodedReference::Integer)]);
     let error = MacroPackage::enriched_fixture()
+        .expect("build enriched fixture")
         .apply_enriched(&schema, &names)
         .expect_err("interface classes must reject a root-less schema");
     assert!(
@@ -414,7 +423,10 @@ fn the_plain_and_wire_fixtures_keep_an_empty_selection() {
     // The enriched selection is additive: the existing packages are unchanged, so
     // apply_enriched on them equals apply (declarations only).
     let spirit = SpiritMin::build();
-    for package in [MacroPackage::wire_fixture(), MacroPackage::plain_fixture()] {
+    for package in [
+        MacroPackage::wire_fixture().expect("build wire fixture"),
+        MacroPackage::plain_fixture().expect("build plain fixture"),
+    ] {
         assert!(package.selection().is_empty());
         let enriched = package
             .apply_enriched(&spirit.schema, &spirit.names)
@@ -435,8 +447,8 @@ struct SecondMin {
 
 impl SecondMin {
     fn build() -> Self {
-        let mut names = NameTable::new();
-        let mut intern = |text: &str| names.intern(Name::new(text));
+        let mut names = NameTable::new(IdentifierNamespace::Schema);
+        let mut intern = |text: &str| names.intern(Name::new(text)).expect("intern test name");
 
         let weight = intern("Weight");
         let note = intern("Note");
@@ -502,6 +514,7 @@ impl SecondMin {
 fn the_wire_stub_derives_two_short_headers_for_single_operation_roots() {
     let second = SecondMin::build();
     let lowering = MacroPackage::enriched_fixture()
+        .expect("build enriched fixture")
         .apply_enriched(&second.schema, &second.names)
         .expect("the enriched package lowers second-min by derivation, not a fixed count");
     let module = lowering

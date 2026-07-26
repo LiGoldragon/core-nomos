@@ -1,17 +1,17 @@
 //! The lowering engine: apply a macro package to a `EncodedSchema` declaration set,
-//! producing `CoreLogos` items and the extended, continuous logos NameTable.
+//! producing `EncodedItem` values and a Logos NameTable composed with Schema.
 //!
 //! Conversions are typed end to end, outside text. Named invocations resolve or
 //! error loudly; structural defaults cover plain declarations; recursive
 //! invocation is bounded by cycle rejection; template realization produces genuine
-//! `core_logos` values; and the NameTable is extended continuously — schema
-//! identifiers keep their indices and logos names append, with every template
-//! literal re-interned through the package's authoring table into the extension.
+//! `core_logos` values; and the NameTable composes namespace-tagged Schema and Logos
+//! slices, with every template literal re-interned through the package's authoring
+//! table into Logos.
 
 use core_logos::{
-    Attribute, ConfigurationAttribute, ConfigurationPredicate, EncodedItem, DeriveGroup, Enumeration,
-    Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType, Struct,
-    TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
+    Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, EncodedItem,
+    Enumeration, Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType,
+    Struct, TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
 use core_schema::{EncodedDeclaration, EncodedSchema, EncodedType};
 use name_table::{Identifier, NameTable};
@@ -27,16 +27,16 @@ use crate::template::{
     ResultTemplate, Scalar, Sequence, SequenceItem, Splice, SpliceElement, StructTemplate,
 };
 
-/// The result of lowering a schema: the produced `CoreLogos` items, in declaration
-/// order, and the extended logos NameTable that resolves every identifier they
-/// carry. The NameTable begins as an `extend_from` of the schema table (schema
-/// indices preserved) and appends logos-only names (derive paths, leaf type names,
-/// derived field names).
+/// The result of lowering a schema: the produced `EncodedItem` values, in declaration
+/// order, and a Logos NameTable that resolves every identifier they carry. The
+/// table composes the Schema slice, preserving Schema-tagged identifiers, while
+/// logos-only names (derive paths, leaf type names, derived field names) allocate in
+/// Logos.
 #[derive(Clone, Debug)]
 pub struct Lowering {
     /// The lowered items, one per schema declaration.
     pub items: Vec<EncodedItem>,
-    /// The extended, continuous logos NameTable.
+    /// The Logos-owned NameTable composed with Schema.
     pub names: NameTable,
 }
 
@@ -48,7 +48,7 @@ impl MacroPackage {
         schema: &EncodedSchema,
         schema_names: &NameTable,
     ) -> Result<Lowering, NomosError> {
-        let mut evaluator = Evaluator::new(self, schema_names);
+        let mut evaluator = Evaluator::new(self, schema_names)?;
         let items = evaluator.lower_schema(schema)?;
         Ok(Lowering {
             items,
@@ -60,15 +60,15 @@ impl MacroPackage {
     /// per-declaration structural lowering first (the data declarations), then the
     /// generation classes ([`crate::GenerationClass`]) in the package's selection
     /// order — class A, then B, then C, then D, the reference fixture's own document order. The
-    /// returned items are the whole ordered run, resolved by one continuous logos
-    /// NameTable. A package with an empty selection produces exactly what
+    /// returned items are the whole ordered run, resolved by the Logos NameTable
+    /// composed with Schema. A package with an empty selection produces exactly what
     /// [`apply`](Self::apply) does.
     pub fn apply_enriched(
         &self,
         schema: &EncodedSchema,
         schema_names: &NameTable,
     ) -> Result<Lowering, NomosError> {
-        let mut evaluator = Evaluator::new(self, schema_names);
+        let mut evaluator = Evaluator::new(self, schema_names)?;
         let mut items = evaluator.lower_schema(schema)?;
         for class in self.selection() {
             items.extend(evaluator.generate_class(class, schema)?);
@@ -92,12 +92,11 @@ impl From<Lowering> for Converted<Vec<EncodedItem>> {
     }
 }
 
-/// The schema→logos lowering IS the reference [`EncodedConversion`] instance — the
-/// psyche's real type conversion `EncodedForm<Schema> -> EncodedForm<Logos>` seated as
-/// the truth-side pairing in `structural-codec`. The source is the schema
+/// The schema→logos lowering implements the reference [`EncodedConversion`] instance
+/// for `EncodedForm<Schema> -> EncodedForm<Logos>` in `structural-codec`. The source is the schema
 /// [`EncodedForm`](structural_codec::EncodedForm) (`EncodedSchema`); the target is the
-/// lowered logos item set (`Vec<EncodedItem>`, the logos EncodedForm); and the continuous
-/// NameTable threads the layer, schema indices preserved and logos names appended. No
+/// lowered logos item set (`Vec<EncodedItem>`, the logos EncodedForm); and the
+/// namespace-tagged Schema and Logos slices thread the layer. No
 /// text crosses this path — the signature carries no `&str`/`String`, which is the
 /// structural proof that the conversion is a real type conversion, not string
 /// manipulation. It delegates to the eponymous [`apply`](MacroPackage::apply).
@@ -125,10 +124,10 @@ enum Fragment {
 }
 
 /// The stateful lowering walk: the package (for macro lookup and literal name
-/// remapping), the extended logos NameTable being built, and the active-invocation
+/// remapping), the Logos NameTable being built, and the active-invocation
 /// stack for cycle rejection. Crate-visible so the enriched generation classes
-/// ([`crate::generation`]) can append their items into the same continuous NameTable
-/// the declaration lowering built.
+/// ([`crate::generation`]) can append their items into the same Logos table composed
+/// with Schema that declaration lowering built.
 pub(crate) struct Evaluator<'package> {
     package: &'package MacroPackage,
     /// The sole NameTable/emission boundary. Typed evaluation asks this boundary to
@@ -138,12 +137,12 @@ pub(crate) struct Evaluator<'package> {
 }
 
 impl<'package> Evaluator<'package> {
-    fn new(package: &'package MacroPackage, schema_names: &NameTable) -> Self {
-        Self {
+    fn new(package: &'package MacroPackage, schema_names: &NameTable) -> Result<Self, NomosError> {
+        Ok(Self {
             package,
-            names: NameTableBoundary::new(package.names(), schema_names),
+            names: NameTableBoundary::new(package.names(), schema_names)?,
             active: Vec::new(),
-        }
+        })
     }
 
     fn into_names(self) -> NameTable {
@@ -158,9 +157,12 @@ impl<'package> Evaluator<'package> {
             .collect()
     }
 
-    fn lower_declaration(&mut self, declaration: &EncodedDeclaration) -> Result<EncodedItem, NomosError> {
+    fn lower_declaration(
+        &mut self,
+        declaration: &EncodedDeclaration,
+    ) -> Result<EncodedItem, NomosError> {
         let value = declaration.value();
-        let section = SectionDefault::of_core_type(value);
+        let section = SectionDefault::of_encoded_type(value);
         let identity = self
             .package
             .structural_default(section)
@@ -185,11 +187,9 @@ impl<'package> Evaluator<'package> {
 
     /// The visibility contact point where two enums meet: core-schema's coarse
     /// declaration visibility lowers into core-logos' richer `Visibility`. The
-    /// schema declaration's `Public`/`Private` is an authoritative API promise and
-    /// stamps the produced item, overriding the visibility the macro template
-    /// proposed; core-logos then stores that final visibility explicitly. Settled
-    /// psyche ruling (primary-56d1.29): schema visibility is authoritative and
-    /// core-nomos must lower it faithfully into the generated Rust.
+    /// schema declaration's `Public`/`Private` stamps the produced item, overriding
+    /// the visibility proposed by the macro template; core-logos stores that final
+    /// visibility explicitly.
     fn lower_visibility(&self, visibility: core_schema::Visibility) -> Visibility {
         match visibility {
             core_schema::Visibility::Public => Visibility::Public,
@@ -218,7 +218,9 @@ impl<'package> Evaluator<'package> {
                     }
                 },
                 MetaType::Fields => match value {
-                    EncodedType::Struct(structure) => MetaValue::Fields(structure.fields().to_vec()),
+                    EncodedType::Struct(structure) => {
+                        MetaValue::Fields(structure.fields().to_vec())
+                    }
                     _ => {
                         return Err(NomosError::MetaShape {
                             meta: MetaType::Fields,
@@ -427,8 +429,7 @@ impl<'package> Evaluator<'package> {
     }
 
     /// Recursively invoke a macro that produces an attribute vector, rejecting a
-    /// cycle. This is the concrete recursive invocation the ruling requires
-    /// (WireNewtype invokes WireAttributes).
+    /// cycle. `WireNewtype` invokes `WireAttributes` through this path.
     fn invoke_attributes(&mut self, identity: MacroIdentity) -> Result<Vec<Attribute>, NomosError> {
         if self.active.contains(&identity) {
             return Err(NomosError::RecursionCycle(identity));
@@ -587,7 +588,7 @@ impl<'package> Evaluator<'package> {
     /// data-declaration templates author only `Path`/`Application`, but the class-A/B/C/D
     /// ergonomics templates author impl-block signature and const types — `&String`,
     /// `impl Into<String>`, `&'static [&'static str]`, the `'static` lifetime — so the
-    /// remap threads the continuous-identifier-space renaming through every position.
+    /// remap preserves namespace-tagged identifiers through every position.
     fn remap_type_reference(
         &mut self,
         reference: &TypeReference,
@@ -663,7 +664,7 @@ impl<'package> Evaluator<'package> {
                 derived: self.remap_derive(&helper.derived)?,
             })),
             // A plain cfg gate remaps its predicate name like `cfg_attr` does — the
-            // one continuous-identifier-space remapping, forward-compatible if a
+            // namespace-tagged composition, forward-compatible if a
             // future template ever authors a gated item.
             Attribute::Cfg(predicate) => Ok(Attribute::Cfg(self.remap_predicate(predicate)?)),
         }

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use content_identity::ContentHash;
-use name_table::{Identifier, Name, NameTable};
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 
 use crate::definition::MacroDefinition;
 use crate::domain::EncodedNomosDomain;
@@ -51,8 +51,9 @@ pub struct MacroDefinitions {
 /// makes Nomos stateful at rest.
 ///
 /// Applying the package to a schema (`MacroPackage::apply`) re-interns every
-/// template-literal name through this sibling into the *extended* logos NameTable,
-/// which is how the one continuous identifier space is realized at runtime.
+/// template-literal name through this sibling into the Logos-owned NameTable
+/// composed with Schema, which preserves component-owned identifier namespaces at
+/// runtime.
 #[derive(Clone, Debug)]
 pub struct MacroPackage {
     definitions: MacroDefinitions,
@@ -70,15 +71,15 @@ impl MacroPackage {
                 macros: BTreeMap::new(),
                 structural_defaults: BTreeMap::new(),
             },
-            names: NameTable::new(),
+            names: NameTable::new(IdentifierNamespace::Nomos),
             selection: Vec::new(),
         }
     }
 
     /// Intern an authoring name (a macro name, a binding name, or a literal in a
     /// template) into this package's NameTable, returning its identifier.
-    pub fn author_name(&mut self, text: &str) -> Identifier {
-        self.names.intern(Name::new(text))
+    pub fn author_name(&mut self, text: &str) -> Result<Identifier, NomosError> {
+        Ok(self.names.intern(Name::new(text))?)
     }
 
     /// Register a macro, minting its identity. A structural macro is also recorded

@@ -14,11 +14,10 @@ tests are the acceptance surface.
 
 ## The no-strings invariant
 
-The schema-to-logos transformation is stringless by law. The psyche's ruling is
-binding: *"in the nomos transformation (schema to logos), there shall be no string
-manipulation/introduction/reading of any kind."* The transformation reads and
-writes only typed encoded-form values and the encoded identifiers they carry. It
-dispatches on a declaration's Core kind and on `Identifier` indices, and at no point
+The schema-to-logos transformation is stringless. It reads and writes only typed
+encoded-form values and the encoded identifiers they carry. It
+dispatches on an encoded declaration kind and on namespace-tagged `Identifier`
+values, and at no point
 parses, compares, concatenates, matches, or emits a string. A macro is typed data;
 its template is logos-encoded-form data with typed escape nodes; its output is a
 logos encoded form. A `NameTransform` is typed intent carried by an escape, never a
@@ -27,16 +26,13 @@ spelling the transform reads.
 All name derivation and text materialization lives at the NameTable/emission
 boundary, which sits outside the transformation. `NameTableBoundary` is the single
 home of the derived-name walk; it builds a name's string only as it interns that
-name into the continuous identifier space, and text is materialized only when a
-value is rendered — `ModuleHead::render` and the TextualRust projection. That string
-work is legitimate and required: of the boundary walkers the psyche ruled *"that is
-necessary."*
+name into its owned namespace slice, and text is materialized only when a value is
+rendered — `ModuleHead::render` and the TextualRust projection. Those boundary
+walkers perform the transformation's only string construction.
 
-The invariant is exactly this partition — a stringless transformation over typed
-encoded-form values and identifiers, with every string confined to the interning
-and emission boundary. It is the standing review gate on every macro-engine and
-generation-class change: a transformation step that must read or build a string is
-misplaced, and its string work belongs at the boundary.
+The partition is a stringless transformation over typed encoded-form values and
+identifiers, with every string confined to the interning and emission boundary. A
+transformation step that needs to read or build a string belongs at that boundary.
 
 ## What is settled here (EncodedNomos), and what is deferred (TextualNomos)
 
@@ -81,17 +77,17 @@ Nomos has exactly two dispatch kinds (`identity::MacroKind`):
   unknown named invocation is an error* (`NomosError::UnknownMacro`).
   `WireAttributes` is named.
 - **Structural** — a per-section default (`identity::SectionDefault`), selected by
-  a schema declaration's Core kind rather than by name: a newtype declaration
+  a schema declaration's encoded kind rather than by name: a newtype declaration
   lowers via the newtype section's default, a struct declaration via the struct
   section's default. `WireNewtype` and the particular-struct macro are structural.
 
-The engine selects a declaration's structural default by `SectionDefault::of_core_type`,
+The engine selects a declaration's structural default by `SectionDefault::of_encoded_type`,
 looks the macro up, binds its input from the declaration, and evaluates its
 template. A recursive `Invoke` resolves a *named* macro or errors.
 
 ## Stateful at rest
 
-Nomos is stateful at rest (the psyche's ruling "5. Yes"). A `MacroPackage` is a
+Nomos is stateful at rest. A `MacroPackage` is a
 durable, archivable, content-identified value — a loaded-definitions registry as
 data:
 
@@ -127,21 +123,19 @@ while the escape set stays one closed enum (`template::Escape`):
 not a new primitive. The `NameTableBoundary` executes that intent at the
 NameTable/emission boundary, which is the single home of the derived-name walk
 (`Name::field_name` / `screaming` / `pascal_case`); the typed Nomos transform never
-reads or creates a spelling. This is the psyche's no-fourth-escape ruling made
-structural.
+reads or creates a spelling. The resulting escape algebra has three variants.
 
-## The engine and the one continuous identifier space
+## The engine and composed identifier namespaces
 
 `MacroPackage::apply(schema, schema_names) → Lowering { items, names }`. The
 `NameTableBoundary` begins the returned NameTable as
-`NameTable::extend_from(schema_names)` — every schema identifier keeps its exact
-index — and performs all logos-only name allocation (derive paths, leaf type names,
-derived field names) at the NameTable/emission boundary. Because interning dedups,
-a derived name that reproduces an existing name reuses its identifier: the
-continuous space is a genuine runtime operation, not a bookkeeping claim. Every
-template literal is authored against the package's own NameTable and re-interned
-through that boundary into the extension, so a portable package composes with any
-schema table.
+`NameTable::new(IdentifierNamespace::Logos).compose(schema_names)?`: Schema keeps
+its namespace-tagged identifiers and Logos owns every allocation made during
+lowering (derive paths, leaf type names, and derived field names). Because
+interning deduplicates across composed slices, an existing Schema name resolves to
+its Schema identifier rather than acquiring a Logos duplicate. Every template
+literal is authored in the package's Nomos table and re-interned through this
+boundary into Logos, so a portable package composes with any Schema table.
 
 The field-name rule (`FieldNameRule::FieldRuleDispatch`) distinguishes an *elided*
 field (its schema name equals the `field_name` of its type — re-derive through the
@@ -190,8 +184,7 @@ the per-declaration lowering:
   enum, and the two route enums — the types the codec speaks. The short-header values
   are derived from each operation's position (root byte 7, variant byte 6), not
   transcribed (LEAN `short-header-derivation-mirrors-legacy`); the short-header
-  byte-layout stays the psyche's open **`.38`** review item, mirrored exactly for
-  interop.
+  byte-layout is the open **`.38`** review item, mirrored exactly for interop.
 - **`WireExchangeCodec` (the ordinary-exchange encode/decode bodies):** per interface
   root an `impl` carrying `route`, `short_header`, `route_from_short_header`,
   `encode_signal_frame`, and `decode_signal_frame`, then the request root's
@@ -206,8 +199,8 @@ the per-declaration lowering:
   needed. Unported peers (`spirit-judge`, `meta-signal-spirit`) pin `signal-spirit`
   revisions and decode this same wire, so the mirroring is a genuine interop
   requirement, not a convenience. (The streaming/subscription leg — the `Stream`
-  construct, `SubscriptionEvent`, the `StreamingFrame` envelope — is under separate
-  psyche design and is generated nowhere here.)
+  construct, `SubscriptionEvent`, the `StreamingFrame` envelope — is outside this
+  generation and is generated nowhere here.)
 - **Class D — `TraceSupport`:** the `SignalObjectName` / `ObjectName` enums with
   their nested-match `name()` bodies, the `pub struct TraceEvent(pub ObjectName);`
   tuple-struct declaration, and the `TraceEvent` impl.
@@ -215,7 +208,7 @@ the per-declaration lowering:
 The classes emit the layout-3 item kinds — impl blocks (methods, associated types,
 associated consts), functions, consts, const modules — as stringless logos-encoded
 items, built directly like the fixed [`ModuleHead`] prelude, every identifier interned into
-the one continuous logos NameTable. A package's **enriched selection**
+one Logos-owned NameTable composed with the Schema slice. A package's **enriched selection**
 (`MacroPackage::with_selection`, run by `apply_enriched`) is the ordered class list
 nomos-engine will later select; the wire and plain fixtures keep an empty selection,
 so their behaviour is unchanged, and the selection is outside the content-identity
@@ -240,7 +233,7 @@ This crate git-pins the green path of the published stack: `content-identity`,
 matches `textual-rust`'s exactly so Cargo unifies a single `core-logos`; two
 copies would carry incompatible encoded-item types. The Nix flake (`build`/`test`/`clippy`/`fmt`/`doc`) is the durable gate.
 
-## Flagged forks (unruled readings, chosen per the rulings)
+## Flagged forks (open readings and selected implementations)
 
 - **`MacroIdentity` is a package-minted `u32`, not a content hash.** The corpus
   says "minted identity" without fixing mint-vs-content-hash; a monotonic package
@@ -253,9 +246,10 @@ copies would carry incompatible encoded-item types. The Nix flake (`build`/`test
 - **Field-name derivation runs at the NameTable/emission boundary, not in the typed
   Nomos transform.** The shipped `core-schema` still derives its stored field name at
   decode. `NameTableBoundary` independently derives the logos-emission identifier
-  from field position and type and interns it into the extended logos table; because
-  interning dedups, the two current derivations coincide and the identifier is stable.
-  The continuous-space test asserts that idempotence. A future core-schema change is
+  from field position and type and interns it into the Logos table composed with the Schema slice; because
+  interning dedups across the composed slices, the two current derivations coincide
+  and the identifier is stable. The namespace-composition test asserts that
+  idempotence. A future core-schema change is
   outside this lane and requires its own coordinated dependency work.
 - **Textual Nomos spelling never enters macro data.** The macro surface remains
   unsettled and has no parser, printer, fixture, or grammar claim here; escapes are
@@ -267,9 +261,9 @@ copies would carry incompatible encoded-item types. The Nix flake (`build`/`test
   builds output items after typed macro lowering. Its derived-name and output-literal
   work is delegated to `NameTableBoundary`; this keeps text out of the schema→logos
   macro transform without growing the `Realize` / `Splice` template DSL into a second
-  copy of the CoreLogos algebra. Trigger to revisit: a class shape that a fixed
-  skeleton-with-holes expresses cleanly, or a psyche ruling that the classes must be
-  authored as escape-templates.
+  copy of the encoded logos form algebra. Trigger to revisit: a class shape that a fixed
+  skeleton-with-holes expresses cleanly, or a future decision to author the classes
+  as escape-templates.
 - **`SignalOperationHeads` is emitted for the request (input) root only.** The reference fixture
   carries one `SignalOperationHeads` impl (`Input`), the request payload's operation
   heads; the codec class follows it. `RequestPayload`, `LogVariant`, the `ExchangeFrame`

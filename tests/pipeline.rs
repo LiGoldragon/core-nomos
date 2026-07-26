@@ -5,16 +5,16 @@
 //! evidence belongs to `language-engine-witness`, which compiles and runs emitted code.
 
 use core_logos::{
-    Attribute, ConfigurationAttribute, ConfigurationPredicate, EncodedItem, DeriveGroup, Field,
+    Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, EncodedItem, Field,
     Generics, PathNode, Struct, TypeReference, Visibility,
 };
 use core_nomos::MacroPackage;
 use core_schema::fixture::{COMMIT_SEQUENCE, DATABASE_MARKER, STATE_DIGEST};
 use core_schema::{
-    EncodedDeclaration, EncodedEnum, EncodedField, EncodedNewtype, EncodedReference, EncodedSchema, EncodedStruct,
-    EncodedType, EncodedVariant, TextualSchema,
+    EncodedDeclaration, EncodedEnum, EncodedField, EncodedNewtype, EncodedReference, EncodedSchema,
+    EncodedStruct, EncodedType, EncodedVariant, TextualSchema,
 };
-use name_table::{Identifier, Name, NameTable};
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 use structural_codec::ids::ScopedEncodedTypeId;
 use structural_codec::{Converted, EncodedConversion};
 use textual_rust::RustSource;
@@ -23,7 +23,7 @@ use textual_rust::RustSource;
 
 /// Intern a name and return its identifier.
 fn intern(names: &mut NameTable, name: &str) -> Identifier {
-    names.intern(Name::new(name))
+    names.intern(Name::new(name)).expect("intern test name")
 }
 
 /// A one-declaration EncodedSchema wrapping a decoded declaration value.
@@ -34,7 +34,7 @@ fn schema_of(value: EncodedType) -> EncodedSchema {
 /// Decode one schema declaration through TextualSchema, seeding a fresh table.
 fn decode(expected: ScopedEncodedTypeId, text: &str) -> (EncodedType, NameTable) {
     let textual = TextualSchema::fixture().expect("build fixture TextualSchema");
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
     let value = textual
         .decode(expected, text, &mut names)
         .unwrap_or_else(|error| panic!("decode {text}: {error}"));
@@ -64,6 +64,7 @@ fn pipeline_plain_newtypes_from_text_project_as_public_rust_items() {
         let (value, schema_names) = decode(expected, text);
         let schema = schema_of(value);
         let lowering = MacroPackage::plain_fixture()
+            .expect("build plain fixture")
             .apply(&schema, &schema_names)
             .expect("lower plain declaration");
         assert_eq!(lowering.items.len(), 1, "one declaration produces one item");
@@ -76,7 +77,7 @@ fn pipeline_plain_newtypes_from_text_project_as_public_rust_items() {
 fn lowering_is_an_encoded_conversion_instance() {
     let (value, schema_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
     let schema = schema_of(value);
-    let package = MacroPackage::plain_fixture();
+    let package = MacroPackage::plain_fixture().expect("build plain fixture");
 
     let converted: Converted<Vec<EncodedItem>> =
         EncodedConversion::convert(&package, &schema, &schema_names).expect("trait convert");
@@ -96,6 +97,7 @@ fn pipeline_wire_newtype_from_text_projects_as_generated_rust() {
     let (value, schema_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
     let schema = schema_of(value);
     let lowering = MacroPackage::wire_fixture()
+        .expect("build wire fixture")
         .apply(&schema, &schema_names)
         .expect("lower wire declaration");
     let rust = project(&lowering.items[0], &lowering.names);
@@ -108,27 +110,32 @@ fn pipeline_wire_newtype_from_text_projects_as_generated_rust() {
 
 #[test]
 fn wire_lowering_projects_public_newtypes_and_structs() {
-    let package = MacroPackage::wire_fixture();
+    let package = MacroPackage::wire_fixture().expect("build wire fixture");
     for (type_name, wrapped) in [
         ("RecordIdentifier", EncodedReference::Integer),
         ("Topic", EncodedReference::String),
     ] {
-        let mut names = NameTable::new();
+        let mut names = NameTable::new(IdentifierNamespace::Schema);
         let identifier = intern(&mut names, type_name);
-        let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(identifier, wrapped)));
+        let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
+            identifier, wrapped,
+        )));
         let lowering = package.apply(&schema, &names).expect("lower newtype");
         let rust = project(&lowering.items[0], &lowering.names);
         assert!(rust.contains(&format!("pub struct {type_name}")), "{rust}");
     }
 
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
     let entry = intern(&mut names, "Entry");
     let topics = intern(&mut names, "Topics");
     let kind = intern(&mut names, "Kind");
     let schema = schema_of(EncodedType::Struct(EncodedStruct::new(
         entry,
         vec![
-            EncodedField::new(intern(&mut names, "topics"), EncodedReference::Plain(topics)),
+            EncodedField::new(
+                intern(&mut names, "topics"),
+                EncodedReference::Plain(topics),
+            ),
             EncodedField::new(intern(&mut names, "kind"), EncodedReference::Plain(kind)),
         ],
     )));
@@ -144,8 +151,7 @@ fn wire_lowering_projects_public_newtypes_and_structs() {
 #[test]
 fn illustrative_struct_from_schema_text_lowers_and_derives_names() {
     // DatabaseMarker.{ CommitSequence StateDigest StateDigest } from real schema
-    // text: field names are illegal everywhere (psyche ruling 2026-07-19), so every
-    // field name is derived from its type and the two same-typed StateDigest fields
+    // text: every field name is derived from its type, so the two same-typed StateDigest fields
     // would collide on `state_digest`. The deterministic same-typed-field rule
     // (directed work, 2026-07-19) resolves that collision: a type naming more than one
     // field distinguishes each by the ordinal English word of its position among the
@@ -156,7 +162,7 @@ fn illustrative_struct_from_schema_text_lowers_and_derives_names() {
         "DatabaseMarker.{ CommitSequence StateDigest StateDigest }",
     );
     let schema = schema_of(value);
-    let package = MacroPackage::wire_fixture();
+    let package = MacroPackage::wire_fixture().expect("build wire fixture");
     let lowering = package.apply(&schema, &schema_names).expect("lower");
     let rust = project(&lowering.items[0], &lowering.names);
     assert!(rust.contains("pub struct DatabaseMarker {"));
@@ -171,9 +177,9 @@ fn illustrative_struct_from_schema_text_lowers_and_derives_names() {
 
 #[test]
 fn illustrative_private_field_sample_preserves_visibility() {
-    // The psyche's private-field sample is constructed at the logos level because
-    // EncodedSchema does not carry field visibility.
-    let mut names = NameTable::new();
+    // The private-field sample is constructed at the logos level because EncodedSchema
+    // does not carry field visibility.
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
     let preamble = wire_preamble(&mut names);
     let name = intern(&mut names, "DatabaseMarker");
     let commit_sequence = intern(&mut names, "CommitSequence");
@@ -251,12 +257,11 @@ fn wire_preamble(names: &mut NameTable) -> Vec<Attribute> {
 fn declaration_visibility_lowers_faithfully() {
     // The schema declaration's coarse Public/Private is an authoritative API promise
     // and stamps the produced item. A Private declaration projects without `pub`; a
-    // Public one keeps it. Same structure, visibility the only difference. (Settled
-    // psyche ruling primary-56d1.29: schema visibility is authoritative.)
-    let mut names = NameTable::new();
+    // Public one keeps it. Same structure, visibility the only difference.
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
     let identifier = intern(&mut names, "Hidden");
     let value = EncodedType::Newtype(EncodedNewtype::new(identifier, EncodedReference::Integer));
-    let package = MacroPackage::plain_fixture();
+    let package = MacroPackage::plain_fixture().expect("build plain fixture");
 
     let public = EncodedSchema::new(vec![EncodedDeclaration::new(
         core_schema::Visibility::Public,
@@ -285,9 +290,9 @@ fn declaration_visibility_lowers_faithfully() {
 
 #[test]
 fn hash_discipline_rename_is_stable_output_changes() {
-    let plain = MacroPackage::plain_fixture();
+    let plain = MacroPackage::plain_fixture().expect("build plain fixture");
     let build = |type_name: &str| {
-        let mut names = NameTable::new();
+        let mut names = NameTable::new(IdentifierNamespace::Schema);
         let identifier = intern(&mut names, type_name);
         let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
             identifier,
@@ -309,7 +314,7 @@ fn hash_discipline_rename_is_stable_output_changes() {
     let low_a = plain.apply(&schema_a, &names_a).unwrap();
     let low_b = plain.apply(&schema_b, &names_b).unwrap();
 
-    // The CoreLogos identity is rename-stable too.
+    // The encoded logos item identity is rename-stable too.
     assert_eq!(
         low_a.items[0].content_identity().unwrap(),
         low_b.items[0].content_identity().unwrap(),
@@ -326,7 +331,7 @@ fn hash_discipline_rename_is_stable_output_changes() {
 
 #[test]
 fn payload_enumerations_do_not_claim_copy() {
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
     let input = intern(&mut names, "Input");
     let record = intern(&mut names, "Record");
     let observe = intern(&mut names, "Observe");
@@ -338,6 +343,7 @@ fn payload_enumerations_do_not_claim_copy() {
         ],
     ));
     let lowering = MacroPackage::wire_fixture()
+        .expect("build wire fixture")
         .apply(&schema_of(value), &names)
         .expect("lower payload enumeration");
     let rust = project(&lowering.items[0], &lowering.names);
@@ -348,24 +354,54 @@ fn payload_enumerations_do_not_claim_copy() {
 }
 
 #[test]
-fn continuous_identifier_space_preserves_schema_indices() {
-    let (value, schema_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
-    let schema = schema_of(value);
-    let lowering = MacroPackage::wire_fixture()
-        .apply(&schema, &schema_names)
-        .expect("lower");
+fn composed_names_remain_namespace_tagged_and_resolvable() {
+    let mut schema_names = NameTable::new(IdentifierNamespace::Schema);
+    let schema_identifier = intern(&mut schema_names, "CommitSequence");
+    let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
+        schema_identifier,
+        EncodedReference::Integer,
+    )));
+    let package = MacroPackage::wire_fixture().expect("build wire fixture");
+    let lowering = package.apply(&schema, &schema_names).expect("lower");
 
-    // Every schema identifier resolves identically in the extended logos table, and
-    // the logos table only grew.
-    assert!(lowering.names.len() >= schema_names.len());
-    for index in 0..schema_names.len() {
-        let identifier = Identifier::new(index as u32);
-        assert_eq!(
-            schema_names.resolve(identifier).unwrap(),
-            lowering.names.resolve(identifier).unwrap(),
-            "schema identifier {index} must be stable in the logos extension",
-        );
-    }
+    // The Schema slice is composed into the Logos table: source identifiers keep
+    // their tag and remain resolvable through the composed output table.
+    assert_eq!(schema_identifier.namespace(), IdentifierNamespace::Schema);
+    assert_eq!(lowering.names.namespace(), IdentifierNamespace::Logos);
+    assert_eq!(
+        lowering.names.lookup(&Name::new("CommitSequence")),
+        Some(schema_identifier),
+        "lookup retains the schema identifier rather than allocating a Logos duplicate",
+    );
+    assert_eq!(
+        lowering
+            .names
+            .resolve(schema_identifier)
+            .expect("resolve composed schema name"),
+        schema_names
+            .resolve(schema_identifier)
+            .expect("resolve schema name"),
+    );
+
+    // Generated names are allocated in Logos; package authoring remains in Nomos.
+    let generated = lowering
+        .names
+        .lookup(&Name::new("rkyv"))
+        .expect("generated Logos name");
+    assert_eq!(generated.namespace(), IdentifierNamespace::Logos);
+    assert_eq!(
+        lowering
+            .names
+            .resolve(generated)
+            .expect("resolve generated name")
+            .as_str(),
+        "rkyv"
+    );
+    let authored = package
+        .names()
+        .lookup(&Name::new("WireNewtype"))
+        .expect("package authored name");
+    assert_eq!(authored.namespace(), IdentifierNamespace::Nomos);
 }
 
 // ---- loud errors: named-invocation resolution and cycle rejection ----
@@ -373,7 +409,7 @@ fn continuous_identifier_space_preserves_schema_indices() {
 #[test]
 fn missing_structural_default_errors_loudly() {
     let empty = MacroPackage::new(core_nomos::PackageRevision(1));
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
     let identifier = intern(&mut names, "Anything");
     let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
         identifier,
@@ -395,9 +431,9 @@ fn unknown_named_invocation_errors_loudly() {
     };
 
     let mut package = MacroPackage::new(PackageRevision(1));
-    let name_binding = package.author_name("name");
-    let type_binding = package.author_name("type");
-    let newtype_name = package.author_name("Newtype");
+    let name_binding = package.author_name("name").expect("author test name");
+    let type_binding = package.author_name("type").expect("author test name");
+    let newtype_name = package.author_name("Newtype").expect("author test name");
     // The attributes position invokes a macro identity that was never registered.
     package.register(MacroDefinition {
         name: newtype_name,
@@ -428,7 +464,7 @@ fn unknown_named_invocation_errors_loudly() {
         })),
     });
 
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
     let identifier = intern(&mut names, "Whatever");
     let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
         identifier,
@@ -450,7 +486,9 @@ fn recursive_cycle_is_rejected() {
 
     // A self-invoking attributes macro: its own template invokes itself.
     let mut package = MacroPackage::new(PackageRevision(1));
-    let attributes_name = package.author_name("SelfAttributes");
+    let attributes_name = package
+        .author_name("SelfAttributes")
+        .expect("author test name");
     let self_identity = core_nomos::MacroIdentity::new(0);
     package.register(MacroDefinition {
         name: attributes_name,
@@ -461,9 +499,9 @@ fn recursive_cycle_is_rejected() {
         )))),
     });
     // A newtype default that invokes the self-invoking attributes macro.
-    let name_binding = package.author_name("name");
-    let type_binding = package.author_name("type");
-    let newtype_name = package.author_name("Newtype");
+    let name_binding = package.author_name("name").expect("author test name");
+    let type_binding = package.author_name("type").expect("author test name");
+    let newtype_name = package.author_name("Newtype").expect("author test name");
     {
         use core_nomos::{
             BindingRef, InputParameter, ItemTemplate, MetaType, NameTransform, NewtypeTemplate,
@@ -499,7 +537,7 @@ fn recursive_cycle_is_rejected() {
         });
     }
 
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
     let identifier = intern(&mut names, "Whatever");
     let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
         identifier,
@@ -516,13 +554,16 @@ fn recursive_cycle_is_rejected() {
 
 #[test]
 fn package_is_content_identified_and_revisioned() {
-    let wire = MacroPackage::wire_fixture();
-    let plain = MacroPackage::plain_fixture();
+    let wire = MacroPackage::wire_fixture().expect("build wire fixture");
+    let plain = MacroPackage::plain_fixture().expect("build plain fixture");
 
     // Deterministic content identity.
     assert_eq!(
         wire.content_identity().unwrap(),
-        MacroPackage::wire_fixture().content_identity().unwrap(),
+        MacroPackage::wire_fixture()
+            .expect("build wire fixture")
+            .content_identity()
+            .unwrap(),
     );
     // The two packages differ (different preambles), so their identities differ.
     assert_ne!(

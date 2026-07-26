@@ -39,9 +39,9 @@
 //! ## The engine
 //!
 //! [`MacroPackage::apply`] takes the schema encoded form and its NameTable and
-//! returns [`Lowering`]: logos encoded items and the *extended* logos NameTable — one
-//! continuous identifier space in which schema indices are preserved and logos names
-//! append. Conversions are typed end to end, outside text.
+//! returns [`Lowering`]: logos encoded items and a Logos NameTable composed with the
+//! Schema slice. Identifiers retain their namespace tag, and conversions are typed
+//! end to end, outside text.
 
 pub mod definition;
 pub mod domain;

@@ -49,8 +49,8 @@ impl std::fmt::Display for MacroIdentity {
     }
 }
 
-/// The two settled macro kinds. A new class of dispatch would be a new variant —
-/// the closed set matches the ruling that Nomos has exactly two.
+/// The two macro kinds. A new class of dispatch would be a new variant; the
+/// closed enum has one variant for each dispatch path.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MacroKind {
     /// A macro dispatched by explicit identity: it sits in the macro table and is
@@ -94,10 +94,10 @@ pub enum SectionDefault {
 
 impl SectionDefault {
     /// Which structural section a schema declaration belongs to — the dispatch
-    /// from a declaration's Core kind to the default macro that lowers it.
+    /// from an encoded declaration kind to the default macro that lowers it.
     /// Exhaustive over `EncodedType`, no wildcard, so a new declaration kind is a
     /// compile error until its section is named.
-    pub fn of_core_type(value: &EncodedType) -> Self {
+    pub fn of_encoded_type(value: &EncodedType) -> Self {
         match value {
             EncodedType::Newtype(_) => Self::Newtype,
             EncodedType::Struct(_) => Self::Struct,

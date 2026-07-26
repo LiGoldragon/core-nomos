@@ -9,9 +9,8 @@ use crate::identity::{MacroIdentity, SectionDefault};
 use crate::meta::MetaType;
 
 /// A failure lowering a `EncodedSchema` through a [`MacroPackage`](crate::MacroPackage)
-/// into `CoreLogos`. Every variant names the exact structural mismatch, so an
-/// unruled input fails loudly rather than producing quietly-wrong logos — the
-/// structural discipline made typed.
+/// into encoded logos form. Every variant names the exact structural mismatch, so an
+/// unsupported input fails loudly rather than producing quietly-wrong logos.
 #[derive(Debug, Clone, Error)]
 pub enum NomosError {
     /// A schema declaration of this kind has no structural default macro in the
@@ -20,7 +19,7 @@ pub enum NomosError {
     NoStructuralDefault(SectionDefault),
 
     /// A named invocation named a macro identity absent from the package table.
-    /// An unknown named invocation is an error (the ruling).
+    /// An unknown named invocation is an error.
     #[error("named invocation of {0} is not in the macro table")]
     UnknownMacro(MacroIdentity),
 
@@ -61,13 +60,13 @@ pub enum NomosError {
     #[error("field visibility {0:?} is not placeable here")]
     FieldVisibility(Visibility),
 
-    /// A schema type reference could not be lowered into a `CoreLogos` type — a
+    /// A schema type reference could not be lowered into an encoded logos type — a
     /// value application (const generic) has no `TypeReference` home in the
     /// surveyed logos algebra.
-    #[error("schema reference cannot lower to a CoreLogos type: {0}")]
+    #[error("schema reference cannot lower to an encoded logos type: {0}")]
     UnsupportedReference(&'static str),
 
-    /// A macro template literal carried a `CoreLogos` type outside the schema-lowering
+    /// A macro template literal carried an encoded logos type outside the schema-lowering
     /// template vocabulary — a reference or impl-trait type, which belongs to
     /// impl-block signatures, not schema declarations.
     #[error("template type is out of the macro template vocabulary: {0}")]

@@ -25,7 +25,7 @@ pub enum MetaType {
 /// One input parameter: its in-scope binding name (the derived accessor, e.g.
 /// `Name` yields `name`) and the meta-type it stands for. Body accessors resolve
 /// against these binding names — there is no separate binder and no `declaration.`
-/// prefix (the headless, sound-typing ruling).
+/// prefix.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InputParameter {
     /// The parameter's in-scope binding name, an identifier in the package's
@@ -54,8 +54,8 @@ impl InputSignature {
 }
 
 /// A value bound into an input parameter when a macro is applied to a declaration.
-/// It carries the schema-side substance verbatim (identifiers into the continuous
-/// NameTable, and `core_schema` references cloned) — text never enters.
+/// It carries the schema-side substance verbatim (namespace-tagged identifiers from
+/// the Schema slice and cloned `core_schema` references) — text never enters.
 #[derive(Clone, Debug)]
 pub enum MetaValue {
     /// A bound name (the declaration's identifier).
