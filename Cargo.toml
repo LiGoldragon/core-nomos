@@ -1,11 +1,11 @@
 [package]
 name         = "core-nomos"
-version      = "0.3.0"
+version      = "0.4.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/core-nomos"
-description  = "The stringless encoded form of Nomos: macros as typed data transforming the schema encoded form into the logos encoded form. Two macro kinds (named + structural), a stateful-at-rest content-identified MacroPackage, and a closed template escape algebra (Realize / Splice / Invoke). TextualNomos remains deferred."
+description  = "The stringless encoded form of Nomos: macros as typed data transforming the Ethos encoded form into the Logos encoded form. Two macro kinds (named + structural), a stateful-at-rest content-identified MacroPackage, and a closed template escape algebra (Realize / Splice / Invoke). TextualNomos remains deferred."
 publish      = false
 
 [lib]
@@ -15,7 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "24b43bae5d9748b0e7f679c6ec9f85a643c4d36a" }
 name-table       = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
-core-schema      = { git = "https://github.com/LiGoldragon/core-schema.git", rev = "6067b526ab0e9c0e90389543de03d2cd7bd6202a" }
+core-ethos       = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "42fbbc08877a89958cc7ebc50814fc1e7247b038" }
 core-logos       = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "5b66127de26b265e17a8060d5e06b9d7d31ce93e" }
 textual-rust     = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "1bd10fcb47bfa510d7911a748a08715fc372a109" }
 structural-codec = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "23497c43f81b619158e5cfbd83a012eb63c4186f" }

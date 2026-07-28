@@ -1,12 +1,12 @@
 //! The macro input model: the `{ Name Type }` meta-shape as data, and the values
-//! bound into it when a macro is applied to a schema declaration.
+//! bound into it when a macro is applied to a ethos declaration.
 
-use core_schema::{EncodedField, EncodedReference, EncodedVariant};
+use core_ethos::{EncodedField, EncodedReference, EncodedVariant};
 use name_table::Identifier;
 use std::collections::BTreeMap;
 
 /// A standard input meta-type — the small vocabulary a macro input describes, over
-/// what a schema declaration actually carries (nomos-macro-model-v1 §2). An input
+/// what a ethos declaration actually carries (nomos-macro-model-v1 §2). An input
 /// signature is an inline struct shape over these, not a binding to a named type.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MetaType {
@@ -54,8 +54,8 @@ impl InputSignature {
 }
 
 /// A value bound into an input parameter when a macro is applied to a declaration.
-/// It carries the schema-side substance verbatim (namespace-tagged identifiers from
-/// the Schema slice and cloned `core_schema` references) — text never enters.
+/// It carries the ethos-side substance verbatim (namespace-tagged identifiers from
+/// the Ethos compatibility slice and cloned `core_ethos` references) — text never enters.
 #[derive(Clone, Debug)]
 pub enum MetaValue {
     /// A bound name (the declaration's identifier).

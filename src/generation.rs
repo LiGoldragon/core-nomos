@@ -1,13 +1,13 @@
-//! The enriched generation classes: the schema-derived *support surface* the wire
+//! The enriched generation classes: the ethos-derived *support surface* the wire
 //! reference fixtures emit alongside the data declarations — impl blocks (with methods,
 //! associated types, and associated consts), functions, consts, const modules, and
 //! use imports, as stringless encoded logos data.
 //!
-//! Where the per-declaration structural defaults lower one `EncodedItem` per schema
-//! declaration, a [`GenerationClass`] is a whole-schema generator. It reads the
-//! schema's newtype catalogue and its interface roots
-//! ([`core_schema::DeclarationRole`]) and appends an ordered run of `EncodedItem`
-//! values into the Logos NameTable composed with Schema that declaration lowering
+//! Where the per-declaration structural defaults lower one `EncodedItem` per ethos
+//! declaration, a [`GenerationClass`] is a whole-ethos generator. It reads the
+//! ethos's newtype catalogue and its interface roots
+//! ([`core_ethos::DeclarationRole`]) and appends an ordered run of `EncodedItem`
+//! values into the Logos NameTable composed with the Ethos compatibility slice that declaration lowering
 //! built. Each
 //! class builds its fixed method and match skeletons directly — exactly as the fixed
 //! module prelude ([`crate::ModuleHead`]) authors its stringless data — with every
@@ -17,6 +17,7 @@
 //! the same data-bearing walk the declaration lowering uses, so the generated items
 //! resolve in the identifier space the declarations already populated.
 
+use core_ethos::{EncodedDeclaration, EncodedEthos, EncodedReference, EncodedType, EncodedVariant};
 use core_logos::{
     Alias, ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ClosureExpression,
     ConfigurationAttribute, ConfigurationPredicate, Const, DeriveGroup, EncodedItem, Enumeration,
@@ -27,9 +28,6 @@ use core_logos::{
     ReferenceType, SliceType, Statement, StructLiteral, TryExpression, TupleExpression,
     TupleFieldAccess, TupleType, TupleVariantPattern, TypeApplication, TypeReference, Variant,
     VariantPayload, Visibility,
-};
-use core_schema::{
-    EncodedDeclaration, EncodedReference, EncodedSchema, EncodedType, EncodedVariant,
 };
 use name_table::{Identifier, Name};
 use std::collections::BTreeMap;
@@ -117,26 +115,26 @@ impl InterfaceRoot {
 }
 
 impl Evaluator<'_> {
-    /// Build one generation class's ordered `EncodedItem` values from the schema.
+    /// Build one generation class's ordered `EncodedItem` values from the ethos.
     pub(crate) fn generate_class(
         &mut self,
         class: &GenerationClass,
-        schema: &EncodedSchema,
+        ethos: &EncodedEthos,
     ) -> Result<Vec<EncodedItem>, NomosError> {
         match class {
-            GenerationClass::NewtypeErgonomics => self.generate_newtype_ergonomics(schema),
-            GenerationClass::InterfaceErgonomics => self.generate_interface_ergonomics(schema),
-            GenerationClass::WireContract => self.generate_wire_contract(schema),
-            GenerationClass::WireExchangeCodec => self.generate_wire_exchange_codec(schema),
-            GenerationClass::WireExchangeEnvelope => self.generate_wire_exchange_envelope(schema),
-            GenerationClass::TraceSupport => self.generate_trace_support(schema),
+            GenerationClass::NewtypeErgonomics => self.generate_newtype_ergonomics(ethos),
+            GenerationClass::InterfaceErgonomics => self.generate_interface_ergonomics(ethos),
+            GenerationClass::WireContract => self.generate_wire_contract(ethos),
+            GenerationClass::WireExchangeCodec => self.generate_wire_exchange_codec(ethos),
+            GenerationClass::WireExchangeEnvelope => self.generate_wire_exchange_envelope(ethos),
+            GenerationClass::TraceSupport => self.generate_trace_support(ethos),
         }
     }
 
     // ---- shared stringless builders ---------------------------------------------
 
     /// Intern a fixed generation name into the Logos-owned table (dedup, so a name
-    /// already carried by the composed Schema slice reuses its identifier).
+    /// already carried by the composed Ethos compatibility slice reuses its identifier).
     fn ident(&mut self, text: &str) -> Result<Identifier, NomosError> {
         Ok(self.names.intern(Name::new(text))?)
     }
@@ -371,14 +369,14 @@ impl Evaluator<'_> {
         })
     }
 
-    // ---- schema reading ---------------------------------------------------------
+    // ---- ethos reading ---------------------------------------------------------
 
     /// The newtype catalogue: every data-type newtype declaration's name mapped to
     /// its wrapped reference. The interface constructors read it to decide whether a
     /// variant payload unwraps.
-    fn newtype_catalogue(schema: &EncodedSchema) -> BTreeMap<Identifier, EncodedReference> {
+    fn newtype_catalogue(ethos: &EncodedEthos) -> BTreeMap<Identifier, EncodedReference> {
         let mut catalogue = BTreeMap::new();
-        for declaration in schema.data_declarations() {
+        for declaration in ethos.data_declarations() {
             if let EncodedType::Newtype(newtype) = declaration.value() {
                 catalogue.insert(newtype.identifier(), newtype.reference().clone());
             }
@@ -386,10 +384,10 @@ impl Evaluator<'_> {
         catalogue
     }
 
-    /// The interface roots present in the schema, in document order (input then
+    /// The interface roots present in the ethos, in document order (input then
     /// output). Classes B/C/D gate on these.
-    fn interface_roots(schema: &EncodedSchema) -> Result<Vec<InterfaceRoot>, NomosError> {
-        [schema.input(), schema.output()]
+    fn interface_roots(ethos: &EncodedEthos) -> Result<Vec<InterfaceRoot>, NomosError> {
+        [ethos.input(), ethos.output()]
             .into_iter()
             .flatten()
             .map(InterfaceRoot::of)
@@ -400,10 +398,10 @@ impl Evaluator<'_> {
 
     fn generate_newtype_ergonomics(
         &mut self,
-        schema: &EncodedSchema,
+        ethos: &EncodedEthos,
     ) -> Result<Vec<EncodedItem>, NomosError> {
         let mut items = Vec::new();
-        for declaration in schema.data_declarations() {
+        for declaration in ethos.data_declarations() {
             if let EncodedType::Newtype(newtype) = declaration.value() {
                 let name = newtype.identifier();
                 let wrapped = newtype.reference().clone();
@@ -541,15 +539,15 @@ impl Evaluator<'_> {
 
     fn generate_interface_ergonomics(
         &mut self,
-        schema: &EncodedSchema,
+        ethos: &EncodedEthos,
     ) -> Result<Vec<EncodedItem>, NomosError> {
-        let roots = Self::interface_roots(schema)?;
+        let roots = Self::interface_roots(ethos)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
-                "interface ergonomics needs interface roots, the schema has none",
+                "interface ergonomics needs interface roots, the ethos has none",
             ));
         }
-        let catalogue = Self::newtype_catalogue(schema);
+        let catalogue = Self::newtype_catalogue(ethos);
         let mut items = Vec::new();
 
         // Constructor impls, one per root.
@@ -781,12 +779,12 @@ impl Evaluator<'_> {
     /// encode/decode bodies over them are the sibling [`Self::generate_wire_exchange_codec`].
     fn generate_wire_contract(
         &mut self,
-        schema: &EncodedSchema,
+        ethos: &EncodedEthos,
     ) -> Result<Vec<EncodedItem>, NomosError> {
-        let roots = Self::interface_roots(schema)?;
+        let roots = Self::interface_roots(ethos)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
-                "the wire contract needs interface roots, the schema has none",
+                "the wire contract needs interface roots, the ethos has none",
             ));
         }
         let mut items = Vec::new();
@@ -812,12 +810,12 @@ impl Evaluator<'_> {
     /// [`Self::generate_wire_exchange_envelope`].
     fn generate_wire_exchange_codec(
         &mut self,
-        schema: &EncodedSchema,
+        ethos: &EncodedEthos,
     ) -> Result<Vec<EncodedItem>, NomosError> {
-        let roots = Self::interface_roots(schema)?;
+        let roots = Self::interface_roots(ethos)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
-                "the wire exchange codec needs interface roots, the schema has none",
+                "the wire exchange codec needs interface roots, the ethos has none",
             ));
         }
         let mut items = Vec::new();
@@ -839,9 +837,9 @@ impl Evaluator<'_> {
     /// never `StreamingFrame`, whose subscription envelope is outside this surface.
     fn generate_wire_exchange_envelope(
         &mut self,
-        schema: &EncodedSchema,
+        ethos: &EncodedEthos,
     ) -> Result<Vec<EncodedItem>, NomosError> {
-        let roots = Self::interface_roots(schema)?;
+        let roots = Self::interface_roots(ethos)?;
         let request = roots.first().ok_or(NomosError::Generation(
             "the wire exchange envelope needs a request (input) root",
         ))?;
@@ -870,7 +868,7 @@ impl Evaluator<'_> {
 
     /// The `short_header` const module: one `pub const <ROOT>_<VARIANT>: u64` per
     /// interface-root operation. Each value is derived from the operation's position
-    /// — `(root_index << 56) | (variant_index << 48)` — reproducing schema-rust's
+    /// — `(root_index << 56) | (variant_index << 48)` — reproducing ethos-rust's
     /// legacy `ShortHeader::value` byte layout (the root index in byte 7, the variant
     /// index in byte 6). The roots run in document order (input then output) and each
     /// root's variants in declaration order, so the derived constants match the legacy
@@ -878,7 +876,7 @@ impl Evaluator<'_> {
     /// its one-byte field is the layout's genuine invariant and fails loudly.
     ///
     /// LEAN `short-header-derivation-mirrors-legacy`: the byte layout is reproduced
-    /// from schema-rust's existing emitter rule, not authored here. Trigger to
+    /// from ethos-rust's existing emitter rule, not authored here. Trigger to
     /// revisit: the short-header byte-layout review-later item settles a different
     /// layout, after which this derivation changes with it.
     fn short_header_module(&mut self, roots: &[InterfaceRoot]) -> Result<EncodedItem, NomosError> {
@@ -1656,12 +1654,12 @@ impl Evaluator<'_> {
 
     fn generate_trace_support(
         &mut self,
-        schema: &EncodedSchema,
+        ethos: &EncodedEthos,
     ) -> Result<Vec<EncodedItem>, NomosError> {
-        let roots = Self::interface_roots(schema)?;
+        let roots = Self::interface_roots(ethos)?;
         if roots.is_empty() {
             return Err(NomosError::Generation(
-                "trace support needs interface roots, the schema has none",
+                "trace support needs interface roots, the ethos has none",
             ));
         }
         Ok(vec![

@@ -39,7 +39,7 @@ pub struct MacroDefinitions {
     pub revision: PackageRevision,
     /// The macro table, keyed on minted identity.
     pub macros: BTreeMap<MacroIdentity, MacroDefinition>,
-    /// The per-section structural defaults: a schema declaration of each kind
+    /// The per-section structural defaults: a ethos declaration of each kind
     /// lowers via its section's default macro.
     pub structural_defaults: BTreeMap<SectionDefault, MacroIdentity>,
 }
@@ -50,9 +50,9 @@ pub struct MacroDefinitions {
 /// archivable, content-addressed value carrying its own names — which is what
 /// makes Nomos stateful at rest.
 ///
-/// Applying the package to a schema (`MacroPackage::apply`) re-interns every
+/// Applying the package to a ethos (`MacroPackage::apply`) re-interns every
 /// template-literal name through this sibling into the Logos-owned NameTable
-/// composed with Schema, which preserves component-owned identifier namespaces at
+/// composed with the Ethos compatibility slice, which preserves component-owned identifier namespaces at
 /// runtime.
 #[derive(Clone, Debug)]
 pub struct MacroPackage {

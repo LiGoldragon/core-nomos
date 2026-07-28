@@ -1,19 +1,19 @@
-//! The capstone for the typed schema-to-logos pipeline.
+//! The capstone for the typed ethos-to-logos pipeline.
 //!
-//! Schema text is decoded, lowered through Nomos, and projected as valid Rust.
+//! Ethos text is decoded, lowered through Nomos, and projected as valid Rust.
 //! These focused tests assert structural behavior only; process-level working-program
 //! evidence belongs to `language-engine-witness`, which compiles and runs emitted code.
 
+use core_ethos::fixture::{COMMIT_SEQUENCE, DATABASE_MARKER, STATE_DIGEST};
+use core_ethos::{
+    EncodedDeclaration, EncodedEnum, EncodedEthos, EncodedField, EncodedNewtype, EncodedReference,
+    EncodedStruct, EncodedType, EncodedVariant, TextualEthos,
+};
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, EncodedItem, Field,
     Generics, PathNode, Struct, TypeReference, Visibility,
 };
 use core_nomos::MacroPackage;
-use core_schema::fixture::{COMMIT_SEQUENCE, DATABASE_MARKER, STATE_DIGEST};
-use core_schema::{
-    EncodedDeclaration, EncodedEnum, EncodedField, EncodedNewtype, EncodedReference, EncodedSchema,
-    EncodedStruct, EncodedType, EncodedVariant, TextualSchema,
-};
 use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 use structural_codec::ids::ScopedEncodedTypeId;
 use structural_codec::{Converted, EncodedConversion};
@@ -26,14 +26,14 @@ fn intern(names: &mut NameTable, name: &str) -> Identifier {
     names.intern(Name::new(name)).expect("intern test name")
 }
 
-/// A one-declaration EncodedSchema wrapping a decoded declaration value.
-fn schema_of(value: EncodedType) -> EncodedSchema {
-    EncodedSchema::new(vec![EncodedDeclaration::public(value)])
+/// A one-declaration EncodedEthos wrapping a decoded declaration value.
+fn ethos_of(value: EncodedType) -> EncodedEthos {
+    EncodedEthos::new(vec![EncodedDeclaration::public(value)])
 }
 
-/// Decode one schema declaration through TextualSchema, seeding a fresh table.
+/// Decode one ethos declaration through TextualEthos, seeding a fresh table.
 fn decode(expected: ScopedEncodedTypeId, text: &str) -> (EncodedType, NameTable) {
-    let textual = TextualSchema::fixture().expect("build fixture TextualSchema");
+    let textual = TextualEthos::fixture().expect("build fixture TextualEthos");
     let mut names = NameTable::new(IdentifierNamespace::Schema);
     let value = textual
         .decode(expected, text, &mut names)
@@ -49,7 +49,7 @@ fn project(item: &EncodedItem, names: &NameTable) -> String {
         .to_owned()
 }
 
-// ---- focused schema-to-Rust projection coverage ----
+// ---- focused ethos-to-Rust projection coverage ----
 
 #[test]
 fn pipeline_plain_newtypes_from_text_project_as_public_rust_items() {
@@ -61,11 +61,11 @@ fn pipeline_plain_newtypes_from_text_project_as_public_rust_items() {
         ),
         (STATE_DIGEST, "StateDigest.{ Integer }", "StateDigest"),
     ] {
-        let (value, schema_names) = decode(expected, text);
-        let schema = schema_of(value);
+        let (value, ethos_names) = decode(expected, text);
+        let ethos = ethos_of(value);
         let lowering = MacroPackage::plain_fixture()
             .expect("build plain fixture")
-            .apply(&schema, &schema_names)
+            .apply(&ethos, &ethos_names)
             .expect("lower plain declaration");
         assert_eq!(lowering.items.len(), 1, "one declaration produces one item");
         let rust = project(&lowering.items[0], &lowering.names);
@@ -75,30 +75,28 @@ fn pipeline_plain_newtypes_from_text_project_as_public_rust_items() {
 
 #[test]
 fn lowering_is_an_encoded_conversion_instance() {
-    let (value, schema_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
-    let schema = schema_of(value);
+    let (value, ethos_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
+    let ethos = ethos_of(value);
     let package = MacroPackage::plain_fixture().expect("build plain fixture");
 
     let converted: Converted<Vec<EncodedItem>> =
-        EncodedConversion::convert(&package, &schema, &schema_names).expect("trait convert");
-    let lowering = package
-        .apply(&schema, &schema_names)
-        .expect("inherent apply");
+        EncodedConversion::convert(&package, &ethos, &ethos_names).expect("trait convert");
+    let lowering = package.apply(&ethos, &ethos_names).expect("inherent apply");
 
     assert_eq!(converted.target, lowering.items);
     assert_eq!(converted.names.len(), lowering.names.len());
-    assert!(converted.names.len() >= schema_names.len());
+    assert!(converted.names.len() >= ethos_names.len());
     let rust = project(&converted.target[0], &converted.names);
     assert!(rust.contains("pub struct CommitSequence"), "{rust}");
 }
 
 #[test]
 fn pipeline_wire_newtype_from_text_projects_as_generated_rust() {
-    let (value, schema_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
-    let schema = schema_of(value);
+    let (value, ethos_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
+    let ethos = ethos_of(value);
     let lowering = MacroPackage::wire_fixture()
         .expect("build wire fixture")
-        .apply(&schema, &schema_names)
+        .apply(&ethos, &ethos_names)
         .expect("lower wire declaration");
     let rust = project(&lowering.items[0], &lowering.names);
     assert!(
@@ -117,10 +115,10 @@ fn wire_lowering_projects_public_newtypes_and_structs() {
     ] {
         let mut names = NameTable::new(IdentifierNamespace::Schema);
         let identifier = intern(&mut names, type_name);
-        let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
+        let ethos = ethos_of(EncodedType::Newtype(EncodedNewtype::new(
             identifier, wrapped,
         )));
-        let lowering = package.apply(&schema, &names).expect("lower newtype");
+        let lowering = package.apply(&ethos, &names).expect("lower newtype");
         let rust = project(&lowering.items[0], &lowering.names);
         assert!(rust.contains(&format!("pub struct {type_name}")), "{rust}");
     }
@@ -129,7 +127,7 @@ fn wire_lowering_projects_public_newtypes_and_structs() {
     let entry = intern(&mut names, "Entry");
     let topics = intern(&mut names, "Topics");
     let kind = intern(&mut names, "Kind");
-    let schema = schema_of(EncodedType::Struct(EncodedStruct::new(
+    let ethos = ethos_of(EncodedType::Struct(EncodedStruct::new(
         entry,
         vec![
             EncodedField::new(
@@ -139,7 +137,7 @@ fn wire_lowering_projects_public_newtypes_and_structs() {
             EncodedField::new(intern(&mut names, "kind"), EncodedReference::Plain(kind)),
         ],
     )));
-    let lowering = package.apply(&schema, &names).expect("lower struct");
+    let lowering = package.apply(&ethos, &names).expect("lower struct");
     let rust = project(&lowering.items[0], &lowering.names);
     assert!(rust.contains("pub struct Entry"), "{rust}");
     assert!(rust.contains("pub topics: Topics"), "{rust}");
@@ -149,21 +147,21 @@ fn wire_lowering_projects_public_newtypes_and_structs() {
 // ---- the illustrative sample pair end to end ----
 
 #[test]
-fn illustrative_struct_from_schema_text_lowers_and_derives_names() {
-    // DatabaseMarker.{ CommitSequence StateDigest StateDigest } from real schema
+fn illustrative_struct_from_ethos_text_lowers_and_derives_names() {
+    // DatabaseMarker.{ CommitSequence StateDigest StateDigest } from real ethos
     // text: every field name is derived from its type, so the two same-typed StateDigest fields
     // would collide on `state_digest`. The deterministic same-typed-field rule
     // (directed work, 2026-07-19) resolves that collision: a type naming more than one
     // field distinguishes each by the ordinal English word of its position among the
     // same-typed fields — `first_state_digest`, `second_state_digest` — while the
     // singly-used `CommitSequence` keeps its bare `commit_sequence`.
-    let (value, schema_names) = decode(
+    let (value, ethos_names) = decode(
         DATABASE_MARKER,
         "DatabaseMarker.{ CommitSequence StateDigest StateDigest }",
     );
-    let schema = schema_of(value);
+    let ethos = ethos_of(value);
     let package = MacroPackage::wire_fixture().expect("build wire fixture");
-    let lowering = package.apply(&schema, &schema_names).expect("lower");
+    let lowering = package.apply(&ethos, &ethos_names).expect("lower");
     let rust = project(&lowering.items[0], &lowering.names);
     assert!(rust.contains("pub struct DatabaseMarker {"));
     assert!(rust.contains("pub commit_sequence: CommitSequence,"));
@@ -172,12 +170,12 @@ fn illustrative_struct_from_schema_text_lowers_and_derives_names() {
     // The colliding bare name must not survive: position, via the ordinal rule, tells
     // the two StateDigest fields apart.
     assert!(!rust.contains("pub state_digest: StateDigest,"));
-    println!("\n[illustrative struct from schema text]\n{rust}");
+    println!("\n[illustrative struct from ethos text]\n{rust}");
 }
 
 #[test]
 fn illustrative_private_field_sample_preserves_visibility() {
-    // The private-field sample is constructed at the logos level because EncodedSchema
+    // The private-field sample is constructed at the logos level because EncodedEthos
     // does not carry field visibility.
     let mut names = NameTable::new(IdentifierNamespace::Schema);
     let preamble = wire_preamble(&mut names);
@@ -255,7 +253,7 @@ fn wire_preamble(names: &mut NameTable) -> Vec<Attribute> {
 
 #[test]
 fn declaration_visibility_lowers_faithfully() {
-    // The schema declaration's coarse Public/Private is an authoritative API promise
+    // The ethos declaration's coarse Public/Private is an authoritative API promise
     // and stamps the produced item. A Private declaration projects without `pub`; a
     // Public one keeps it. Same structure, visibility the only difference.
     let mut names = NameTable::new(IdentifierNamespace::Schema);
@@ -263,8 +261,8 @@ fn declaration_visibility_lowers_faithfully() {
     let value = EncodedType::Newtype(EncodedNewtype::new(identifier, EncodedReference::Integer));
     let package = MacroPackage::plain_fixture().expect("build plain fixture");
 
-    let public = EncodedSchema::new(vec![EncodedDeclaration::new(
-        core_schema::Visibility::Public,
+    let public = EncodedEthos::new(vec![EncodedDeclaration::new(
+        core_ethos::Visibility::Public,
         value.clone(),
     )]);
     let public_low = package.apply(&public, &names).expect("lower public");
@@ -274,8 +272,8 @@ fn declaration_visibility_lowers_faithfully() {
         "public declaration keeps pub: {public_rust}",
     );
 
-    let private = EncodedSchema::new(vec![EncodedDeclaration::new(
-        core_schema::Visibility::Private,
+    let private = EncodedEthos::new(vec![EncodedDeclaration::new(
+        core_ethos::Visibility::Private,
         value,
     )]);
     let private_low = package.apply(&private, &names).expect("lower private");
@@ -294,25 +292,25 @@ fn hash_discipline_rename_is_stable_output_changes() {
     let build = |type_name: &str| {
         let mut names = NameTable::new(IdentifierNamespace::Schema);
         let identifier = intern(&mut names, type_name);
-        let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
+        let ethos = ethos_of(EncodedType::Newtype(EncodedNewtype::new(
             identifier,
             EncodedReference::Integer,
         )));
-        (schema, names)
+        (ethos, names)
     };
 
-    let (schema_a, names_a) = build("CommitSequence");
-    let (schema_b, names_b) = build("CommitLog"); // a pure rename: identical structure
+    let (ethos_a, names_a) = build("CommitSequence");
+    let (ethos_b, names_b) = build("CommitLog"); // a pure rename: identical structure
 
-    // The EncodedSchema identity is rename-stable (names are not in the pre-image).
+    // The EncodedEthos identity is rename-stable (names are not in the pre-image).
     assert_eq!(
-        schema_a.content_identity().unwrap(),
-        schema_b.content_identity().unwrap(),
-        "schema identity must not move under a rename",
+        ethos_a.content_identity().unwrap(),
+        ethos_b.content_identity().unwrap(),
+        "ethos identity must not move under a rename",
     );
 
-    let low_a = plain.apply(&schema_a, &names_a).unwrap();
-    let low_b = plain.apply(&schema_b, &names_b).unwrap();
+    let low_a = plain.apply(&ethos_a, &names_a).unwrap();
+    let low_b = plain.apply(&ethos_b, &names_b).unwrap();
 
     // The encoded logos item identity is rename-stable too.
     assert_eq!(
@@ -344,7 +342,7 @@ fn payload_enumerations_do_not_claim_copy() {
     ));
     let lowering = MacroPackage::wire_fixture()
         .expect("build wire fixture")
-        .apply(&schema_of(value), &names)
+        .apply(&ethos_of(value), &names)
         .expect("lower payload enumeration");
     let rust = project(&lowering.items[0], &lowering.names);
     assert!(
@@ -355,32 +353,32 @@ fn payload_enumerations_do_not_claim_copy() {
 
 #[test]
 fn composed_names_remain_namespace_tagged_and_resolvable() {
-    let mut schema_names = NameTable::new(IdentifierNamespace::Schema);
-    let schema_identifier = intern(&mut schema_names, "CommitSequence");
-    let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
-        schema_identifier,
+    let mut ethos_names = NameTable::new(IdentifierNamespace::Schema);
+    let ethos_identifier = intern(&mut ethos_names, "CommitSequence");
+    let ethos = ethos_of(EncodedType::Newtype(EncodedNewtype::new(
+        ethos_identifier,
         EncodedReference::Integer,
     )));
     let package = MacroPackage::wire_fixture().expect("build wire fixture");
-    let lowering = package.apply(&schema, &schema_names).expect("lower");
+    let lowering = package.apply(&ethos, &ethos_names).expect("lower");
 
-    // The Schema slice is composed into the Logos table: source identifiers keep
+    // The Ethos compatibility slice is composed into the Logos table: source identifiers keep
     // their tag and remain resolvable through the composed output table.
-    assert_eq!(schema_identifier.namespace(), IdentifierNamespace::Schema);
+    assert_eq!(ethos_identifier.namespace(), IdentifierNamespace::Schema);
     assert_eq!(lowering.names.namespace(), IdentifierNamespace::Logos);
     assert_eq!(
         lowering.names.lookup(&Name::new("CommitSequence")),
-        Some(schema_identifier),
-        "lookup retains the schema identifier rather than allocating a Logos duplicate",
+        Some(ethos_identifier),
+        "lookup retains the ethos identifier rather than allocating a Logos duplicate",
     );
     assert_eq!(
         lowering
             .names
-            .resolve(schema_identifier)
-            .expect("resolve composed schema name"),
-        schema_names
-            .resolve(schema_identifier)
-            .expect("resolve schema name"),
+            .resolve(ethos_identifier)
+            .expect("resolve composed ethos name"),
+        ethos_names
+            .resolve(ethos_identifier)
+            .expect("resolve ethos name"),
     );
 
     // Generated names are allocated in Logos; package authoring remains in Nomos.
@@ -411,11 +409,11 @@ fn missing_structural_default_errors_loudly() {
     let empty = MacroPackage::new(core_nomos::PackageRevision(1));
     let mut names = NameTable::new(IdentifierNamespace::Schema);
     let identifier = intern(&mut names, "Anything");
-    let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
+    let ethos = ethos_of(EncodedType::Newtype(EncodedNewtype::new(
         identifier,
         EncodedReference::Integer,
     )));
-    let error = empty.apply(&schema, &names).unwrap_err();
+    let error = empty.apply(&ethos, &names).unwrap_err();
     assert!(
         matches!(error, core_nomos::NomosError::NoStructuralDefault(_)),
         "got {error:?}",
@@ -466,11 +464,11 @@ fn unknown_named_invocation_errors_loudly() {
 
     let mut names = NameTable::new(IdentifierNamespace::Schema);
     let identifier = intern(&mut names, "Whatever");
-    let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
+    let ethos = ethos_of(EncodedType::Newtype(EncodedNewtype::new(
         identifier,
         EncodedReference::Integer,
     )));
-    let error = package.apply(&schema, &names).unwrap_err();
+    let error = package.apply(&ethos, &names).unwrap_err();
     assert!(
         matches!(error, core_nomos::NomosError::UnknownMacro(_)),
         "got {error:?}",
@@ -539,11 +537,11 @@ fn recursive_cycle_is_rejected() {
 
     let mut names = NameTable::new(IdentifierNamespace::Schema);
     let identifier = intern(&mut names, "Whatever");
-    let schema = schema_of(EncodedType::Newtype(EncodedNewtype::new(
+    let ethos = ethos_of(EncodedType::Newtype(EncodedNewtype::new(
         identifier,
         EncodedReference::Integer,
     )));
-    let error = package.apply(&schema, &names).unwrap_err();
+    let error = package.apply(&ethos, &names).unwrap_err();
     assert!(
         matches!(error, core_nomos::NomosError::RecursionCycle(_)),
         "got {error:?}",

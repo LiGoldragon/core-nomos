@@ -1,12 +1,12 @@
 # core-nomos
 
 The stringless **encoded form of Nomos**, the macro/transformation language. A
-macro is typed data — never text, never a Rust macro — that lowers the schema
-encoded form into the logos encoded form. This crate is the capstone of the
+macro is typed data — never text, never a Rust macro — that lowers the Ethos
+encoded form into the Logos encoded form. This crate is the capstone of the
 five-language pipeline:
 
 ```
-schema text → schema encoded form → Nomos macros → logos encoded form → TextualRust → generated Rust
+Ethos text → Ethos encoded form → Nomos macros → Logos encoded form → TextualRust → generated Rust
 ```
 
 Generated programs compiling and passing behavior tests are the acceptance surface;
@@ -16,19 +16,19 @@ rendered-source equality is not an oracle.
 
 ```rust
 use core_nomos::MacroPackage;
-use core_schema::TextualSchema;
-use core_schema::fixture::COMMIT_SEQUENCE;
+use core_ethos::TextualEthos;
+use core_ethos::fixture::COMMIT_SEQUENCE;
 use name_table::{IdentifierNamespace, NameTable};
 use textual_rust::RustSource;
 
-// schema TEXT → EncodedSchema
-let textual = TextualSchema::fixture()?;
-let mut schema_names = NameTable::new(IdentifierNamespace::Schema);
-let value = textual.decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }", &mut schema_names)?;
-let schema = core_schema::EncodedSchema::new(vec![core_schema::EncodedDeclaration::public(value)]);
+// Ethos text → EncodedEthos
+let textual = TextualEthos::fixture()?;
+let mut ethos_names = NameTable::new(IdentifierNamespace::Schema);
+let value = textual.decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }", &mut ethos_names)?;
+let ethos = core_ethos::EncodedEthos::new(vec![core_ethos::EncodedDeclaration::public(value)]);
 
-// EncodedSchema → Nomos macros → encoded logos form (+ Logos composed with Schema)
-let lowering = MacroPackage::wire_fixture()?.apply(&schema, &schema_names)?;
+// EncodedEthos → Nomos macros → encoded Logos form
+let lowering = MacroPackage::wire_fixture()?.apply(&ethos, &ethos_names)?;
 
 // encoded logos form → TextualRust → generated Rust
 let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
@@ -38,7 +38,7 @@ let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
 
 - **Two macro kinds** — *named* (dispatched by minted `MacroIdentity`; an unknown
   named invocation is an error) and *structural* (per-section defaults, selected by
-  a schema declaration's kind).
+  an Ethos declaration's kind).
 - **Stateful at rest** — a `MacroPackage` is a durable, archivable,
   content-identified registry of macros as data, carrying its own authoring
   `NameTable` sibling (excluded from the content identity, so it is rename-stable
@@ -46,11 +46,13 @@ let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
 - **A closed template escape algebra** — `Realize` / `Invoke` / `Splice`. A
   `NameTransform` is typed intent carried by `Realize`, not a fourth escape; its
   name work occurs only at the NameTable/emission boundary.
-- **A typed engine** — `MacroPackage::apply` converts schema encoded forms to logos
+- **A typed engine** — `MacroPackage::apply` converts Ethos encoded forms to Logos
   encoded forms without string manipulation in its macro transform: named
   invocations resolve or error loudly, structural defaults cover plain declarations,
   recursive invocation is bounded by cycle rejection, and the NameTable/emission
-  boundary composes the Schema slice into a Logos-owned table. Identifiers retain
+  boundary composes the Ethos compatibility slice into a Logos-owned table.
+  The exact pre-identity dependency still spells that slice
+  `IdentifierNamespace::Schema`; this crate exports no alias. Identifiers retain
   their namespace tag, and generated names allocate only in Logos.
 
 ## What it is not (yet)

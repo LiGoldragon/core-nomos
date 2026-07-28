@@ -1,4 +1,4 @@
-//! The NameTable/emission boundary for schema→logos lowering.
+//! The NameTable/emission boundary for ethos→logos lowering.
 //!
 //! Nomos evaluation carries only typed encoded values and encoded identifiers. This
 //! boundary is the sole owner of NameTable reads, derived-name production, literal
@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 
+use core_ethos::{EncodedField, EncodedReference};
 use core_logos::{Attribute, PathNode, TypeApplication, TypeReference};
-use core_schema::{EncodedField, EncodedReference};
 use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 
 use crate::error::NomosError;
@@ -24,15 +24,15 @@ pub(crate) struct NameTableBoundary<'package> {
 }
 
 impl<'package> NameTableBoundary<'package> {
-    /// Begin the Logos table with the Schema table composed into it, retaining
+    /// Begin the Logos table with the Ethos compatibility table composed into it, retaining
     /// the source identifiers in their respective namespace slices.
     pub(crate) fn new(
         package_names: &'package NameTable,
-        schema_names: &NameTable,
+        ethos_names: &NameTable,
     ) -> Result<Self, NomosError> {
         Ok(Self {
             package_names,
-            names: NameTable::new(IdentifierNamespace::Logos).compose(schema_names)?,
+            names: NameTable::new(IdentifierNamespace::Logos).compose(ethos_names)?,
         })
     }
 
@@ -93,7 +93,7 @@ impl<'package> NameTableBoundary<'package> {
 
     /// The deterministic Rust names for an ordered same-typed field group. This
     /// is name work, so its string derivation and allocation belong at the boundary,
-    /// not in the typed schema→logos evaluator.
+    /// not in the typed ethos→logos evaluator.
     fn derive_group_names(&self, fields: &[EncodedField]) -> Result<Vec<Name>, NomosError> {
         let base_names = fields
             .iter()
@@ -132,7 +132,7 @@ impl<'package> NameTableBoundary<'package> {
         rule: FieldNameRule,
     ) -> Result<Identifier, NomosError> {
         match rule {
-            FieldNameRule::PreserveSchema => Ok(field.identifier()),
+            FieldNameRule::PreserveEthos => Ok(field.identifier()),
             FieldNameRule::AlwaysDeriveFromType => Ok(self.names.intern(group_name)?),
             FieldNameRule::FieldRuleDispatch => {
                 if field.name_is_derivable(&self.names)? {
@@ -144,7 +144,7 @@ impl<'package> NameTableBoundary<'package> {
         }
     }
 
-    /// Translate a typed schema reference to its logos type while allocating the
+    /// Translate a typed ethos reference to its logos type while allocating the
     /// required fixed projection names at the NameTable boundary.
     pub(crate) fn lower_reference(
         &mut self,
@@ -261,12 +261,12 @@ impl<'package> NameTableBoundary<'package> {
         Ok(self.names.resolve(identifier)?.as_str().to_owned())
     }
 
-    /// The fixed head of a single-argument schema projection.
+    /// The fixed head of a single-argument ethos projection.
     fn single_projection_head(
         &self,
-        projection: &core_schema::SingleTypeReferenceProjection,
+        projection: &core_ethos::SingleTypeReferenceProjection,
     ) -> &'static str {
-        use core_schema::SingleTypeReferenceProjection::{Optional, ScopeOf, Vector};
+        use core_ethos::SingleTypeReferenceProjection::{Optional, ScopeOf, Vector};
         match projection {
             Vector => "Vec",
             Optional => "Option",
@@ -274,12 +274,12 @@ impl<'package> NameTableBoundary<'package> {
         }
     }
 
-    /// The fixed head of a multi-argument schema projection.
+    /// The fixed head of a multi-argument ethos projection.
     fn multi_projection_head(
         &self,
-        projection: &core_schema::MultiTypeReferenceProjection,
+        projection: &core_ethos::MultiTypeReferenceProjection,
     ) -> &'static str {
-        use core_schema::MultiTypeReferenceProjection::Map;
+        use core_ethos::MultiTypeReferenceProjection::Map;
         match projection {
             Map => "Map",
         }
@@ -409,8 +409,8 @@ mod tests {
     #[test]
     fn invalid_derive_path_resolution_is_terminal() -> Result<(), NomosError> {
         let package_names = NameTable::new(IdentifierNamespace::Nomos);
-        let schema_names = NameTable::new(IdentifierNamespace::Schema);
-        let boundary = NameTableBoundary::new(&package_names, &schema_names)?;
+        let ethos_names = NameTable::new(IdentifierNamespace::Schema);
+        let boundary = NameTableBoundary::new(&package_names, &ethos_names)?;
         let unknown = IdentifierNamespace::Fixture.identifier(0);
         let mut attributes = [Attribute::Derive(DeriveGroup {
             paths: vec![PathNode {

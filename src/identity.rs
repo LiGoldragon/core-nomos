@@ -1,6 +1,6 @@
 //! Macro identity and the two settled macro kinds.
 
-use core_schema::EncodedType;
+use core_ethos::EncodedType;
 
 /// A macro's minted, stringless identity — a package-local index the macro table
 /// is keyed on. It is *minted* (allocated when a macro is registered), not derived
@@ -58,15 +58,15 @@ pub enum MacroKind {
     /// `Invoke` in another macro's template). An unknown named invocation is an
     /// error. `WireAttributes` is a named macro.
     Named,
-    /// A per-section default, selected by a schema declaration's structural kind
+    /// A per-section default, selected by a ethos declaration's structural kind
     /// rather than by name: an ordinary type declaration in a section lowers via
     /// that section's default macro. `WireNewtype` and the particular-struct macro
     /// are structural.
     Structural(SectionDefault),
 }
 
-/// Which schema declaration section a structural macro is the default for. This is
-/// the declaration-kind selector, disjoint from `core_schema::EncodedType`'s variants
+/// Which ethos declaration section a structural macro is the default for. This is
+/// the declaration-kind selector, disjoint from `core_ethos::EncodedType`'s variants
 /// only in that it is the *lowering side*'s dispatch key.
 #[derive(
     rkyv::Archive,
@@ -93,7 +93,7 @@ pub enum SectionDefault {
 }
 
 impl SectionDefault {
-    /// Which structural section a schema declaration belongs to — the dispatch
+    /// Which structural section a ethos declaration belongs to — the dispatch
     /// from an encoded declaration kind to the default macro that lowers it.
     /// Exhaustive over `EncodedType`, no wildcard, so a new declaration kind is a
     /// compile error until its section is named.

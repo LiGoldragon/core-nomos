@@ -96,6 +96,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-ethos"
+version = "0.9.0"
+source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=42fbbc08877a89958cc7ebc50814fc1e7247b038#42fbbc08877a89958cc7ebc50814fc1e7247b038"
+dependencies = [
+ "content-identity",
+ "name-table",
+ "raw-discovery",
+ "rkyv",
+ "structural-codec",
+ "thiserror",
+]
+
+[[package]]
 name = "core-logos"
 version = "0.2.0"
 source = "git+https://github.com/LiGoldragon/core-logos.git?rev=5b66127de26b265e17a8060d5e06b9d7d31ce93e#5b66127de26b265e17a8060d5e06b9d7d31ce93e"
@@ -108,28 +121,15 @@ dependencies = [
 
 [[package]]
 name = "core-nomos"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "content-identity",
+ "core-ethos",
  "core-logos",
- "core-schema",
  "name-table",
  "rkyv",
  "structural-codec",
  "textual-rust",
- "thiserror",
-]
-
-[[package]]
-name = "core-schema"
-version = "0.8.0"
-source = "git+https://github.com/LiGoldragon/core-schema.git?rev=6067b526ab0e9c0e90389543de03d2cd7bd6202a#6067b526ab0e9c0e90389543de03d2cd7bd6202a"
-dependencies = [
- "content-identity",
- "name-table",
- "raw-discovery",
- "rkyv",
- "structural-codec",
  "thiserror",
 ]
 

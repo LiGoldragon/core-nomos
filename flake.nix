@@ -1,5 +1,5 @@
 {
-  description = "core-nomos — the stringless encoded form of Nomos: macros as typed data lowering schema encoded forms to logos encoded forms";
+  description = "core-nomos — the stringless encoded form of Nomos: macros as typed data lowering Ethos encoded forms to Logos encoded forms";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

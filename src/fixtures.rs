@@ -2,7 +2,7 @@
 //! recursive WireAttributes, and the particular-struct structural default) and the
 //! plain package (the same shape with the bare two-attribute preamble). These are
 //! `MacroPackage` constructors — the macros exist only as authored data, never as
-//! code — and are the packages the capstone applies to real schema.
+//! code — and are the packages the capstone applies to real ethos.
 
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, Generics, PathNode,
@@ -55,7 +55,7 @@ impl MacroPackage {
     }
 
     /// The plain package: the same macro shapes carrying the bare two-node
-    /// preamble (`#[rustfmt::skip]` + the rkyv derive), which lowers a schema
+    /// preamble (`#[rustfmt::skip]` + the rkyv derive), which lowers a ethos
     /// newtype to the runner reference fixtures with the prior rendering.
     pub fn plain_fixture() -> Result<Self, NomosError> {
         Self::fixture(AttributePreamble::Plain)
@@ -63,7 +63,7 @@ impl MacroPackage {
 
     /// The enriched wire package: the wire fixture's structural defaults (the data
     /// declarations) plus the generation selection nomos-engine applies. Through
-    /// [`MacroPackage::apply_enriched`], it lowers a schema's declarations and then
+    /// [`MacroPackage::apply_enriched`], it lowers a ethos's declarations and then
     /// emits, in the reference fixture's document order, the newtype ergonomics, the interface
     /// ergonomics, the wire-contract vocabulary, the wire exchange codec (the working
     /// `encode_signal_frame` / `decode_signal_frame` bodies for the ordinary exchange

@@ -118,15 +118,15 @@ pub struct Splice {
 /// The per-element production of a splice.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum SpliceElement {
-    /// Each bound schema field becomes an encoded logos field: the given visibility,
+    /// Each bound ethos field becomes an encoded logos field: the given visibility,
     /// a name selected by the field-name rule, and its lowered type.
     Field {
-        /// The visibility placed on every produced field (schema carries none).
+        /// The visibility placed on every produced field (ethos carries none).
         visibility: Visibility,
         /// How each field's name is selected.
         name_rule: FieldNameRule,
     },
-    /// Each bound schema variant becomes a Logos enum variant, preserving its
+    /// Each bound ethos variant becomes a Logos enum variant, preserving its
     /// name and lowering an optional payload to a one-element tuple.
     Variant,
 }
@@ -136,15 +136,15 @@ pub enum SpliceElement {
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FieldNameRule {
     /// The Field-rule dispatch: an *elided* field is re-derived through the
-    /// NameTable/emission boundary into the Logos table composed with Schema; an explicit field
+    /// NameTable/emission boundary into the Logos table composed with the Ethos compatibility slice; an explicit field
     /// identifier is preserved.
     /// This is the particular-struct structural default.
     FieldRuleDispatch,
     /// Always request derivation from the field's type at the NameTable/emission
     /// boundary.
     AlwaysDeriveFromType,
-    /// Always preserve the schema-stored field name verbatim.
-    PreserveSchema,
+    /// Always preserve the ethos-stored field name verbatim.
+    PreserveEthos,
 }
 
 /// A macro's result template, tagged by what fragment it produces. A structural
@@ -201,7 +201,7 @@ pub struct StructTemplate {
     pub fields: Sequence<Field>,
 }
 
-/// The enum result template. Variants are spliced from the bound EncodedSchema
+/// The enum result template. Variants are spliced from the bound EncodedEthos
 /// enumeration, while attributes, visibility, and name follow the other item
 /// templates.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -213,21 +213,21 @@ pub struct EnumerationTemplate {
     pub variants: Sequence<Variant>,
 }
 
-/// The enriched generation vocabulary: the schema-derived *support surface* the
+/// The enriched generation vocabulary: the ethos-derived *support surface* the
 /// reference fixtures emit alongside the data declarations — impl blocks (with methods,
 /// associated types, and associated consts), functions, consts, const modules, and
 /// use imports. Where the per-declaration structural defaults ([`ItemTemplate`])
-/// lower one `EncodedItem` per declaration, a [`GenerationClass`] is a whole-schema
-/// generator: it reads the schema's newtype catalogue and interface roots
-/// ([`core_schema::DeclarationRole`]) and emits an ordered run of `EncodedItem` values.
+/// lower one `EncodedItem` per declaration, a [`GenerationClass`] is a whole-ethos
+/// generator: it reads the ethos's newtype catalogue and interface roots
+/// ([`core_ethos::DeclarationRole`]) and emits an ordered run of `EncodedItem` values.
 ///
-/// Each class is closed typed data — no head strings, no text. The schema-derived
+/// Each class is closed typed data — no head strings, no text. The ethos-derived
 /// names, types, and (for the wire stub) transcribed layout values flow from the
-/// bound schema when the package is applied ([`crate::MacroPackage::apply_enriched`]);
+/// bound ethos when the package is applied ([`crate::MacroPackage::apply_enriched`]);
 /// the interpreter that turns a class into `EncodedItem` values builds the fixed method
 /// and match skeletons directly, exactly as the fixed module prelude
 /// ([`crate::ModuleHead`]) authors its stringless encoded logos data, keeping every
-/// identifier in a Logos table composed with the Schema slice.
+/// identifier in a Logos table composed with the Ethos compatibility slice.
 ///
 /// The document-order rule the eventual full-file assembly follows is the class
 /// order of this enum: the data declarations first, then [`NewtypeErgonomics`],
@@ -246,7 +246,7 @@ pub enum GenerationClass {
     /// Class A — per data-type newtype declaration: the `impl { new / payload /
     /// into_payload }` inherent block and the `From<Inner>` conversion.
     NewtypeErgonomics,
-    /// Class B — gated on the interface roots ([`core_schema::DeclarationRole`]
+    /// Class B — gated on the interface roots ([`core_ethos::DeclarationRole`]
     /// `InterfaceInput` / `InterfaceOutput`): the per-variant constructors that
     /// unwrap newtype payloads, the `From<payload>` conversions, and the cfg-gated
     /// `FromStr` / `Display` impls.

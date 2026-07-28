@@ -21,7 +21,7 @@ a `NameTableBoundary`. Additional production surfaces still reach:
 
 - `name_boundary.rs`, which resolves names to strings, derives and formats new
   spellings, interns them early, and builds ordinal words;
-- `generation.rs`, reached by `apply_enriched`, is a 1,892-line schema-aware
+- `generation.rs`, reached by `apply_enriched`, is a 1,892-line Ethos-aware
   support generator that constructs Logos items and string literals directly;
 - `prelude.rs`, used for the production module head, renders sections to Rust
   strings and prepends a raw generated marker.
@@ -115,7 +115,7 @@ working-program behavior.
   every apply owns the legacy `NameTableBoundary`.
 - `src/name_boundary.rs` — legacy string resolution, derivation, formatting,
   ordinal naming, and interning.
-- `src/generation.rs` — legacy schema-aware generation; off-model, not an
+- `src/generation.rs` — legacy Ethos-aware generation; off-model, not an
   emission boundary.
 - `src/prelude.rs` — legacy Logos construction plus Rust text rendering.
 - `tests/pipeline.rs`, `tests/enriched.rs`, `tests/prelude.rs` — regression

@@ -1,19 +1,19 @@
-//! The lowering engine: apply a macro package to a `EncodedSchema` declaration set,
-//! producing `EncodedItem` values and a Logos NameTable composed with Schema.
+//! The lowering engine: apply a macro package to a `EncodedEthos` declaration set,
+//! producing `EncodedItem` values and a Logos NameTable composed with the Ethos compatibility slice.
 //!
 //! Conversions are typed end to end, outside text. Named invocations resolve or
 //! error loudly; structural defaults cover plain declarations; recursive
 //! invocation is bounded by cycle rejection; template realization produces genuine
-//! `core_logos` values; and the NameTable composes namespace-tagged Schema and Logos
+//! `core_logos` values; and the NameTable composes namespace-tagged Ethos and Logos
 //! slices, with every template literal re-interned through the package's authoring
 //! table into Logos.
 
+use core_ethos::{EncodedDeclaration, EncodedEthos, EncodedType};
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, EncodedItem,
     Enumeration, Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType,
     Struct, TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
-use core_schema::{EncodedDeclaration, EncodedSchema, EncodedType};
 use name_table::{Identifier, NameTable};
 use structural_codec::{Converted, EncodedConversion};
 
@@ -27,51 +27,51 @@ use crate::template::{
     ResultTemplate, Scalar, Sequence, SequenceItem, Splice, SpliceElement, StructTemplate,
 };
 
-/// The result of lowering a schema: the produced `EncodedItem` values, in declaration
+/// The result of lowering a ethos: the produced `EncodedItem` values, in declaration
 /// order, and a Logos NameTable that resolves every identifier they carry. The
-/// table composes the Schema slice, preserving Schema-tagged identifiers, while
+/// table composes the Ethos compatibility slice, preserving IdentifierNamespace::Schema-tagged identifiers, while
 /// logos-only names (derive paths, leaf type names, derived field names) allocate in
 /// Logos.
 #[derive(Clone, Debug)]
 pub struct Lowering {
-    /// The lowered items, one per schema declaration.
+    /// The lowered items, one per ethos declaration.
     pub items: Vec<EncodedItem>,
-    /// The Logos-owned NameTable composed with Schema.
+    /// The Logos-owned NameTable composed with the Ethos compatibility slice.
     pub names: NameTable,
 }
 
 impl MacroPackage {
-    /// Apply this package to a schema, lowering every declaration through its
+    /// Apply this package to a ethos, lowering every declaration through its
     /// section's structural default macro.
     pub fn apply(
         &self,
-        schema: &EncodedSchema,
-        schema_names: &NameTable,
+        ethos: &EncodedEthos,
+        ethos_names: &NameTable,
     ) -> Result<Lowering, NomosError> {
-        let mut evaluator = Evaluator::new(self, schema_names)?;
-        let items = evaluator.lower_schema(schema)?;
+        let mut evaluator = Evaluator::new(self, ethos_names)?;
+        let items = evaluator.lower_ethos(ethos)?;
         Ok(Lowering {
             items,
             names: evaluator.into_names(),
         })
     }
 
-    /// Apply this package to a schema through the *enriched* selection: the
+    /// Apply this package to a ethos through the *enriched* selection: the
     /// per-declaration structural lowering first (the data declarations), then the
     /// generation classes ([`crate::GenerationClass`]) in the package's selection
     /// order — class A, then B, then C, then D, the reference fixture's own document order. The
     /// returned items are the whole ordered run, resolved by the Logos NameTable
-    /// composed with Schema. A package with an empty selection produces exactly what
+    /// composed with the Ethos compatibility slice. A package with an empty selection produces exactly what
     /// [`apply`](Self::apply) does.
     pub fn apply_enriched(
         &self,
-        schema: &EncodedSchema,
-        schema_names: &NameTable,
+        ethos: &EncodedEthos,
+        ethos_names: &NameTable,
     ) -> Result<Lowering, NomosError> {
-        let mut evaluator = Evaluator::new(self, schema_names)?;
-        let mut items = evaluator.lower_schema(schema)?;
+        let mut evaluator = Evaluator::new(self, ethos_names)?;
+        let mut items = evaluator.lower_ethos(ethos)?;
         for class in self.selection() {
-            items.extend(evaluator.generate_class(class, schema)?);
+            items.extend(evaluator.generate_class(class, ethos)?);
         }
         Ok(Lowering {
             items,
@@ -92,22 +92,22 @@ impl From<Lowering> for Converted<Vec<EncodedItem>> {
     }
 }
 
-/// The schema→logos lowering implements the reference [`EncodedConversion`] instance
-/// for `EncodedForm<Schema> -> EncodedForm<Logos>` in `structural-codec`. The source is the schema
-/// [`EncodedForm`](structural_codec::EncodedForm) (`EncodedSchema`); the target is the
+/// The ethos→logos lowering implements the reference [`EncodedConversion`] instance
+/// for `EncodedForm<Ethos> -> EncodedForm<Logos>` in `structural-codec`. The source is the ethos
+/// [`EncodedForm`](structural_codec::EncodedForm) (`EncodedEthos`); the target is the
 /// lowered logos item set (`Vec<EncodedItem>`, the logos EncodedForm); and the
-/// namespace-tagged Schema and Logos slices thread the layer. No
+/// namespace-tagged Ethos and Logos slices thread the layer. No
 /// text crosses this path — the signature carries no `&str`/`String`, which is the
 /// structural proof that the conversion is a real type conversion, not string
 /// manipulation. It delegates to the eponymous [`apply`](MacroPackage::apply).
 impl EncodedConversion for MacroPackage {
-    type Source = EncodedSchema;
+    type Source = EncodedEthos;
     type Target = Vec<EncodedItem>;
     type Error = NomosError;
 
     fn convert(
         &self,
-        source: &EncodedSchema,
+        source: &EncodedEthos,
         names: &NameTable,
     ) -> Result<Converted<Vec<EncodedItem>>, NomosError> {
         Ok(self.apply(source, names)?.into())
@@ -127,7 +127,7 @@ enum Fragment {
 /// remapping), the Logos NameTable being built, and the active-invocation
 /// stack for cycle rejection. Crate-visible so the enriched generation classes
 /// ([`crate::generation`]) can append their items into the same Logos table composed
-/// with Schema that declaration lowering built.
+/// with the Ethos compatibility slice that declaration lowering built.
 pub(crate) struct Evaluator<'package> {
     package: &'package MacroPackage,
     /// The sole NameTable/emission boundary. Typed evaluation asks this boundary to
@@ -137,10 +137,10 @@ pub(crate) struct Evaluator<'package> {
 }
 
 impl<'package> Evaluator<'package> {
-    fn new(package: &'package MacroPackage, schema_names: &NameTable) -> Result<Self, NomosError> {
+    fn new(package: &'package MacroPackage, ethos_names: &NameTable) -> Result<Self, NomosError> {
         Ok(Self {
             package,
-            names: NameTableBoundary::new(package.names(), schema_names)?,
+            names: NameTableBoundary::new(package.names(), ethos_names)?,
             active: Vec::new(),
         })
     }
@@ -149,8 +149,8 @@ impl<'package> Evaluator<'package> {
         self.names.into_names()
     }
 
-    fn lower_schema(&mut self, schema: &EncodedSchema) -> Result<Vec<EncodedItem>, NomosError> {
-        schema
+    fn lower_ethos(&mut self, ethos: &EncodedEthos) -> Result<Vec<EncodedItem>, NomosError> {
+        ethos
             .declarations()
             .iter()
             .map(|declaration| self.lower_declaration(declaration))
@@ -185,15 +185,15 @@ impl<'package> Evaluator<'package> {
         }
     }
 
-    /// The visibility contact point where two enums meet: core-schema's coarse
+    /// The visibility contact point where two enums meet: core-ethos's coarse
     /// declaration visibility lowers into core-logos' richer `Visibility`. The
-    /// schema declaration's `Public`/`Private` stamps the produced item, overriding
+    /// ethos declaration's `Public`/`Private` stamps the produced item, overriding
     /// the visibility proposed by the macro template; core-logos stores that final
     /// visibility explicitly.
-    fn lower_visibility(&self, visibility: core_schema::Visibility) -> Visibility {
+    fn lower_visibility(&self, visibility: core_ethos::Visibility) -> Visibility {
         match visibility {
-            core_schema::Visibility::Public => Visibility::Public,
-            core_schema::Visibility::Private => Visibility::Private,
+            core_ethos::Visibility::Public => Visibility::Public,
+            core_ethos::Visibility::Private => Visibility::Private,
         }
     }
 
@@ -415,12 +415,12 @@ impl<'package> Evaluator<'package> {
                 }
                 SequenceItem::Escape(Escape::Realize(_)) => {
                     return Err(NomosError::EscapeShape(
-                        "there is no attribute binding to realize (schema carries no attributes)",
+                        "there is no attribute binding to realize (ethos carries no attributes)",
                     ));
                 }
                 SequenceItem::Escape(Escape::Splice(_)) => {
                     return Err(NomosError::EscapeShape(
-                        "there is no attribute binding to splice (schema carries no attributes)",
+                        "there is no attribute binding to splice (ethos carries no attributes)",
                     ));
                 }
             }
@@ -485,7 +485,7 @@ impl<'package> Evaluator<'package> {
         bound: &BoundInput,
     ) -> Result<Vec<Field>, NomosError> {
         let BindingRef::Input(binding) = splice.binding;
-        let schema_fields = match bound
+        let ethos_fields = match bound
             .value(binding)
             .ok_or(NomosError::UnboundInput(binding))?
         {
@@ -505,9 +505,9 @@ impl<'package> Evaluator<'package> {
                 "a variant splice cannot fill fields",
             ));
         };
-        let names = self.names.field_names(&schema_fields, *name_rule)?;
-        let mut out = Vec::with_capacity(schema_fields.len());
-        for (field, name) in schema_fields.iter().zip(names) {
+        let names = self.names.field_names(&ethos_fields, *name_rule)?;
+        let mut out = Vec::with_capacity(ethos_fields.len());
+        for (field, name) in ethos_fields.iter().zip(names) {
             let type_reference = self.lower_reference(field.reference())?;
             out.push(Field {
                 visibility: visibility.clone(),
@@ -566,11 +566,11 @@ impl<'package> Evaluator<'package> {
         Ok(output)
     }
 
-    /// Lower a typed schema reference through the NameTable boundary. The evaluator
+    /// Lower a typed ethos reference through the NameTable boundary. The evaluator
     /// never reads or introduces a spelling while performing this conversion.
     pub(crate) fn lower_reference(
         &mut self,
-        reference: &core_schema::EncodedReference,
+        reference: &core_ethos::EncodedReference,
     ) -> Result<TypeReference, NomosError> {
         self.names.lower_reference(reference)
     }

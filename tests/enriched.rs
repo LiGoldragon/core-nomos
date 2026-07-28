@@ -1,23 +1,22 @@
-//! The enriched capstone for the typed schema-to-logos pipeline.
+//! The enriched capstone for the typed ethos-to-logos pipeline.
 //!
 //! The fixture exercises declarations, ergonomics, the wire contract, codec bodies,
 //! envelope items, and trace support in their defined generation order. This crate
 //! checks the structural generator boundary; `language-engine-witness` compiles and
 //! runs the emitted contract as the working-program acceptance surface.
 
-use core_nomos::MacroPackage;
-use core_schema::{
-    DeclarationRole, EncodedDeclaration, EncodedEnum, EncodedField, EncodedNewtype,
-    EncodedReference, EncodedSchema, EncodedStruct, EncodedType, EncodedVariant,
-    SingleTypeReferenceProjection,
+use core_ethos::{
+    DeclarationRole, EncodedDeclaration, EncodedEnum, EncodedEthos, EncodedField, EncodedNewtype,
+    EncodedReference, EncodedStruct, EncodedType, EncodedVariant, SingleTypeReferenceProjection,
 };
+use core_nomos::MacroPackage;
 use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 use textual_rust::RustSource;
 
-/// The spirit-min schema built by hand through the crate's declaration path: the ten
+/// The spirit-min ethos built by hand through the crate's declaration path: the ten
 /// data declarations in source order, then the two role-tagged interface roots.
 struct SpiritMin {
-    schema: EncodedSchema,
+    ethos: EncodedEthos,
     names: NameTable,
 }
 
@@ -119,7 +118,7 @@ impl SpiritMin {
             )),
         );
 
-        let schema = EncodedSchema::new(vec![
+        let ethos = EncodedEthos::new(vec![
             topic_decl,
             topics_decl,
             description_decl,
@@ -133,7 +132,7 @@ impl SpiritMin {
             input_decl,
             output_decl,
         ]);
-        Self { schema, names }
+        Self { ethos, names }
     }
 }
 
@@ -174,7 +173,7 @@ fn the_enriched_run_projects_valid_rust_in_the_expected_class_shape() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .expect("build enriched fixture")
-        .apply_enriched(&spirit.schema, &spirit.names)
+        .apply_enriched(&spirit.ethos, &spirit.names)
         .expect("enriched lowering");
 
     let expected_total: usize = CLASS_LAYOUT.iter().map(|(_, count)| count).sum();
@@ -200,7 +199,7 @@ fn the_wire_exchange_codec_emits_working_encode_decode_bodies() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .expect("build enriched fixture")
-        .apply_enriched(&spirit.schema, &spirit.names)
+        .apply_enriched(&spirit.ethos, &spirit.names)
         .expect("enriched lowering");
 
     // The byte-count const and the SignalFrameError vocabulary the codec speaks.
@@ -270,7 +269,7 @@ fn the_wire_exchange_envelope_emits_the_ordinary_leg_surface() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .expect("build enriched fixture")
-        .apply_enriched(&spirit.schema, &spirit.names)
+        .apply_enriched(&spirit.ethos, &spirit.names)
         .expect("enriched lowering");
 
     // The envelope follows the two codec impls: the request root's three trait impls,
@@ -328,7 +327,7 @@ fn class_a_covers_every_data_newtype_in_declaration_order() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .expect("build enriched fixture")
-        .apply_enriched(&spirit.schema, &spirit.names)
+        .apply_enriched(&spirit.ethos, &spirit.names)
         .expect("lower");
     // Class A begins after the 12 declarations: six inherent-and-From pairs.
     let class_a = &lowering.items[12..24];
@@ -368,7 +367,7 @@ fn the_wire_stub_derives_the_short_header_module_from_operation_positions() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .expect("build enriched fixture")
-        .apply_enriched(&spirit.schema, &spirit.names)
+        .apply_enriched(&spirit.ethos, &spirit.names)
         .expect("lower");
     // Class C begins after declarations (12) + class A (12) + class B (10) = 34.
     let module = project(&lowering.items[34], &lowering.names);
@@ -377,7 +376,7 @@ fn the_wire_stub_derives_the_short_header_module_from_operation_positions() {
         "{module}"
     );
     // The values are derived from each operation's position —
-    // (root_index << 56) | (variant_index << 48) — reproducing schema-rust's legacy
+    // (root_index << 56) | (variant_index << 48) — reproducing ethos-rust's legacy
     // byte layout exactly: Input::Record at root 0 / variant 0 is 0x0000000000000000,
     // and Output::RecordsObserved at root 1 / variant 1 is 0x0101000000000000.
     assert!(module.contains("pub const INPUT_RECORD: u64 = 0x0000000000000000;"));
@@ -389,7 +388,7 @@ fn class_d_emits_the_public_field_trace_event_declaration() {
     let spirit = SpiritMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .expect("build enriched fixture")
-        .apply_enriched(&spirit.schema, &spirit.names)
+        .apply_enriched(&spirit.ethos, &spirit.names)
         .expect("lower");
     // Class D begins after declarations (12) + A (12) + B (10) + wire contract (5) +
     // wire exchange codec (2) + wire exchange envelope (10) = 51. The TraceEvent
@@ -403,15 +402,15 @@ fn class_d_emits_the_public_field_trace_event_declaration() {
 }
 
 #[test]
-fn an_enriched_selection_on_a_root_less_schema_errors_loudly() {
-    // Class B/C/D gate on interface roots; a schema of one plain newtype has none.
+fn an_enriched_selection_on_a_root_less_ethos_errors_loudly() {
+    // Class B/C/D gate on interface roots; a ethos of one plain newtype has none.
     let mut names = NameTable::new(IdentifierNamespace::Schema);
     let identifier = names.intern(Name::new("Lonely")).expect("intern test name");
-    let schema = EncodedSchema::new(vec![newtype(identifier, EncodedReference::Integer)]);
+    let ethos = EncodedEthos::new(vec![newtype(identifier, EncodedReference::Integer)]);
     let error = MacroPackage::enriched_fixture()
         .expect("build enriched fixture")
-        .apply_enriched(&schema, &names)
-        .expect_err("interface classes must reject a root-less schema");
+        .apply_enriched(&ethos, &names)
+        .expect_err("interface classes must reject a root-less ethos");
     assert!(
         matches!(error, core_nomos::NomosError::Generation(_)),
         "got {error:?}",
@@ -429,19 +428,19 @@ fn the_plain_and_wire_fixtures_keep_an_empty_selection() {
     ] {
         assert!(package.selection().is_empty());
         let enriched = package
-            .apply_enriched(&spirit.schema, &spirit.names)
+            .apply_enriched(&spirit.ethos, &spirit.names)
             .expect("lower");
         assert_eq!(enriched.items.len(), 12, "declarations only, no generation");
     }
 }
 
-/// A second, structurally distinct schema: two interface roots that each carry a
-/// single operation. It proves the short-header derivation is schema-general — it
+/// A second, structurally distinct ethos: two interface roots that each carry a
+/// single operation. It proves the short-header derivation is ethos-general — it
 /// emits one constant per operation from the operation's position, not the four
 /// spirit-min values a transcription would have carried. This is the interface shape
 /// the four-process witness drives as `second-min`.
 struct SecondMin {
-    schema: EncodedSchema,
+    ethos: EncodedEthos,
     names: NameTable,
 }
 
@@ -497,7 +496,7 @@ impl SecondMin {
             )),
         );
 
-        let schema = EncodedSchema::new(vec![
+        let ethos = EncodedEthos::new(vec![
             weight_decl,
             note_decl,
             priority_decl,
@@ -506,7 +505,7 @@ impl SecondMin {
             input_decl,
             output_decl,
         ]);
-        Self { schema, names }
+        Self { ethos, names }
     }
 }
 
@@ -515,7 +514,7 @@ fn the_wire_stub_derives_two_short_headers_for_single_operation_roots() {
     let second = SecondMin::build();
     let lowering = MacroPackage::enriched_fixture()
         .expect("build enriched fixture")
-        .apply_enriched(&second.schema, &second.names)
+        .apply_enriched(&second.ethos, &second.names)
         .expect("the enriched package lowers second-min by derivation, not a fixed count");
     let module = lowering
         .items
@@ -525,7 +524,7 @@ fn the_wire_stub_derives_two_short_headers_for_single_operation_roots() {
         .expect("the wire stub emits a short_header module");
     // Two roots, one operation each: Input at root 0 / variant 0 and Output at root 1
     // / variant 0 — exactly two derived constants, where a transcription would have
-    // carried spirit-min's four and rejected this schema on the count.
+    // carried spirit-min's four and rejected this ethos on the count.
     assert!(
         module.contains("pub const INPUT_ENQUEUE: u64 = 0x0000000000000000;"),
         "{module}"

@@ -1,8 +1,8 @@
 //! # core-nomos
 //!
 //! The stringless encoded form of Nomos, the macro/transformation language. A macro
-//! is typed data — never text, never Rust — that lowers the schema encoded form into
-//! the logos encoded form. Macros define the schema-to-logos lowering; generated
+//! is typed data — never text, never Rust — that lowers the ethos encoded form into
+//! the logos encoded form. Macros define the ethos-to-logos lowering; generated
 //! programs, not rendered-source equality, are the acceptance surface.
 //!
 //! ## What is here (EncodedNomos), and what is deferred (TextualNomos)
@@ -18,7 +18,7 @@
 //! - **Named** ([`MacroKind::Named`]) — dispatched by minted [`MacroIdentity`]; an
 //!   unknown named invocation is an error. `WireAttributes` is named.
 //! - **Structural** ([`MacroKind::Structural`]) — a per-section default selected by
-//!   a schema declaration's kind; `WireNewtype` and the particular-struct macro are
+//!   a ethos declaration's kind; `WireNewtype` and the particular-struct macro are
 //!   structural.
 //!
 //! ## Stateful at rest
@@ -38,9 +38,9 @@
 //!
 //! ## The engine
 //!
-//! [`MacroPackage::apply`] takes the schema encoded form and its NameTable and
+//! [`MacroPackage::apply`] takes the ethos encoded form and its NameTable and
 //! returns [`Lowering`]: logos encoded items and a Logos NameTable composed with the
-//! Schema slice. Identifiers retain their namespace tag, and conversions are typed
+//! Ethos compatibility slice. Identifiers retain their namespace tag, and conversions are typed
 //! end to end, outside text.
 
 pub mod definition;

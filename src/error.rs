@@ -8,12 +8,12 @@ use thiserror::Error;
 use crate::identity::{MacroIdentity, SectionDefault};
 use crate::meta::MetaType;
 
-/// A failure lowering a `EncodedSchema` through a [`MacroPackage`](crate::MacroPackage)
+/// A failure lowering a `EncodedEthos` through a [`MacroPackage`](crate::MacroPackage)
 /// into encoded logos form. Every variant names the exact structural mismatch, so an
 /// unsupported input fails loudly rather than producing quietly-wrong logos.
 #[derive(Debug, Clone, Error)]
 pub enum NomosError {
-    /// A schema declaration of this kind has no structural default macro in the
+    /// A ethos declaration of this kind has no structural default macro in the
     /// package. An unknown structural section is an error, never a silent skip.
     #[error("no structural default macro for the {0:?} declaration section")]
     NoStructuralDefault(SectionDefault),
@@ -60,15 +60,15 @@ pub enum NomosError {
     #[error("field visibility {0:?} is not placeable here")]
     FieldVisibility(Visibility),
 
-    /// A schema type reference could not be lowered into an encoded logos type — a
+    /// A ethos type reference could not be lowered into an encoded logos type — a
     /// value application (const generic) has no `TypeReference` home in the
     /// surveyed logos algebra.
-    #[error("schema reference cannot lower to an encoded logos type: {0}")]
+    #[error("ethos reference cannot lower to an encoded logos type: {0}")]
     UnsupportedReference(&'static str),
 
-    /// A macro template literal carried an encoded logos type outside the schema-lowering
+    /// A macro template literal carried an encoded logos type outside the ethos-lowering
     /// template vocabulary — a reference or impl-trait type, which belongs to
-    /// impl-block signatures, not schema declarations.
+    /// impl-block signatures, not ethos declarations.
     #[error("template type is out of the macro template vocabulary: {0}")]
     UnsupportedTemplateType(&'static str),
 
@@ -86,10 +86,10 @@ pub enum NomosError {
     #[error("module prelude projection failed: {0}")]
     PreludeProjection(#[from] textual_rust::Error),
 
-    /// An enriched generation class could not be built from the schema — e.g. a
-    /// generation class that needs interface roots ran against a schema carrying
+    /// An enriched generation class could not be built from the ethos — e.g. a
+    /// generation class that needs interface roots ran against a ethos carrying
     /// none, an interface root that was not an enumeration, or an interface root or
     /// operation index that overflows the short-header layout's one-byte field.
-    #[error("enriched generation class cannot build from this schema: {0}")]
+    #[error("enriched generation class cannot build from this ethos: {0}")]
     Generation(&'static str),
 }
