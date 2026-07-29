@@ -55,6 +55,7 @@ pub mod meta;
 mod name_boundary;
 pub mod package;
 pub mod prelude;
+pub mod slice_one;
 pub mod template;
 
 pub use capsule::capsule_from_issued_hash;
@@ -66,6 +67,7 @@ pub use identity::{MacroIdentity, MacroKind, SectionDefault};
 pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
+pub use slice_one::SliceOneTransformation;
 pub use template::{
     BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
     NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,

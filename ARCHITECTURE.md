@@ -12,7 +12,15 @@ references; it never materializes their spellings.
 
 ## Status boundary
 
-The current published crate does not yet satisfy that architecture.
+The crate contains one conforming first-slice transformation alongside a
+larger legacy graph that does not yet satisfy this architecture.
+
+`SliceOneTransformation` reads only the published `WholeEthos` positional
+carrier and constructs the published `WholeLogos` positional carrier. Its
+module imports only those two typed carrier dependencies. It carries complete
+encodedID chains unchanged, maps the closed visibility data, consumes the
+typed empty-attribute position, and preserves item order. It has no error or
+text boundary because the first-slice input vocabulary is closed.
 
 The typed macro/package model in `definition.rs`, `identity.rs`, `meta.rs`,
 `package.rs`, and `template.rs` is live. `MacroPackage::apply` and
@@ -26,7 +34,7 @@ a `NameTableBoundary`. Additional production surfaces still reach:
 - `prelude.rs`, used for the production module head, renders sections to Rust
   strings and prepends a raw generated marker.
 
-These are legacy, off-model paths. Calling them an “emission boundary” does not
+These remain legacy, off-model paths. Calling them an “emission boundary” does not
 make their string work permissible inside Nomos. `generation.rs` is not the
 approved replacement and must not be used as architectural precedent for
 bypassing the no-strings law.
@@ -57,10 +65,10 @@ needs to resolve, derive, compare, or build a spelling, that step belongs after
 Nomos in the TextualForm evaluation, or its need must be represented as typed
 projection data.
 
-No replacement implementation is wired yet. The approved slice calls for a
-direct string-free converter that does not travel through
+The first replacement path is `src/slice_one.rs`. It does not travel through
 `NameTableBoundary`, the macro rendering path, prelude rendering, projection
-materialization, or ordinal-word machinery.
+materialization, or ordinal-word machinery. The old graph remains available
+only through its old entry points and is not called by the slice.
 
 ## Typed transformation data
 
@@ -135,6 +143,10 @@ working-program behavior.
 - `src/generation.rs` — legacy Ethos-aware generation; off-model, not an
   emission boundary.
 - `src/prelude.rs` — legacy Logos construction plus Rust text rendering.
+- `src/slice_one.rs` — direct typed first-slice Whole-Ethos to Whole-Logos
+  transformation over complete encodedID chains.
 - `tests/pipeline.rs`, `tests/enriched.rs`, `tests/prelude.rs` — regression
   witnesses for current behavior, not proof that the approved replacement is
   wired.
+- `tests/slice_one.rs`, `tests/slice_one_boundary.rs` — focused positional
+  behavior and static source/dependency witnesses for the conforming slice.
