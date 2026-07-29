@@ -32,15 +32,19 @@ fn slice_source_has_no_text_or_legacy_operations() {
 }
 
 #[test]
-fn slice_source_depends_only_on_the_typed_ethos_and_logos_carriers() {
+fn slice_source_depends_only_on_typed_identity_and_carriers() {
     let direct_imports: Vec<_> = SLICE_SOURCE
         .lines()
         .filter(|line| line.starts_with("use "))
         .collect();
 
-    assert_eq!(direct_imports.len(), 2);
-    assert!(direct_imports[0].starts_with("use slice_core_ethos::{"));
-    assert!(direct_imports[1].starts_with("use slice_core_logos::{"));
+    assert_eq!(direct_imports.len(), 3);
+    assert_eq!(
+        direct_imports[0],
+        "use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};"
+    );
+    assert!(direct_imports[1].starts_with("use slice_core_ethos::{"));
+    assert!(direct_imports[2].starts_with("use slice_core_logos::{"));
     assert!(!SLICE_SOURCE.contains("crate::"));
 }
 
@@ -54,6 +58,6 @@ fn slice_dependencies_are_exact_published_producer_revisions() {
     assert!(MANIFEST.contains(
         "slice-core-logos         = { package = \"core-logos\", git = \
          \"https://github.com/LiGoldragon/core-logos.git\", rev = \
-         \"3e4ae814f684b44c0aa45d5887c09a7d61d75db6\" }"
+         \"997e1595601be851ad14617384302e3ee61a658f\" }"
     ));
 }

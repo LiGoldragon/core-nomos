@@ -1,6 +1,8 @@
 //! Focused behavior witnesses for the first direct typed transformation.
 
-use core_nomos::SliceOneTransformation;
+use core_nomos::{
+    SliceOneTransformation, SliceOneTransformationError, SliceOneVocabularyReferenceMapping,
+};
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use slice_core_ethos::{
@@ -14,12 +16,16 @@ use slice_core_logos::{
     WholeLogosVariantPayload, WholeLogosVisibility,
 };
 
-fn encoded(chain: &[u16]) -> VocabularyEncodedId {
+fn encoded_for(root: VocabularyRoot, chain: &[u16]) -> VocabularyEncodedId {
     VocabularyEncodedId::new(
-        VocabularyRoot::Universal,
+        root,
         chain.iter().copied().map(LocalEncodedId::new).collect(),
     )
     .expect("complete test chain")
+}
+
+fn encoded(chain: &[u16]) -> VocabularyEncodedId {
+    encoded_for(VocabularyRoot::Universal, chain)
 }
 
 fn ethos_newtype(
@@ -164,5 +170,99 @@ fn empty_whole_ethos_lowers_to_empty_whole_logos() {
     assert_eq!(
         SliceOneTransformation::new().lower(&WholeEthos::new(Vec::new())),
         WholeLogos::new(Vec::new())
+    );
+}
+
+#[test]
+fn exact_reference_mappings_lower_recursively_without_rebinding_declarations() {
+    let universal_vector = encoded(&[4]);
+    let universal_integer = encoded(&[3]);
+    let rust_vec = encoded_for(VocabularyRoot::Rust, &[4]);
+    let rust_u64 = encoded_for(VocabularyRoot::Rust, &[3]);
+    let vector_mapping =
+        SliceOneVocabularyReferenceMapping::new(universal_vector.clone(), rust_vec.clone())
+            .expect("Universal to Rust mapping");
+    let integer_mapping =
+        SliceOneVocabularyReferenceMapping::new(universal_integer.clone(), rust_u64.clone())
+            .expect("Universal to Rust mapping");
+    let forward = SliceOneTransformation::with_reference_mappings(vec![
+        vector_mapping.clone(),
+        integer_mapping.clone(),
+    ])
+    .expect("distinct mapping sources");
+    let reverse =
+        SliceOneTransformation::with_reference_mappings(vec![integer_mapping, vector_mapping])
+            .expect("distinct mapping sources");
+    assert_eq!(forward, reverse);
+
+    let declaration = encoded(&[42, 8]);
+    let ethos = WholeEthos::new(vec![ethos_newtype(
+        WholeEthosVisibility::Public,
+        declaration.clone(),
+        WholeEthosVisibility::Private,
+        WholeEthosTypeReference::Application(WholeEthosTypeApplication::new(
+            universal_vector,
+            WholeEthosTypeReference::Application(WholeEthosTypeApplication::new(
+                universal_integer.clone(),
+                WholeEthosTypeReference::Identity(universal_integer),
+            )),
+        )),
+    )]);
+    let logos = forward.lower(&ethos);
+
+    assert_eq!(
+        logos,
+        WholeLogos::new(vec![WholeLogosItem::Newtype(WholeLogosNewtype::new(
+            WholeLogosVisibility::Public,
+            declaration,
+            WholeLogosVisibility::Private,
+            WholeLogosTypeReference::Application(WholeLogosTypeApplication::new(
+                rust_vec,
+                WholeLogosTypeReference::Application(WholeLogosTypeApplication::new(
+                    rust_u64.clone(),
+                    WholeLogosTypeReference::Identity(rust_u64),
+                )),
+            )),
+        ))])
+    );
+    let archive = logos.to_archive_bytes().expect("archive transformed Logos");
+    assert_eq!(
+        WholeLogos::from_archive_bytes(&archive).expect("restore transformed Logos"),
+        logos
+    );
+}
+
+#[test]
+fn invalid_roots_and_duplicate_mapping_sources_refuse_typed() {
+    let universal_vector = encoded(&[4]);
+    let universal_integer = encoded(&[3]);
+    let rust_vec = encoded_for(VocabularyRoot::Rust, &[4]);
+    let rust_u64 = encoded_for(VocabularyRoot::Rust, &[3]);
+
+    assert_eq!(
+        SliceOneVocabularyReferenceMapping::new(rust_vec.clone(), rust_u64.clone()),
+        Err(SliceOneTransformationError::MappingSourceRoot {
+            found: VocabularyRoot::Rust,
+        })
+    );
+    assert_eq!(
+        SliceOneVocabularyReferenceMapping::new(
+            universal_vector.clone(),
+            universal_integer.clone(),
+        ),
+        Err(SliceOneTransformationError::MappingTargetRoot {
+            found: VocabularyRoot::Universal,
+        })
+    );
+
+    let first = SliceOneVocabularyReferenceMapping::new(universal_vector.clone(), rust_vec)
+        .expect("first mapping");
+    let repeated = SliceOneVocabularyReferenceMapping::new(universal_vector.clone(), rust_u64)
+        .expect("repeated source remains individually valid");
+    assert_eq!(
+        SliceOneTransformation::with_reference_mappings(vec![first, repeated]),
+        Err(SliceOneTransformationError::DuplicateMappingSource {
+            source: universal_vector,
+        })
     );
 }

@@ -17,12 +17,15 @@ larger legacy graph that does not yet satisfy this architecture.
 
 `SliceOneTransformation` reads only the published `WholeEthos` positional
 carrier and constructs the published `WholeLogos` positional carrier. Its
-module imports only those two typed carrier dependencies. It carries complete
-encodedID chains unchanged, maps the closed visibility data, consumes typed
+module imports those two typed carriers and the production encodedID contract.
+Its canonically ordered, exact reference mappings connect Universal identities
+to Rust vocabulary as typed data. Declarations remain Universal; only matching
+references and application heads change root. Invalid mapping roots and
+duplicate sources refuse typed before lowering. Unmapped complete chains remain
+unchanged. The transformation maps the closed visibility data, consumes typed
 empty-attribute positions, recursively lowers identity and unary-application
 references, maps every unit or positional tuple enum variant exhaustively, and
-preserves item and variant order. It has no error or text boundary because the
-fixture input vocabulary is closed.
+preserves item and variant order without reading or producing a spelling.
 
 The typed macro/package model in `definition.rs`, `identity.rs`, `meta.rs`,
 `package.rs`, and `template.rs` is live. `MacroPackage::apply` and

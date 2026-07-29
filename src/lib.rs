@@ -67,7 +67,9 @@ pub use identity::{MacroIdentity, MacroKind, SectionDefault};
 pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
-pub use slice_one::SliceOneTransformation;
+pub use slice_one::{
+    SliceOneTransformation, SliceOneTransformationError, SliceOneVocabularyReferenceMapping,
+};
 pub use template::{
     BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
     NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,
