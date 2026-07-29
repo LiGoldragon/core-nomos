@@ -15,7 +15,6 @@ use core_logos::{
     Struct, TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
 use name_table::{Identifier, NameTable};
-use structural_codec::{Converted, EncodedConversion};
 
 use crate::error::NomosError;
 use crate::identity::{MacroIdentity, SectionDefault};
@@ -77,40 +76,6 @@ impl MacroPackage {
             items,
             names: evaluator.into_names(),
         })
-    }
-}
-
-/// A [`Lowering`] IS a [`Converted`] `Vec<EncodedItem>`-plus-names: the domain-named
-/// result of the lowering and the reusable-trait output of an [`EncodedConversion`] are
-/// the same data, so the trait face costs no new representation.
-impl From<Lowering> for Converted<Vec<EncodedItem>> {
-    fn from(lowering: Lowering) -> Self {
-        Converted {
-            target: lowering.items,
-            names: lowering.names,
-        }
-    }
-}
-
-/// The ethos→logos lowering implements the reference [`EncodedConversion`] instance
-/// for `EncodedForm<Ethos> -> EncodedForm<Logos>` in `structural-codec`. The source is the ethos
-/// [`EncodedForm`](structural_codec::EncodedForm) (`EncodedEthos`); the target is the
-/// lowered logos item set (`Vec<EncodedItem>`, the logos EncodedForm); and the
-/// namespace-tagged Ethos and Logos slices thread the layer. No
-/// text crosses this path — the signature carries no `&str`/`String`, which is the
-/// structural proof that the conversion is a real type conversion, not string
-/// manipulation. It delegates to the eponymous [`apply`](MacroPackage::apply).
-impl EncodedConversion for MacroPackage {
-    type Source = EncodedEthos;
-    type Target = Vec<EncodedItem>;
-    type Error = NomosError;
-
-    fn convert(
-        &self,
-        source: &EncodedEthos,
-        names: &NameTable,
-    ) -> Result<Converted<Vec<EncodedItem>>, NomosError> {
-        Ok(self.apply(source, names)?.into())
     }
 }
 

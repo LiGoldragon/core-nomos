@@ -4,17 +4,17 @@
 //! encoded-ID chains and has no access to any legacy or identity-allocation
 //! facility.
 
-use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
-use slice_core_ethos::{
+use core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosEnumeration, WholeEthosItem, WholeEthosNewtype,
     WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
     WholeEthosVariantPayload, WholeEthosVisibility,
 };
-use slice_core_logos::{
+use core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosTupleFields,
     WholeLogosTypeApplication, WholeLogosTypeReference, WholeLogosVariant,
     WholeLogosVariantPayload, WholeLogosVisibility,
 };
+use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
 /// The complete Ethos-to-Logos transformation admitted by the first slice.
 ///

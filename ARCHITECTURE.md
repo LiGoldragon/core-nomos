@@ -27,6 +27,13 @@ empty-attribute positions, recursively lowers identity and unary-application
 references, maps every unit or positional tuple enum variant exhaustively, and
 preserves item and variant order without reading or producing a spelling.
 
+The canonical Ethos and Logos dependencies now carry both their full-chain
+whole carriers and the retained flat execution data. There are no slice aliases
+or parallel structural-codec type universes. The former structural-codec 0.6
+`EncodedConversion` implementation over the flat records was removed rather
+than adapted: the legacy engine retains its inherent `apply` methods, while
+0.8 conversion contracts are reserved for canonical `EncodedForm` carriers.
+
 The typed macro/package model in `definition.rs`, `identity.rs`, `meta.rs`,
 `package.rs`, and `template.rs` is live. `MacroPackage::apply` and
 `apply_enriched` are also live production entry points. Every apply constructs

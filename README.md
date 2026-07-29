@@ -16,8 +16,8 @@ rendered-source equality is not an oracle.
 
 ```rust
 use core_nomos::SliceOneTransformation;
-use slice_core_ethos::WholeEthos;
-use slice_core_logos::WholeLogos;
+use core_ethos::WholeEthos;
+use core_logos::WholeLogos;
 
 fn lower(ethos: &WholeEthos) -> WholeLogos {
     SliceOneTransformation::new().lower(ethos)
@@ -76,6 +76,13 @@ They do not widen the production slice:
   `textual-rust`. This graph therefore does not satisfy the no-string Nomos
   boundary, even though its template walk is typed.
 
+The obsolete structural-codec 0.6 `EncodedConversion` implementation over
+flat `EncodedEthos`/`Vec<EncodedItem>` has been removed. The retained legacy
+engine is called through its inherent `apply` methods. Structural-codec 0.8
+conversion contracts require the canonical language `EncodedForm` carriers;
+the flat execution records are deliberately not adapted into a parallel
+conversion universe.
+
 The legacy graph carries flat identifiers, stored or derived field names, and
 string-bearing evidence. Those mechanics are not precedents for future Nomos
 coverage.
@@ -120,9 +127,10 @@ are regression evidence, not production-contract proof.
 
 See `ARCHITECTURE.md` for the design decisions and flagged forks.
 
-Exact producer revisions live in `Cargo.toml` and `Cargo.lock`. The manifest
-keeps separate dependency aliases for the full-chain slice carriers and the
-legacy flat-identifier producers.
+Exact producer revisions live in `Cargo.toml` and `Cargo.lock`. The canonical
+Ethos and Logos crates expose both the full-chain whole carriers and the
+retained legacy execution data, so the manifest carries no parallel aliases or
+second structural-codec type universe.
 
 ## Build
 

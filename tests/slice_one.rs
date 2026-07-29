@@ -1,20 +1,20 @@
 //! Focused behavior witnesses for the first direct typed transformation.
 
+use core_ethos::{
+    WholeEthos, WholeEthosAttributes, WholeEthosEnumeration, WholeEthosItem, WholeEthosNewtype,
+    WholeEthosTupleFields, WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
+    WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
+};
+use core_logos::{
+    WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosTupleFields,
+    WholeLogosTypeApplication, WholeLogosTypeReference, WholeLogosVariant,
+    WholeLogosVariantPayload, WholeLogosVisibility,
+};
 use core_nomos::{
     SliceOneTransformation, SliceOneTransformationError, SliceOneVocabularyReferenceMapping,
 };
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
-use slice_core_ethos::{
-    WholeEthos, WholeEthosAttributes, WholeEthosEnumeration, WholeEthosItem, WholeEthosNewtype,
-    WholeEthosTupleFields, WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
-    WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
-};
-use slice_core_logos::{
-    WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosTupleFields,
-    WholeLogosTypeApplication, WholeLogosTypeReference, WholeLogosVariant,
-    WholeLogosVariantPayload, WholeLogosVisibility,
-};
 
 fn encoded_for(root: VocabularyRoot, chain: &[u16]) -> VocabularyEncodedId {
     VocabularyEncodedId::new(

@@ -1,13 +1,13 @@
 //! The capstone for the typed ethos-to-logos pipeline.
 //!
-//! Ethos text is decoded, lowered through Nomos, and projected as valid Rust.
-//! These focused tests assert structural behavior only; process-level working-program
-//! evidence belongs to `language-engine-witness`, which compiles and runs emitted code.
+//! Typed legacy Ethos values are lowered through Nomos and projected as valid Rust.
+//! The retired flat TextualEthos decoder is no longer part of the canonical producer
+//! graph. These focused tests retain the lowering and projection behavior; process-level
+//! working-program evidence belongs to `language-engine-witness`.
 
-use core_ethos::fixture::{COMMIT_SEQUENCE, DATABASE_MARKER, STATE_DIGEST};
 use core_ethos::{
     EncodedDeclaration, EncodedEnum, EncodedEthos, EncodedField, EncodedNewtype, EncodedReference,
-    EncodedStruct, EncodedType, EncodedVariant, TextualEthos,
+    EncodedStruct, EncodedType, EncodedVariant,
 };
 use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, EncodedItem, Field,
@@ -15,8 +15,6 @@ use core_logos::{
 };
 use core_nomos::MacroPackage;
 use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
-use structural_codec::ids::ScopedEncodedTypeId;
-use structural_codec::{Converted, EncodedConversion};
 use textual_rust::RustSource;
 
 // ---- helpers (test-only) ----
@@ -31,13 +29,33 @@ fn ethos_of(value: EncodedType) -> EncodedEthos {
     EncodedEthos::new(vec![EncodedDeclaration::public(value)])
 }
 
-/// Decode one ethos declaration through TextualEthos, seeding a fresh table.
-fn decode(expected: ScopedEncodedTypeId, text: &str) -> (EncodedType, NameTable) {
-    let textual = TextualEthos::fixture().expect("build fixture TextualEthos");
+/// Build one typed newtype declaration under a fresh legacy Ethos name table.
+fn typed_newtype(type_name: &str) -> (EncodedType, NameTable) {
     let mut names = NameTable::new(IdentifierNamespace::Schema);
-    let value = textual
-        .decode(expected, text, &mut names)
-        .unwrap_or_else(|error| panic!("decode {text}: {error}"));
+    let name = intern(&mut names, type_name);
+    let value = EncodedType::Newtype(EncodedNewtype::new(name, EncodedReference::Integer));
+    (value, names)
+}
+
+/// Build the illustrative three-field struct as typed legacy Ethos data.
+fn typed_database_marker() -> (EncodedType, NameTable) {
+    let mut names = NameTable::new(IdentifierNamespace::Schema);
+    let database_marker = intern(&mut names, "DatabaseMarker");
+    let commit_sequence = intern(&mut names, "CommitSequence");
+    let state_digest = intern(&mut names, "StateDigest");
+    let commit_sequence_field = intern(&mut names, "commit_sequence");
+    let state_digest_field = intern(&mut names, "state_digest");
+    let value = EncodedType::Struct(EncodedStruct::new(
+        database_marker,
+        vec![
+            EncodedField::new(
+                commit_sequence_field,
+                EncodedReference::Plain(commit_sequence),
+            ),
+            EncodedField::new(state_digest_field, EncodedReference::Plain(state_digest)),
+            EncodedField::new(state_digest_field, EncodedReference::Plain(state_digest)),
+        ],
+    ));
     (value, names)
 }
 
@@ -52,16 +70,9 @@ fn project(item: &EncodedItem, names: &NameTable) -> String {
 // ---- focused ethos-to-Rust projection coverage ----
 
 #[test]
-fn pipeline_plain_newtypes_from_text_project_as_public_rust_items() {
-    for (expected, text, type_name) in [
-        (
-            COMMIT_SEQUENCE,
-            "CommitSequence.{ Integer }",
-            "CommitSequence",
-        ),
-        (STATE_DIGEST, "StateDigest.{ Integer }", "StateDigest"),
-    ] {
-        let (value, ethos_names) = decode(expected, text);
+fn pipeline_plain_typed_newtypes_project_as_public_rust_items() {
+    for type_name in ["CommitSequence", "StateDigest"] {
+        let (value, ethos_names) = typed_newtype(type_name);
         let ethos = ethos_of(value);
         let lowering = MacroPackage::plain_fixture()
             .expect("build plain fixture")
@@ -74,25 +85,21 @@ fn pipeline_plain_newtypes_from_text_project_as_public_rust_items() {
 }
 
 #[test]
-fn lowering_is_an_encoded_conversion_instance() {
-    let (value, ethos_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
+fn inherent_lowering_carries_items_and_composed_names() {
+    let (value, ethos_names) = typed_newtype("CommitSequence");
     let ethos = ethos_of(value);
     let package = MacroPackage::plain_fixture().expect("build plain fixture");
-
-    let converted: Converted<Vec<EncodedItem>> =
-        EncodedConversion::convert(&package, &ethos, &ethos_names).expect("trait convert");
     let lowering = package.apply(&ethos, &ethos_names).expect("inherent apply");
 
-    assert_eq!(converted.target, lowering.items);
-    assert_eq!(converted.names.len(), lowering.names.len());
-    assert!(converted.names.len() >= ethos_names.len());
-    let rust = project(&converted.target[0], &converted.names);
+    assert_eq!(lowering.items.len(), 1);
+    assert!(lowering.names.len() >= ethos_names.len());
+    let rust = project(&lowering.items[0], &lowering.names);
     assert!(rust.contains("pub struct CommitSequence"), "{rust}");
 }
 
 #[test]
-fn pipeline_wire_newtype_from_text_projects_as_generated_rust() {
-    let (value, ethos_names) = decode(COMMIT_SEQUENCE, "CommitSequence.{ Integer }");
+fn pipeline_wire_typed_newtype_projects_as_generated_rust() {
+    let (value, ethos_names) = typed_newtype("CommitSequence");
     let ethos = ethos_of(value);
     let lowering = MacroPackage::wire_fixture()
         .expect("build wire fixture")
@@ -147,18 +154,14 @@ fn wire_lowering_projects_public_newtypes_and_structs() {
 // ---- the illustrative sample pair end to end ----
 
 #[test]
-fn illustrative_struct_from_ethos_text_lowers_and_derives_names() {
-    // DatabaseMarker.{ CommitSequence StateDigest StateDigest } from real ethos
-    // text: every field name is derived from its type, so the two same-typed StateDigest fields
+fn illustrative_typed_struct_lowers_and_derives_names() {
+    // Every field name is derived from its type, so the two same-typed StateDigest fields
     // would collide on `state_digest`. The deterministic same-typed-field rule
     // (directed work, 2026-07-19) resolves that collision: a type naming more than one
     // field distinguishes each by the ordinal English word of its position among the
     // same-typed fields — `first_state_digest`, `second_state_digest` — while the
     // singly-used `CommitSequence` keeps its bare `commit_sequence`.
-    let (value, ethos_names) = decode(
-        DATABASE_MARKER,
-        "DatabaseMarker.{ CommitSequence StateDigest StateDigest }",
-    );
+    let (value, ethos_names) = typed_database_marker();
     let ethos = ethos_of(value);
     let package = MacroPackage::wire_fixture().expect("build wire fixture");
     let lowering = package.apply(&ethos, &ethos_names).expect("lower");
@@ -170,7 +173,7 @@ fn illustrative_struct_from_ethos_text_lowers_and_derives_names() {
     // The colliding bare name must not survive: position, via the ordinal rule, tells
     // the two StateDigest fields apart.
     assert!(!rust.contains("pub state_digest: StateDigest,"));
-    println!("\n[illustrative struct from ethos text]\n{rust}");
+    println!("\n[illustrative typed struct]\n{rust}");
 }
 
 #[test]
