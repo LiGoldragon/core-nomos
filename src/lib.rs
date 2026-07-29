@@ -5,14 +5,17 @@
 //! encoded form into the Logos encoded form. Generated programs, not
 //! rendered-source equality, are the acceptance surface.
 //!
-//! ## What is here (EncodedNomos), and what is deferred (TextualNomos)
+//! ## EncodedNomos and the plain TextualNomos base door
 //!
 //! EncodedNomos includes transformers as typed data, the two legacy execution
 //! kinds, the stateful-at-rest package, and the engine. The phase-stable
 //! [`AuthoredTransformerDeclaration`] is the stringless target of the approved
-//! TextualNomos base door: it retains complete encoded-ID chains and durable
-//! invocation targets before atomic package sealing. Text decoding itself is
-//! supplied by the TextualNomos boundary.
+//! [`TextualNomos`] base door: it retains complete encoded-ID chains and durable
+//! invocation targets before atomic package sealing. [`TextualNomos`] uses the
+//! plain Standard raw-discovery profile and the shared structural evaluator.
+//! Its Logos-shaped result grammar and landing carrier are computed together
+//! from the Logos declarations; no transformer-specific or Logos-type-specific
+//! authored twin exists.
 //!
 //! ## The two legacy execution kinds
 //!
@@ -60,6 +63,7 @@ pub mod prelude;
 pub mod slice_one;
 pub mod template;
 pub mod template_language;
+pub mod textual;
 
 pub use authored::{
     AuthoredBindingIdentity, AuthoredIdentityPosition, AuthoredInputParameter,
@@ -89,4 +93,8 @@ pub use template_language::{
     TemplateFutureOutput, TemplateFutureRequirement, TemplateLandingField, TemplateLandingShape,
     TemplateLanguage, TemplateLanguageError, TemplateTerm, TemplateTypeDeclaration, TemplateValue,
     TemplateValueError,
+};
+pub use textual::{
+    DecodedNomosDocument, TextualNomos, TextualNomosError, TextualNomosMetaType,
+    TextualNomosTypeIds, TextualNomosWords,
 };

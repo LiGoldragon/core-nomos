@@ -58,16 +58,16 @@ fn slice_dependencies_are_exact_published_producer_revisions() {
     assert!(MANIFEST.contains(
         "core-logos               = { git = \
          \"https://github.com/LiGoldragon/core-logos.git\", rev = \
-         \"e4cefc413cfafbe589e64d961fba34457d214316\" }"
+         \"de13f3e5d674468b87c46c97dc06c385a861ec88\" }"
     ));
     assert!(MANIFEST.contains(
         "textual-rust             = { package = \"rust-logos\", git = \
          \"https://github.com/LiGoldragon/rust-logos.git\", rev = \
-         \"c8e4ebc16dbea75880b3034a7c46cb6812ab4ef7\" }"
+         \"b008a195feaba2dfa003ce9de22a921169e886e2\" }"
     ));
     assert!(MANIFEST.contains(
         "structural-codec         = { git = \
          \"https://github.com/LiGoldragon/structural-codec.git\", rev = \
-         \"31d2e4c14943802ce75a910edd54ea1796273f78\" }"
+         \"fc1b23b4a66a7d3ca7c3c367830ee6ca31193f48\" }"
     ));
 }

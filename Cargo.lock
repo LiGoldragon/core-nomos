@@ -126,14 +126,14 @@ dependencies = [
  "raw-discovery",
  "rkyv",
  "signal-sema-translator",
- "structural-codec",
+ "structural-codec 0.9.0",
  "thiserror",
 ]
 
 [[package]]
 name = "core-logos"
-version = "0.8.0"
-source = "git+https://github.com/LiGoldragon/core-logos.git?rev=e4cefc413cfafbe589e64d961fba34457d214316#e4cefc413cfafbe589e64d961fba34457d214316"
+version = "0.15.0"
+source = "git+https://github.com/LiGoldragon/core-logos.git?rev=de13f3e5d674468b87c46c97dc06c385a861ec88#de13f3e5d674468b87c46c97dc06c385a861ec88"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
@@ -143,13 +143,13 @@ dependencies = [
  "raw-discovery",
  "rkyv",
  "signal-sema-translator",
- "structural-codec",
+ "structural-codec 0.16.0",
  "thiserror",
 ]
 
 [[package]]
 name = "core-nomos"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
@@ -158,10 +158,11 @@ dependencies = [
  "name-table 0.1.0",
  "name-table 0.3.0",
  "protos",
+ "raw-discovery",
  "rkyv",
  "rust-logos",
  "signal-sema-translator",
- "structural-codec",
+ "structural-codec 0.16.0",
  "thiserror",
 ]
 
@@ -419,8 +420,8 @@ dependencies = [
 
 [[package]]
 name = "rust-logos"
-version = "0.9.0"
-source = "git+https://github.com/LiGoldragon/rust-logos.git?rev=c8e4ebc16dbea75880b3034a7c46cb6812ab4ef7#c8e4ebc16dbea75880b3034a7c46cb6812ab4ef7"
+version = "0.15.0"
+source = "git+https://github.com/LiGoldragon/rust-logos.git?rev=b008a195feaba2dfa003ce9de22a921169e886e2#b008a195feaba2dfa003ce9de22a921169e886e2"
 dependencies = [
  "bs58",
  "core-logos",
@@ -432,7 +433,7 @@ dependencies = [
  "raw-discovery",
  "rkyv",
  "signal-sema-translator",
- "structural-codec",
+ "structural-codec 0.16.0",
  "syn 2.0.119",
  "thiserror",
 ]
@@ -498,6 +499,18 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "structural-codec"
 version = "0.9.0"
 source = "git+https://github.com/LiGoldragon/structural-codec.git?rev=31d2e4c14943802ce75a910edd54ea1796273f78#31d2e4c14943802ce75a910edd54ea1796273f78"
+dependencies = [
+ "content-identity 0.3.0",
+ "name-table 0.3.0",
+ "raw-discovery",
+ "rkyv",
+ "thiserror",
+]
+
+[[package]]
+name = "structural-codec"
+version = "0.16.0"
+source = "git+https://github.com/LiGoldragon/structural-codec.git?rev=fc1b23b4a66a7d3ca7c3c367830ee6ca31193f48#fc1b23b4a66a7d3ca7c3c367830ee6ca31193f48"
 dependencies = [
  "content-identity 0.3.0",
  "name-table 0.3.0",
