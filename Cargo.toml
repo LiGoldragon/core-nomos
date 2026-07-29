@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.16.0"
+version      = "0.17.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -17,7 +17,7 @@ content-identity         = { git = "https://github.com/LiGoldragon/content-ident
 capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "fdf2db1d5a9e8ea52d24d39a03833c3e6885c355" }
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "1343d0c405cdb6929552ea6b12c48739e73f35ab" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "0840dbd96d250b15b750b5b17a3a7c86bacfb7ee" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "ba35c41c8a41cb3dacd24d87882e995ca4eb76ea" }
 core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "de13f3e5d674468b87c46c97dc06c385a861ec88" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "7290f65bbb5e7825ab2ca58340631d154d69d110" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "dd8e7b5656833f640e49c099ab3be6f09881f9c5" }
