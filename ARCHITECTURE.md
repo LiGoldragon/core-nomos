@@ -91,6 +91,23 @@ How the current `MacroPackage` shape evolves is coordinated work. Its current
 content identity and sibling flat `NameTable` describe the implementation, not
 the final Capsule or translator relationship.
 
+## Capsule carrier boundary
+
+`capsule_from_issued_hash` fixes only the outer kind to `protos::Nomos`. It
+passes a caller-issued `ContentAddressedHash` and caller-supplied opaque complete
+NameTree pin into `protos::Capsule`. It does not create a whole-Nomos encoded
+carrier, derive or verify a whole-content hash, inspect the pin, compose module
+tables, or identify the current `MacroPackage` hash with the Capsule hash.
+Complete-pin verification and the module-table-to-Capsule relationship remain
+unwired.
+
+The existing `MacroPackage::content_identity` API and archive layout are
+unchanged. The new identity producer is dependency-renamed
+`capsule-content-identity`; the original dependency remains the package/archive
+type in the legacy graph. Current flat identifiers and sibling `NameTable`
+remain migration debt, and this carrier is not evidence that encodedID-chain
+migration or a whole Nomos content boundary has landed.
+
 ## Acceptance
 
 Rendered-source equality is not an acceptance criterion. The vertical witness

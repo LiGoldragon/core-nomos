@@ -43,6 +43,7 @@
 //! Ethos compatibility slice. Identifiers retain their namespace tag, and conversions are typed
 //! end to end, outside text.
 
+pub mod capsule;
 pub mod definition;
 pub mod domain;
 pub mod engine;
@@ -56,6 +57,7 @@ pub mod package;
 pub mod prelude;
 pub mod template;
 
+pub use capsule::capsule_from_issued_hash;
 pub use definition::MacroDefinition;
 pub use domain::EncodedNomosDomain;
 pub use engine::Lowering;

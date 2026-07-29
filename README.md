@@ -55,6 +55,20 @@ let rust = RustSource::project_item(&lowering.items[0], &lowering.names)?;
   `IdentifierNamespace::Schema`; this crate exports no alias. Identifiers retain
   their namespace tag, and generated names allocate only in Logos.
 
+## Capsule carrier
+
+`capsule_from_issued_hash` is the kind-fixed Nomos pass-through into
+`protos::Capsule<protos::Nomos, Pin>`. The caller supplies both the
+`ContentAddressedHash` and opaque complete NameTree pin. `core-nomos` does not
+create a whole-Nomos encoded carrier, derive a Capsule hash from `MacroPackage`,
+verify content correspondence, inspect or compose the pin, or treat the current
+package identity as a whole-Capsule identity.
+
+`MacroPackage::content_identity` remains the established package API, including
+its current selection boundary. The Capsule pass-through does not reinterpret or
+replace it. Flat `Identifier` and `NameTable` state remains explicit migration
+debt rather than a nested encodedID-chain claim.
+
 ## What it is not (yet)
 
 **TextualNomos is deferred.** Its escape spelling, meta-type text spellings, and
@@ -72,6 +86,14 @@ behavior tests. A rename preserves encoded-form identity while changing projecte
 text.
 
 See `ARCHITECTURE.md` for the design decisions and flagged forks.
+
+The Capsule surface consumes
+`content-identity@f1f9c6efc828acaefd0f751550cd40389d312bf5` under the dependency
+name `capsule-content-identity` and
+`protos@1435c9aeb7f24e811aca670101e355ff26818ae2`. It consumes the published core
+producers at `core-ethos@b9db643a853b1f52f10a4100a791d5dbc8c7240d` and
+`core-logos@47ede529e4440674e79d748c6160c051ffb62acd`. The legacy package/archive
+identity and flat name-table graph remain on their existing typed revisions.
 
 ## Build
 

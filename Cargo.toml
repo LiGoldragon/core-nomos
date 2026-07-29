@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.4.0"
+version      = "0.5.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -13,14 +13,16 @@ name = "core_nomos"
 path = "src/lib.rs"
 
 [dependencies]
-content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "24b43bae5d9748b0e7f679c6ec9f85a643c4d36a" }
-name-table       = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
-core-ethos       = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "42fbbc08877a89958cc7ebc50814fc1e7247b038" }
-core-logos       = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "5b66127de26b265e17a8060d5e06b9d7d31ce93e" }
-textual-rust     = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "1bd10fcb47bfa510d7911a748a08715fc372a109" }
-structural-codec = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "23497c43f81b619158e5cfbd83a012eb63c4186f" }
-rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
-thiserror        = "2"
+content-identity         = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "24b43bae5d9748b0e7f679c6ec9f85a643c4d36a" }
+capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "f1f9c6efc828acaefd0f751550cd40389d312bf5" }
+name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
+protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "1435c9aeb7f24e811aca670101e355ff26818ae2" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "b9db643a853b1f52f10a4100a791d5dbc8c7240d" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "47ede529e4440674e79d748c6160c051ffb62acd" }
+textual-rust             = { git = "https://github.com/LiGoldragon/textual-rust.git", rev = "d1f9f1badf6dae18095023ea0a2a4840c94df049" }
+structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "23497c43f81b619158e5cfbd83a012eb63c4186f" }
+rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+thiserror                = "2"
 
 [lints.rust]
 unsafe_code = "forbid"
