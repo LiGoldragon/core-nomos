@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.12.0"
+version      = "0.13.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -18,10 +18,10 @@ capsule-content-identity = { package = "content-identity", git = "https://github
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "1343d0c405cdb6929552ea6b12c48739e73f35ab" }
 core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "f7e4d127a8393e9ad4754e3cce79d1fca1a9e8c9" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "749408b13f5af64284dd9c596271232a89cc758b" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "e4cefc413cfafbe589e64d961fba34457d214316" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "dd8e7b5656833f640e49c099ab3be6f09881f9c5" }
-textual-rust             = { git = "https://github.com/LiGoldragon/rust-logos.git", rev = "b8dff1f4ed4acdfc6a205c2fb4549fb1b91a9892" }
-structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "5c11e1fb7f58444cd860207803d8f705e7415d71" }
+textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "c8e4ebc16dbea75880b3034a7c46cb6812ab4ef7" }
+structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "31d2e4c14943802ce75a910edd54ea1796273f78" }
 rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror                = "2"
 

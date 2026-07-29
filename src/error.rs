@@ -84,7 +84,7 @@ pub enum NomosError {
     /// Projecting the fixed module prelude through the TextualRust codec failed — an
     /// internal invariant break, since the prelude items are fixed and in-subset.
     #[error("module prelude projection failed: {0}")]
-    PreludeProjection(#[from] textual_rust::Error),
+    PreludeProjection(String),
 
     /// An enriched generation class could not be built from the ethos — e.g. a
     /// generation class that needs interface roots ran against a ethos carrying

@@ -52,7 +52,8 @@ impl ModuleHead {
     pub fn render_sections(&self) -> Result<String, NomosError> {
         let mut text = String::new();
         for block in &self.blocks {
-            let rendered = RustSource::project_items(block, &self.names)?;
+            let rendered = RustSource::project_items(block, &self.names)
+                .map_err(|error| NomosError::PreludeProjection(error.to_string()))?;
             text.push_str(rendered.as_str());
             // The blank line that separates this block's paragraph from the next.
             text.push('\n');

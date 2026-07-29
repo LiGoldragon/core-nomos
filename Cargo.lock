@@ -29,6 +29,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs58"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -117,29 +126,30 @@ dependencies = [
  "raw-discovery",
  "rkyv",
  "signal-sema-translator",
- "structural-codec",
+ "structural-codec 0.8.0",
  "thiserror",
 ]
 
 [[package]]
 name = "core-logos"
-version = "0.7.0"
-source = "git+https://github.com/LiGoldragon/core-logos.git?rev=749408b13f5af64284dd9c596271232a89cc758b#749408b13f5af64284dd9c596271232a89cc758b"
+version = "0.8.0"
+source = "git+https://github.com/LiGoldragon/core-logos.git?rev=e4cefc413cfafbe589e64d961fba34457d214316#e4cefc413cfafbe589e64d961fba34457d214316"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
  "name-table 0.1.0",
  "name-table 0.3.0",
  "protos",
+ "raw-discovery",
  "rkyv",
  "signal-sema-translator",
- "structural-codec",
+ "structural-codec 0.9.0",
  "thiserror",
 ]
 
 [[package]]
 name = "core-nomos"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
@@ -149,9 +159,9 @@ dependencies = [
  "name-table 0.3.0",
  "protos",
  "rkyv",
+ "rust-logos",
  "signal-sema-translator",
- "structural-codec",
- "textual-rust",
+ "structural-codec 0.9.0",
  "thiserror",
 ]
 
@@ -408,6 +418,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-logos"
+version = "0.9.0"
+source = "git+https://github.com/LiGoldragon/rust-logos.git?rev=c8e4ebc16dbea75880b3034a7c46cb6812ab4ef7#c8e4ebc16dbea75880b3034a7c46cb6812ab4ef7"
+dependencies = [
+ "bs58",
+ "core-logos",
+ "name-table 0.1.0",
+ "name-table 0.3.0",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "raw-discovery",
+ "rkyv",
+ "signal-sema-translator",
+ "structural-codec 0.9.0",
+ "syn 2.0.119",
+ "thiserror",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -477,6 +507,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "structural-codec"
+version = "0.9.0"
+source = "git+https://github.com/LiGoldragon/structural-codec.git?rev=31d2e4c14943802ce75a910edd54ea1796273f78#31d2e4c14943802ce75a910edd54ea1796273f78"
+dependencies = [
+ "content-identity 0.3.0",
+ "name-table 0.3.0",
+ "raw-discovery",
+ "rkyv",
+ "thiserror",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -496,21 +538,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "textual-rust"
-version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/rust-logos.git?rev=b8dff1f4ed4acdfc6a205c2fb4549fb1b91a9892#b8dff1f4ed4acdfc6a205c2fb4549fb1b91a9892"
-dependencies = [
- "content-identity 0.3.0",
- "core-logos",
- "name-table 0.1.0",
- "prettyplease",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
- "thiserror",
 ]
 
 [[package]]

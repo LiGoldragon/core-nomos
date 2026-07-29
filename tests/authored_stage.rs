@@ -1,13 +1,11 @@
-//! Durable witnesses for the authored-to-sealed Nomos phase boundary.
+//! Durable witnesses for Nomos-owned authored state over generic Template(X).
 
+use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
-    AuthoredAttribute, AuthoredBindingIdentity, AuthoredBindingRef, AuthoredConfigurationAttribute,
-    AuthoredConfigurationPredicate, AuthoredDeriveGroup, AuthoredEscape, AuthoredIdentityPosition,
-    AuthoredInputParameter, AuthoredInputSignature, AuthoredItemSkeleton, AuthoredNewtypeSkeleton,
-    AuthoredNomosError, AuthoredPath, AuthoredRealize, AuthoredResultSkeleton, AuthoredScalar,
-    AuthoredSequence, AuthoredSequenceItem, AuthoredTransformerDeclaration,
-    AuthoredTransformerIdentity, AuthoredVisibility, MacroKind, MetaType, NameTransform,
-    SectionDefault,
+    AuthoredBindingIdentity, AuthoredIdentityPosition, AuthoredInputParameter,
+    AuthoredInputSignature, AuthoredNomosError, AuthoredTransformerDeclaration,
+    AuthoredTransformerIdentity, MacroKind, MetaType, TemplateFieldValue, TemplateFuture,
+    TemplateLanguage, TemplateTerm, TemplateValue,
 };
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
@@ -36,146 +34,104 @@ fn binding(chain: &[u16]) -> AuthoredBindingIdentity {
     AuthoredBindingIdentity::try_new(universal(chain)).expect("Universal binding")
 }
 
-fn input_ref(binding: &AuthoredBindingIdentity) -> AuthoredBindingRef {
-    AuthoredBindingRef::Input(binding.clone())
-}
-
-#[test]
-fn wire_newtype_retains_complete_declaration_binding_and_invoke_chains() {
-    let wire_newtype = transformer(&[40, 7, 1]);
-    let wire_attributes = transformer(&[40, 7, 2]);
-    let name = binding(&[40, 7, 1, 1]);
-    let wrapped = binding(&[40, 7, 1, 2]);
-    let input = AuthoredInputSignature::try_new(vec![
-        AuthoredInputParameter::new(name.clone(), MetaType::Name),
-        AuthoredInputParameter::new(wrapped.clone(), MetaType::Type),
-    ])
-    .expect("distinct positional bindings");
-    let declaration = AuthoredTransformerDeclaration::try_new(
-        wire_newtype.clone(),
-        MacroKind::Structural(SectionDefault::Newtype),
-        input,
-        AuthoredResultSkeleton::Item(AuthoredItemSkeleton::Newtype(AuthoredNewtypeSkeleton::new(
-            AuthoredVisibility::Public,
-            AuthoredSequence::of(AuthoredSequenceItem::Escape(AuthoredEscape::Invoke(
-                wire_attributes.clone(),
-            ))),
-            AuthoredScalar::Escape(AuthoredEscape::Realize(AuthoredRealize::new(
-                input_ref(&name),
-                NameTransform::Identity,
-            ))),
-            AuthoredScalar::Escape(AuthoredEscape::Realize(AuthoredRealize::new(
-                input_ref(&wrapped),
-                NameTransform::Identity,
-            ))),
-        ))),
+fn logos() -> LogosLanguage {
+    LogosLanguage::seal(
+        LogosLanguageTypeIds {
+            newtype: universal(&[1]),
+            enumeration: universal(&[2]),
+            visibility: universal(&[3]),
+            attributes: universal(&[4]),
+            attribute: universal(&[5]),
+            path: universal(&[6]),
+            configuration_predicate: universal(&[7]),
+            derive_group: universal(&[8]),
+            generics: universal(&[9]),
+            generic_parameter: universal(&[10]),
+            type_reference: universal(&[11]),
+            variant: universal(&[12]),
+        },
+        LogosLanguageWords {
+            public: universal(&[20]),
+            private: universal(&[21]),
+        },
     )
-    .expect("all typed escapes bind declared inputs");
+    .expect("Logos source declaration")
+}
 
-    let bytes =
-        rkyv::to_bytes::<rkyv::rancor::Error>(&declaration).expect("archive authored declaration");
-    let restored = rkyv::from_bytes::<AuthoredTransformerDeclaration, rkyv::rancor::Error>(&bytes)
-        .expect("restore authored declaration");
-    assert_eq!(restored, declaration);
-    assert_eq!(
-        restored.name().encoded_id(),
-        wire_newtype.encoded_id(),
-        "the declaration keeps its complete module chain"
-    );
-
-    let AuthoredResultSkeleton::Item(AuthoredItemSkeleton::Newtype(skeleton)) = restored.result()
-    else {
-        panic!("newtype skeleton");
-    };
-    let [AuthoredSequenceItem::Escape(AuthoredEscape::Invoke(target))] =
-        skeleton.attributes().items()
-    else {
-        panic!("one durable attributes invocation");
-    };
-    assert_eq!(
-        target.encoded_id(),
-        wire_attributes.encoded_id(),
-        "Invoke retains durable target identity before package-local rebinding"
-    );
-    assert_eq!(
-        restored.input().parameters()[0]
-            .binding()
-            .encoded_id()
-            .chain(),
-        &[
-            LocalEncodedId::new(40),
-            LocalEncodedId::new(7),
-            LocalEncodedId::new(1),
-            LocalEncodedId::new(1)
-        ]
-    );
+fn attributes_result(
+    template: &TemplateLanguage<VocabularyRoot>,
+    items: Vec<TemplateTerm<VocabularyRoot>>,
+) -> TemplateValue<VocabularyRoot> {
+    let constructor = template
+        .type_declaration(template.root())
+        .and_then(|declaration| declaration.constructors().first())
+        .expect("attributes constructor");
+    let field = constructor
+        .landing_fields()
+        .first()
+        .expect("attributes sequence field");
+    TemplateValue::try_new(
+        constructor.constructor().clone(),
+        vec![TemplateFieldValue::new(
+            field.role(),
+            TemplateTerm::Sequence(items),
+        )],
+    )
+    .expect("unique computed role")
 }
 
 #[test]
-fn wire_attributes_literals_round_trip_as_full_chain_typed_logos_data() {
-    let rustfmt_skip =
-        AuthoredPath::try_new(vec![rust(&[30, 1]), rust(&[30, 2])]).expect("tool path");
-    let nota_feature = universal(&[41, 3]);
-    let nota_derives = AuthoredDeriveGroup::new(
-        [&[31, 1][..], &[31, 2][..], &[31, 3][..]]
-            .into_iter()
-            .map(|chain| AuthoredPath::try_new(vec![rust(chain)]).expect("derive path"))
-            .collect(),
-    );
-    let rkyv_derives = AuthoredDeriveGroup::new(
-        [
-            &[32, 1][..],
-            &[32, 2][..],
-            &[32, 3][..],
-            &[32, 4][..],
-            &[32, 5][..],
-            &[32, 6][..],
-            &[32, 7][..],
-        ]
-        .into_iter()
-        .map(|chain| AuthoredPath::try_new(vec![rust(chain)]).expect("derive path"))
-        .collect(),
-    );
+fn declaration_archives_one_generic_template_value_with_complete_identities() {
+    let logos = logos();
+    let template =
+        TemplateLanguage::derive(logos.grammar(), logos.landing(), logos.attributes_type())
+            .expect("derive Template(Logos)");
+    let name = transformer(&[40, 7, 2]);
     let declaration = AuthoredTransformerDeclaration::try_new(
-        transformer(&[40, 7, 2]),
+        name.clone(),
         MacroKind::Named,
         AuthoredInputSignature::unit(),
-        AuthoredResultSkeleton::Attributes(AuthoredSequence::new(vec![
-            AuthoredSequenceItem::Literal(AuthoredAttribute::ToolPath(rustfmt_skip)),
-            AuthoredSequenceItem::Literal(AuthoredAttribute::Configuration(
-                AuthoredConfigurationAttribute::new(
-                    AuthoredConfigurationPredicate::Feature(nota_feature.clone()),
-                    AuthoredAttribute::Derive(nota_derives),
-                ),
-            )),
-            AuthoredSequenceItem::Literal(AuthoredAttribute::Derive(rkyv_derives)),
-        ])),
+        attributes_result(&template, Vec::new()),
+        &template,
     )
-    .expect("literal attribute skeleton has no input bindings");
+    .expect("generic result fits its computed declaration");
 
-    let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&declaration)
-        .expect("archive attributes declaration");
+    let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&declaration).expect("archive declaration");
     let restored = rkyv::from_bytes::<AuthoredTransformerDeclaration, rkyv::rancor::Error>(&bytes)
-        .expect("restore attributes declaration");
+        .expect("restore declaration");
     assert_eq!(restored, declaration);
+    assert_eq!(restored.name().encoded_id(), name.encoded_id());
+}
 
-    let AuthoredResultSkeleton::Attributes(attributes) = restored.result() else {
-        panic!("attribute-vector result");
-    };
-    let AuthoredSequenceItem::Literal(AuthoredAttribute::Configuration(configuration)) =
-        &attributes.items()[1]
-    else {
-        panic!("conditional derive");
-    };
-    let AuthoredConfigurationPredicate::Feature(feature) = configuration.predicate();
+#[test]
+fn generic_binding_walk_refuses_an_undeclared_splice_before_construction() {
+    let logos = logos();
+    let template =
+        TemplateLanguage::derive(logos.grammar(), logos.landing(), logos.attributes_type())
+            .expect("derive Template(Logos)");
+    let absent = binding(&[40, 8, 9]);
+    let result = attributes_result(
+        &template,
+        vec![TemplateTerm::Future(TemplateFuture::Splice {
+            binding: absent.clone(),
+        })],
+    );
     assert_eq!(
-        feature, &nota_feature,
-        "feature identity remains a complete Universal chain"
+        AuthoredTransformerDeclaration::try_new(
+            transformer(&[40, 8]),
+            MacroKind::Named,
+            AuthoredInputSignature::unit(),
+            result,
+            &template,
+        ),
+        Err(AuthoredNomosError::UndeclaredBinding {
+            binding: absent.encoded_id().clone(),
+        })
     );
 }
 
 #[test]
-fn authored_identity_and_binding_failures_are_typed_and_pre_mutation() {
+fn authored_identity_and_duplicate_binding_failures_remain_typed() {
     assert_eq!(
         AuthoredTransformerIdentity::try_new(rust(&[1])),
         Err(AuthoredNomosError::WrongRoot {
@@ -201,48 +157,26 @@ fn authored_identity_and_binding_failures_are_typed_and_pre_mutation() {
             binding: repeated.encoded_id().clone(),
         })
     );
-
-    let absent = binding(&[40, 8, 9]);
-    let result =
-        AuthoredResultSkeleton::Item(AuthoredItemSkeleton::Newtype(AuthoredNewtypeSkeleton::new(
-            AuthoredVisibility::Public,
-            AuthoredSequence::new(Vec::new()),
-            AuthoredScalar::Escape(AuthoredEscape::Realize(AuthoredRealize::new(
-                input_ref(&absent),
-                NameTransform::Identity,
-            ))),
-            AuthoredScalar::Escape(AuthoredEscape::Realize(AuthoredRealize::new(
-                input_ref(&absent),
-                NameTransform::Identity,
-            ))),
-        )));
-    assert_eq!(
-        AuthoredTransformerDeclaration::try_new(
-            transformer(&[40, 8]),
-            MacroKind::Structural(SectionDefault::Newtype),
-            AuthoredInputSignature::unit(),
-            result,
-        ),
-        Err(AuthoredNomosError::UndeclaredBinding {
-            binding: absent.encoded_id().clone(),
-        })
-    );
 }
 
 #[test]
-fn authored_carrier_has_no_flat_or_spelling_bearing_identity_surface() {
+fn authored_module_contains_no_parallel_logos_universe() {
     let source = include_str!("../src/authored.rs");
     for forbidden in [
+        "AuthoredAttribute",
+        "AuthoredPath",
+        "AuthoredTypeReference",
+        "AuthoredNewtypeSkeleton",
+        "AuthoredEnumerationSkeleton",
+        "AuthoredStructSkeleton",
+        "AuthoredVisibility",
         "name_table::Identifier",
-        "IdentifierNamespace",
-        "NameTable",
         "String>",
-        "String,",
         "&str",
     ] {
         assert!(
             !source.contains(forbidden),
-            "authored stage must not contain {forbidden}"
+            "authored state must not contain {forbidden}"
         );
     }
 }

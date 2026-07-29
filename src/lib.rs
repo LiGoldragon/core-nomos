@@ -14,12 +14,12 @@
 //! invocation targets before atomic package sealing. Text decoding itself is
 //! supplied by the TextualNomos boundary.
 //!
-//! ## The two macro kinds
+//! ## The two legacy execution kinds
 //!
 //! - **Named** ([`MacroKind::Named`]) — dispatched by minted [`MacroIdentity`]; an
 //!   unknown named invocation is an error. `WireAttributes` is named.
 //! - **Structural** ([`MacroKind::Structural`]) — a per-section default selected by
-//!   a ethos declaration's kind; `WireNewtype` and the particular-struct macro are
+//!   an Ethos declaration's kind; `WireNewtype` and the particular-struct transformer are
 //!   structural.
 //!
 //! ## Stateful at rest
@@ -59,19 +59,12 @@ pub mod package;
 pub mod prelude;
 pub mod slice_one;
 pub mod template;
+pub mod template_language;
 
 pub use authored::{
-    AuthoredAttribute, AuthoredBindingIdentity, AuthoredBindingRef, AuthoredConfigurationAttribute,
-    AuthoredConfigurationPredicate, AuthoredDeriveGroup, AuthoredEnumerationSkeleton,
-    AuthoredEscape, AuthoredField, AuthoredGenericParameter, AuthoredGenerics,
-    AuthoredHelperDerive, AuthoredIdentityPosition, AuthoredImplTraitType, AuthoredInputParameter,
-    AuthoredInputSignature, AuthoredItemSkeleton, AuthoredNewtypeSkeleton, AuthoredNomosError,
-    AuthoredPath, AuthoredRealize, AuthoredReferenceMutability, AuthoredReferenceType,
-    AuthoredResultSkeleton, AuthoredScalar, AuthoredSequence, AuthoredSequenceItem,
-    AuthoredSliceType, AuthoredSplice, AuthoredSpliceElement, AuthoredStructSkeleton,
-    AuthoredTransformerDeclaration, AuthoredTransformerIdentity, AuthoredTupleType,
-    AuthoredTypeApplication, AuthoredTypeParameter, AuthoredTypeReference, AuthoredVariant,
-    AuthoredVariantPayload, AuthoredVisibility,
+    AuthoredBindingIdentity, AuthoredIdentityPosition, AuthoredInputParameter,
+    AuthoredInputSignature, AuthoredNomosError, AuthoredTransformerDeclaration,
+    AuthoredTransformerIdentity,
 };
 pub use capsule::capsule_from_issued_hash;
 pub use definition::MacroDefinition;
@@ -89,4 +82,10 @@ pub use template::{
     BindingRef, EnumerationTemplate, Escape, FieldNameRule, GenerationClass, ItemTemplate,
     NameTransform, NewtypeTemplate, Realize, ResultTemplate, Scalar, Sequence, SequenceItem,
     Splice, SpliceElement, StructTemplate,
+};
+pub use template_language::{
+    LogosTemplateLanguage, TemplateConstructorDeclaration, TemplateFieldDeclaration,
+    TemplateFieldValue, TemplateFormDeclaration, TemplateFuture, TemplateFutureKind,
+    TemplateLandingField, TemplateLandingShape, TemplateLanguage, TemplateLanguageError,
+    TemplateTerm, TemplateTypeDeclaration, TemplateValue, TemplateValueError,
 };
