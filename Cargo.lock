@@ -178,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "core-nomos"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0 (git+https://github.com/LiGoldragon/content-identity.git?rev=fdf2db1d5a9e8ea52d24d39a03833c3e6885c355)",

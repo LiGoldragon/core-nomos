@@ -1,11 +1,11 @@
 [package]
 name         = "core-nomos"
-version      = "0.10.0"
+version      = "0.11.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/core-nomos"
-description  = "The stringless encoded form of Nomos: macros as typed data transforming the Ethos encoded form into the Logos encoded form. Two macro kinds (named + structural), a stateful-at-rest content-identified MacroPackage, and a closed template escape algebra (Realize / Splice / Invoke). TextualNomos remains deferred."
+description  = "The stringless encoded form of Nomos: authored transformer declarations retain complete encoded-ID chains before atomic sealing into the legacy execution package."
 publish      = false
 
 [lib]

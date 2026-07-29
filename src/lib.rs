@@ -1,17 +1,18 @@
 //! # core-nomos
 //!
-//! The stringless encoded form of Nomos, the macro/transformation language. A macro
-//! is typed data — never text, never Rust — that lowers the ethos encoded form into
-//! the logos encoded form. Macros define the ethos-to-logos lowering; generated
-//! programs, not rendered-source equality, are the acceptance surface.
+//! The stringless encoded form of Nomos, the transformation language. A
+//! transformer is typed data — never text, never Rust — that lowers the Ethos
+//! encoded form into the Logos encoded form. Generated programs, not
+//! rendered-source equality, are the acceptance surface.
 //!
 //! ## What is here (EncodedNomos), and what is deferred (TextualNomos)
 //!
-//! EncodedNomos is built here: macros as typed data, the two macro kinds, the
-//! stateful-at-rest package, and the engine. **TextualNomos** — including the escape
-//! spelling, meta-type text spellings, and delimiters — remains an open design
-//! question. Nothing in this crate parses or prints a Nomos text surface; an escape
-//! is a data node ([`Escape`]), and its spelling is not this crate's concern.
+//! EncodedNomos includes transformers as typed data, the two legacy execution
+//! kinds, the stateful-at-rest package, and the engine. The phase-stable
+//! [`AuthoredTransformerDeclaration`] is the stringless target of the approved
+//! TextualNomos base door: it retains complete encoded-ID chains and durable
+//! invocation targets before atomic package sealing. Text decoding itself is
+//! supplied by the TextualNomos boundary.
 //!
 //! ## The two macro kinds
 //!
@@ -43,6 +44,7 @@
 //! Ethos compatibility slice. Identifiers retain their namespace tag, and conversions are typed
 //! end to end, outside text.
 
+pub mod authored;
 pub mod capsule;
 pub mod definition;
 pub mod domain;
@@ -58,6 +60,19 @@ pub mod prelude;
 pub mod slice_one;
 pub mod template;
 
+pub use authored::{
+    AuthoredAttribute, AuthoredBindingIdentity, AuthoredBindingRef, AuthoredConfigurationAttribute,
+    AuthoredConfigurationPredicate, AuthoredDeriveGroup, AuthoredEnumerationSkeleton,
+    AuthoredEscape, AuthoredField, AuthoredGenericParameter, AuthoredGenerics,
+    AuthoredHelperDerive, AuthoredIdentityPosition, AuthoredImplTraitType, AuthoredInputParameter,
+    AuthoredInputSignature, AuthoredItemSkeleton, AuthoredNewtypeSkeleton, AuthoredNomosError,
+    AuthoredPath, AuthoredRealize, AuthoredReferenceMutability, AuthoredReferenceType,
+    AuthoredResultSkeleton, AuthoredScalar, AuthoredSequence, AuthoredSequenceItem,
+    AuthoredSliceType, AuthoredSplice, AuthoredSpliceElement, AuthoredStructSkeleton,
+    AuthoredTransformerDeclaration, AuthoredTransformerIdentity, AuthoredTupleType,
+    AuthoredTypeApplication, AuthoredTypeParameter, AuthoredTypeReference, AuthoredVariant,
+    AuthoredVariantPayload, AuthoredVisibility,
+};
 pub use capsule::capsule_from_issued_hash;
 pub use definition::MacroDefinition;
 pub use domain::EncodedNomosDomain;

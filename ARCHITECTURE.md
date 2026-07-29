@@ -92,6 +92,28 @@ Fields remain positional. Nomos must not derive and intern field spellings.
 Deterministic textual field naming belongs to the conversion from Logos to a
 specific textual form.
 
+### Authored and sealed execution stages
+
+`AuthoredTransformerDeclaration` is the phase-stable output contract for
+TextualNomos decoding. Its name and every input binding are typed wrappers over
+complete translator-issued `VocabularyRoot::Universal` encodedID chains. Its
+typed Logos skeleton stores every literal identity as a complete chain, and
+`AuthoredEscape::Invoke` stores the invoked transformer's durable chain.
+
+The existing `MacroDefinition` remains the sealed execution record.
+`MacroIdentity` is package-local implementation structure and is deliberately
+absent from the authored carrier. Atomic sealing later receives a complete,
+resolved authored declaration set; it validates duplicate and unresolved
+targets before changing package state, then rebinds durable invocation targets
+to local execution indices in one commit. Text decoding therefore neither
+mints package identities nor pre-runs registration to make forward references
+possible.
+
+This is a stage boundary, not a compatibility alias. The authored value is the
+only pre-seal representation and the legacy execution value is the only sealed
+interpreter representation. The conversion between them belongs to the seal,
+not to the textual decoder.
+
 ## Stateful data and daemon boundary
 
 Nomos transformation definitions are durable typed data. The Nomos daemon is
@@ -141,6 +163,8 @@ working-program behavior.
 
 - `src/definition.rs`, `src/identity.rs`, `src/meta.rs`, `src/package.rs`,
   `src/template.rs` — live typed macro/package vocabulary.
+- `src/authored.rs` — full-chain, positional authored transformer declarations
+  and typed Logos skeletons before atomic package sealing.
 - `src/engine.rs` — live macro evaluation; its direct code is mostly typed, but
   every apply owns the legacy `NameTableBoundary`.
 - `src/name_boundary.rs` — legacy string resolution, derivation, formatting,
@@ -155,3 +179,5 @@ working-program behavior.
   wired.
 - `tests/slice_one.rs`, `tests/slice_one_boundary.rs` — focused positional
   behavior and static source/dependency witnesses for the conforming slice.
+- `tests/authored_stage.rs` — archive preservation and typed-refusal witnesses
+  for the authored-to-sealed phase boundary.

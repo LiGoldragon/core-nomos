@@ -30,6 +30,33 @@ preserving both complete Universal encodedID chains without resolving,
 flattening, deriving, or allocating names. It maps visibility and consumes the
 typed empty attribute position. Fields carry no names.
 
+## Authored transformer phase
+
+`AuthoredTransformerDeclaration` is the durable, stringless value between the
+TextualNomos boundary and package sealing:
+
+```
+.nomos text
+  → raw discovery + structural decode
+  → AuthoredTransformerDeclaration
+  → atomic package seal
+  → MacroDefinition
+```
+
+The textual decoder is the next train stage and is not yet implemented here.
+The carrier it targets is implemented: declarations and input bindings retain
+complete translator-issued Universal encodedID chains, while `Invoke` retains
+the invoked transformer's complete durable identity. No package-local
+`MacroIdentity` exists in this phase. A later seal sees the complete resolved
+declaration set, refuses duplicate or unresolved targets before mutation, and
+only then rebinds durable invocation targets into the sealed execution table.
+
+`AuthoredResultSkeleton` means a typed Logos skeleton with typed
+`Realize`/`Invoke`/`Splice` positions, never a string template. Every literal
+Logos name position — paths, attributes, type references, fields, variants, and
+generics — also retains a complete encodedID chain. Rust structs expose typed
+positional accessors; field spellings are not authored data.
+
 ## Legacy MacroPackage evidence
 
 The following surfaces remain implemented for regression and migration work.
@@ -69,12 +96,18 @@ debt rather than a nested encodedID-chain claim.
 
 ## What it is not (yet)
 
-**TextualNomos is deferred.** Its escape spelling, meta-type text spellings, and
-Nomos delimiters remain deferred. This crate parses and
-prints no Nomos text: a macro is authored as data.
+**The TextualNomos decoder is not wired yet.** The approved base door uses the
+Standard protos profile and reserved applications
+`Realize.<binding>`/`Splice.<binding>`/`Invoke.<transformer>`. This revision
+publishes its phase-stable output contract; it does not yet parse or print
+Nomos text, allocate translator identities, resolve manifests, or seal an
+execution package.
 
 ## Verification
 
+`tests/authored_stage.rs` proves archive round trips preserve nested declaration,
+binding, invocation, and Logos-literal chains; it also witnesses typed refusal
+for wrong roots, duplicate bindings, and undeclared escape bindings.
 `tests/slice_one.rs` proves the direct positional mapping and complete-chain
 preservation. `tests/slice_one_boundary.rs` mechanically excludes the legacy
 NameTable, macro, generation, prelude, rendering, and string surfaces from that
