@@ -5,9 +5,15 @@
 //! facility.
 
 use slice_core_ethos::{
-    WholeEthos, WholeEthosAttributes, WholeEthosItem, WholeEthosNewtype, WholeEthosVisibility,
+    WholeEthos, WholeEthosAttributes, WholeEthosEnumeration, WholeEthosItem, WholeEthosNewtype,
+    WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
+    WholeEthosVariantPayload, WholeEthosVisibility,
 };
-use slice_core_logos::{WholeLogos, WholeLogosItem, WholeLogosNewtype, WholeLogosVisibility};
+use slice_core_logos::{
+    WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosTupleFields,
+    WholeLogosTypeApplication, WholeLogosTypeReference, WholeLogosVariant,
+    WholeLogosVariantPayload, WholeLogosVisibility,
+};
 
 /// The complete Ethos-to-Logos transformation admitted by the first slice.
 ///
@@ -32,6 +38,9 @@ impl SliceOneTransformation {
             WholeEthosItem::Newtype(newtype) => {
                 WholeLogosItem::Newtype(Self::lower_newtype(newtype))
             }
+            WholeEthosItem::Enumeration(enumeration) => {
+                WholeLogosItem::Enumeration(Self::lower_enumeration(enumeration))
+            }
         }
     }
 
@@ -42,7 +51,54 @@ impl SliceOneTransformation {
             Self::lower_visibility(*newtype.visibility()),
             newtype.name().clone(),
             Self::lower_visibility(*newtype.wrapped_field().visibility()),
-            newtype.wrapped_field().reference().clone(),
+            Self::lower_reference(newtype.wrapped_field().reference()),
+        )
+    }
+
+    fn lower_enumeration(enumeration: &WholeEthosEnumeration) -> WholeLogosEnumeration {
+        let WholeEthosAttributes = *enumeration.attributes();
+
+        WholeLogosEnumeration::new(
+            Self::lower_visibility(*enumeration.visibility()),
+            enumeration.name().clone(),
+            enumeration
+                .variants()
+                .iter()
+                .map(Self::lower_variant)
+                .collect(),
+        )
+    }
+
+    fn lower_variant(variant: &WholeEthosVariant) -> WholeLogosVariant {
+        let WholeEthosAttributes = *variant.attributes();
+        let payload = match variant.payload() {
+            WholeEthosVariantPayload::Unit => WholeLogosVariantPayload::Unit,
+            WholeEthosVariantPayload::Tuple(fields) => {
+                let result = WholeLogosTupleFields::new(
+                    fields.fields().iter().map(Self::lower_reference).collect(),
+                );
+                let Ok(fields) = result else { unreachable!() };
+                WholeLogosVariantPayload::Tuple(fields)
+            }
+        };
+        WholeLogosVariant::new(variant.name().clone(), payload)
+    }
+
+    fn lower_reference(reference: &WholeEthosTypeReference) -> WholeLogosTypeReference {
+        match reference {
+            WholeEthosTypeReference::Identity(encoded_id) => {
+                WholeLogosTypeReference::Identity(encoded_id.clone())
+            }
+            WholeEthosTypeReference::Application(application) => {
+                WholeLogosTypeReference::Application(Self::lower_application(application))
+            }
+        }
+    }
+
+    fn lower_application(application: &WholeEthosTypeApplication) -> WholeLogosTypeApplication {
+        WholeLogosTypeApplication::new(
+            application.head().clone(),
+            Self::lower_reference(application.payload()),
         )
     }
 

@@ -49,11 +49,11 @@ fn slice_dependencies_are_exact_published_producer_revisions() {
     assert!(MANIFEST.contains(
         "slice-core-ethos         = { package = \"core-ethos\", git = \
          \"https://github.com/LiGoldragon/core-ethos.git\", rev = \
-         \"b51805acf48d691514c159b364aaf9d854ee9ddd\" }"
+         \"1117a85a8d1d6f0ca2836ec7507e04b3a1d34f40\" }"
     ));
     assert!(MANIFEST.contains(
         "slice-core-logos         = { package = \"core-logos\", git = \
          \"https://github.com/LiGoldragon/core-logos.git\", rev = \
-         \"28260415849a250e5e310c3563eda99ad1ff4232\" }"
+         \"c88a1cf2ba1629735ee5cbd6124f9b1126e7e63c\" }"
     ));
 }

@@ -4,10 +4,15 @@ use core_nomos::SliceOneTransformation;
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use slice_core_ethos::{
-    WholeEthos, WholeEthosAttributes, WholeEthosItem, WholeEthosNewtype, WholeEthosVisibility,
-    WholeEthosWrappedField,
+    WholeEthos, WholeEthosAttributes, WholeEthosEnumeration, WholeEthosItem, WholeEthosNewtype,
+    WholeEthosTupleFields, WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
+    WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
 };
-use slice_core_logos::{WholeLogos, WholeLogosItem, WholeLogosNewtype, WholeLogosVisibility};
+use slice_core_logos::{
+    WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosTupleFields,
+    WholeLogosTypeApplication, WholeLogosTypeReference, WholeLogosVariant,
+    WholeLogosVariantPayload, WholeLogosVisibility,
+};
 
 fn encoded(chain: &[u16]) -> VocabularyEncodedId {
     VocabularyEncodedId::new(
@@ -21,7 +26,7 @@ fn ethos_newtype(
     visibility: WholeEthosVisibility,
     name: VocabularyEncodedId,
     wrapped_visibility: WholeEthosVisibility,
-    wrapped: VocabularyEncodedId,
+    wrapped: WholeEthosTypeReference,
 ) -> WholeEthosItem {
     WholeEthosItem::Newtype(WholeEthosNewtype::new(
         name,
@@ -42,13 +47,13 @@ fn ordered_newtypes_lower_with_complete_identity_chains_unchanged() {
             WholeEthosVisibility::Public,
             commit_sequence.clone(),
             WholeEthosVisibility::Private,
-            integer.clone(),
+            WholeEthosTypeReference::Identity(integer.clone()),
         ),
         ethos_newtype(
             WholeEthosVisibility::Private,
             internal_counter.clone(),
             WholeEthosVisibility::Public,
-            nested_integer.clone(),
+            WholeEthosTypeReference::Identity(nested_integer.clone()),
         ),
     ]);
 
@@ -61,13 +66,94 @@ fn ordered_newtypes_lower_with_complete_identity_chains_unchanged() {
                 WholeLogosVisibility::Public,
                 commit_sequence,
                 WholeLogosVisibility::Private,
-                integer,
+                WholeLogosTypeReference::Identity(integer),
             )),
             WholeLogosItem::Newtype(WholeLogosNewtype::new(
                 WholeLogosVisibility::Private,
                 internal_counter,
                 WholeLogosVisibility::Public,
-                nested_integer,
+                WholeLogosTypeReference::Identity(nested_integer),
+            )),
+        ])
+    );
+}
+
+#[test]
+fn enums_and_recursive_applications_lower_exhaustively_without_changing_chains() {
+    let vector = encoded(&[4]);
+    let integer = encoded(&[3]);
+    let vector_integer = WholeEthosTypeReference::Application(WholeEthosTypeApplication::new(
+        vector.clone(),
+        WholeEthosTypeReference::Identity(integer.clone()),
+    ));
+    let status = encoded(&[42, 9]);
+    let pending = encoded(&[42, 9, 1]);
+    let ready = encoded(&[42, 9, 2]);
+    let ethos = WholeEthos::new(vec![
+        ethos_newtype(
+            WholeEthosVisibility::Public,
+            encoded(&[42, 8]),
+            WholeEthosVisibility::Private,
+            vector_integer.clone(),
+        ),
+        WholeEthosItem::Enumeration(WholeEthosEnumeration::new(
+            status.clone(),
+            WholeEthosVisibility::Public,
+            WholeEthosAttributes::empty(),
+            vec![
+                WholeEthosVariant::new(
+                    pending.clone(),
+                    WholeEthosAttributes::empty(),
+                    WholeEthosVariantPayload::Unit,
+                ),
+                WholeEthosVariant::new(
+                    ready.clone(),
+                    WholeEthosAttributes::empty(),
+                    WholeEthosVariantPayload::Tuple(
+                        WholeEthosTupleFields::new(vec![
+                            WholeEthosTypeReference::Identity(integer.clone()),
+                            vector_integer,
+                        ])
+                        .expect("non-empty tuple"),
+                    ),
+                ),
+            ],
+        )),
+    ]);
+
+    assert_eq!(
+        SliceOneTransformation::new().lower(&ethos),
+        WholeLogos::new(vec![
+            WholeLogosItem::Newtype(WholeLogosNewtype::new(
+                WholeLogosVisibility::Public,
+                encoded(&[42, 8]),
+                WholeLogosVisibility::Private,
+                WholeLogosTypeReference::Application(WholeLogosTypeApplication::new(
+                    vector.clone(),
+                    WholeLogosTypeReference::Identity(integer.clone()),
+                )),
+            )),
+            WholeLogosItem::Enumeration(WholeLogosEnumeration::new(
+                WholeLogosVisibility::Public,
+                status,
+                vec![
+                    WholeLogosVariant::new(pending, WholeLogosVariantPayload::Unit),
+                    WholeLogosVariant::new(
+                        ready,
+                        WholeLogosVariantPayload::Tuple(
+                            WholeLogosTupleFields::new(vec![
+                                WholeLogosTypeReference::Identity(integer.clone()),
+                                WholeLogosTypeReference::Application(
+                                    WholeLogosTypeApplication::new(
+                                        vector,
+                                        WholeLogosTypeReference::Identity(integer),
+                                    ),
+                                ),
+                            ])
+                            .expect("non-empty tuple"),
+                        ),
+                    ),
+                ],
             )),
         ])
     );
