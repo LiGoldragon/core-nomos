@@ -10,7 +10,8 @@ use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use thiserror::Error;
 
 use crate::{
-    MacroKind, MetaType, TemplateLanguage, TemplateTerm, TemplateValue, TemplateValueError,
+    MacroKind, MetaType, TemplateFuture, TemplateFutureKind, TemplateFutureOutput,
+    TemplateFutureRequirement, TemplateLanguage, TemplateValue, TemplateValueError,
 };
 
 /// A durable identity position whose production root is fixed by the authored
@@ -35,6 +36,26 @@ pub enum AuthoredNomosError {
 
     #[error("typed Logos skeleton references undeclared binding {binding:?}")]
     UndeclaredBinding { binding: VocabularyEncodedId },
+
+    #[error("authored package declares transformer {transformer:?} more than once")]
+    DuplicateTransformer { transformer: VocabularyEncodedId },
+
+    #[error("authored package invokes undeclared transformer {transformer:?}")]
+    UndeclaredTransformer { transformer: VocabularyEncodedId },
+
+    #[error(
+        "{future:?} produces {found:?}, which cannot inhabit the computed landing {expected:?}"
+    )]
+    FutureOutputMismatch {
+        future: TemplateFutureKind,
+        expected: TemplateFutureOutput<VocabularyRoot>,
+        found: TemplateFutureOutput<VocabularyRoot>,
+    },
+
+    #[error("computed template root {encoded_type:?} has no coherent output")]
+    InvalidTemplateRoot {
+        encoded_type: structural_codec::EncodedTypeId<VocabularyRoot>,
+    },
 
     #[error(transparent)]
     Template(Box<TemplateValueError<VocabularyRoot>>),
@@ -117,13 +138,25 @@ fn require_universal(
     Ok(())
 }
 
-/// One authored input position: durable binding identity, then meta-type.
+/// One authored input position: durable binding identity, its Ethos meta-type,
+/// and the encoded landing output available to Realize or Splice.
+///
+/// The output is supplied by the resolved input type declaration. No Logos type
+/// or binding spelling is switched on here.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct AuthoredInputParameter(AuthoredBindingIdentity, MetaType);
+pub struct AuthoredInputParameter(
+    AuthoredBindingIdentity,
+    MetaType,
+    TemplateFutureOutput<VocabularyRoot>,
+);
 
 impl AuthoredInputParameter {
-    pub fn new(binding: AuthoredBindingIdentity, meta: MetaType) -> Self {
-        Self(binding, meta)
+    pub fn new(
+        binding: AuthoredBindingIdentity,
+        meta: MetaType,
+        output: TemplateFutureOutput<VocabularyRoot>,
+    ) -> Self {
+        Self(binding, meta, output)
     }
 
     pub fn binding(&self) -> &AuthoredBindingIdentity {
@@ -132,6 +165,10 @@ impl AuthoredInputParameter {
 
     pub const fn meta(&self) -> MetaType {
         self.1
+    }
+
+    pub const fn output(&self) -> &TemplateFutureOutput<VocabularyRoot> {
+        &self.2
     }
 }
 
@@ -161,10 +198,10 @@ impl AuthoredInputSignature {
         &self.0
     }
 
-    fn contains(&self, binding: &AuthoredBindingIdentity) -> bool {
+    fn parameter(&self, binding: &AuthoredBindingIdentity) -> Option<&AuthoredInputParameter> {
         self.0
             .iter()
-            .any(|parameter| parameter.binding() == binding)
+            .find(|parameter| parameter.binding() == binding)
     }
 }
 
@@ -175,11 +212,16 @@ pub struct AuthoredTransformerDeclaration(
     MacroKind,
     AuthoredInputSignature,
     TemplateValue<VocabularyRoot>,
+    TemplateFutureOutput<VocabularyRoot>,
+    Vec<TemplateFutureRequirement<VocabularyRoot>>,
 );
 
 impl AuthoredTransformerDeclaration {
-    /// Validate the generic result against its computed Template(X) declaration,
-    /// then refuse every future that references an absent input binding.
+    /// Validate the generic result against its computed Template(X) declaration.
+    ///
+    /// Binding futures are resolved immediately from the input signature.
+    /// Invoke requirements remain durable until the complete within-package
+    /// declaration set can resolve their lookup-only target identities.
     pub fn try_new(
         name: AuthoredTransformerIdentity,
         kind: MacroKind,
@@ -187,9 +229,15 @@ impl AuthoredTransformerDeclaration {
         result: TemplateValue<VocabularyRoot>,
         language: &TemplateLanguage<VocabularyRoot>,
     ) -> Result<Self, AuthoredNomosError> {
-        language.validate_value(&result)?;
-        validate_bindings(&input, &result)?;
-        Ok(Self(name, kind, input, result))
+        let requirements = language.analyze_value(&result)?;
+        let invokes = resolve_binding_outputs(&input, requirements)?;
+        let output =
+            language
+                .root_output()
+                .map_err(|_| AuthoredNomosError::InvalidTemplateRoot {
+                    encoded_type: language.root().clone(),
+                })?;
+        Ok(Self(name, kind, input, result, output, invokes))
     }
 
     pub fn name(&self) -> &AuthoredTransformerIdentity {
@@ -207,42 +255,84 @@ impl AuthoredTransformerDeclaration {
     pub fn result(&self) -> &TemplateValue<VocabularyRoot> {
         &self.3
     }
-}
 
-fn validate_bindings(
-    input: &AuthoredInputSignature,
-    value: &TemplateValue<VocabularyRoot>,
-) -> Result<(), AuthoredNomosError> {
-    for field in value.fields() {
-        validate_term(input, field.term())?;
+    pub const fn output(&self) -> &TemplateFutureOutput<VocabularyRoot> {
+        &self.4
     }
-    Ok(())
+
+    pub fn invoke_requirements(&self) -> &[TemplateFutureRequirement<VocabularyRoot>] {
+        &self.5
+    }
 }
 
-fn validate_term(
+fn resolve_binding_outputs(
     input: &AuthoredInputSignature,
-    term: &TemplateTerm<VocabularyRoot>,
-) -> Result<(), AuthoredNomosError> {
-    match term {
-        TemplateTerm::Future(future) => {
-            if let Some(binding) = future.referenced_binding()
-                && !input.contains(binding)
-            {
-                return Err(AuthoredNomosError::UndeclaredBinding {
-                    binding: binding.encoded_id().clone(),
+    requirements: Vec<TemplateFutureRequirement<VocabularyRoot>>,
+) -> Result<Vec<TemplateFutureRequirement<VocabularyRoot>>, AuthoredNomosError> {
+    let mut invokes = Vec::new();
+    for requirement in requirements {
+        match requirement.future() {
+            TemplateFuture::Realize { binding, .. } | TemplateFuture::Splice { binding } => {
+                let parameter = input.parameter(binding).ok_or_else(|| {
+                    AuthoredNomosError::UndeclaredBinding {
+                        binding: binding.encoded_id().clone(),
+                    }
+                })?;
+                if parameter.output() != requirement.output() {
+                    return Err(AuthoredNomosError::FutureOutputMismatch {
+                        future: requirement.future().kind(),
+                        expected: requirement.output().clone(),
+                        found: parameter.output().clone(),
+                    });
+                }
+            }
+            TemplateFuture::Invoke(_) => invokes.push(requirement),
+        }
+    }
+    Ok(invokes)
+}
+
+/// A complete authored transformer set whose invocation outputs have been
+/// resolved and checked before evaluator entry.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq)]
+pub struct AuthoredTransformerSet(Vec<AuthoredTransformerDeclaration>);
+
+impl AuthoredTransformerSet {
+    pub fn try_new(
+        mut declarations: Vec<AuthoredTransformerDeclaration>,
+    ) -> Result<Self, AuthoredNomosError> {
+        declarations.sort_by(|left, right| left.name().cmp(right.name()));
+        for pair in declarations.windows(2) {
+            if pair[0].name() == pair[1].name() {
+                return Err(AuthoredNomosError::DuplicateTransformer {
+                    transformer: pair[0].name().encoded_id().clone(),
                 });
             }
         }
-        TemplateTerm::Nested(value) => validate_bindings(input, value)?,
-        TemplateTerm::Sequence(items) => {
-            for item in items {
-                validate_term(input, item)?;
+        for declaration in &declarations {
+            for requirement in declaration.invoke_requirements() {
+                let TemplateFuture::Invoke(target) = requirement.future() else {
+                    continue;
+                };
+                let target = declarations
+                    .iter()
+                    .find(|candidate| candidate.name() == target)
+                    .ok_or_else(|| AuthoredNomosError::UndeclaredTransformer {
+                        transformer: target.encoded_id().clone(),
+                    })?;
+                if target.output() != requirement.output() {
+                    return Err(AuthoredNomosError::FutureOutputMismatch {
+                        future: TemplateFutureKind::Invoke,
+                        expected: requirement.output().clone(),
+                        found: target.output().clone(),
+                    });
+                }
             }
         }
-        TemplateTerm::Declaration(_)
-        | TemplateTerm::Reference(_)
-        | TemplateTerm::Literal(_)
-        | TemplateTerm::Scalar(_) => {}
+        Ok(Self(declarations))
     }
-    Ok(())
+
+    pub fn declarations(&self) -> &[AuthoredTransformerDeclaration] {
+        &self.0
+    }
 }

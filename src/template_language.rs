@@ -67,6 +67,41 @@ impl TemplateFuture {
     }
 }
 
+/// The encoded landing value produced by one future.
+///
+/// This is computed or resolved from declarations. It is never inferred from a
+/// transformer spelling, a Logos Rust type, or an evaluator branch.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct TemplateFutureOutput<Root>(LandingShape<Root>);
+
+impl<Root> TemplateFutureOutput<Root> {
+    pub fn new(landing: LandingShape<Root>) -> Self {
+        Self(landing)
+    }
+
+    pub const fn landing(&self) -> &LandingShape<Root> {
+        &self.0
+    }
+}
+
+/// One future paired with the output shape required by its computed landing
+/// position.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct TemplateFutureRequirement<Root> {
+    future: TemplateFuture,
+    output: TemplateFutureOutput<Root>,
+}
+
+impl<Root> TemplateFutureRequirement<Root> {
+    pub const fn future(&self) -> &TemplateFuture {
+        &self.future
+    }
+
+    pub const fn output(&self) -> &TemplateFutureOutput<Root> {
+        &self.output
+    }
+}
+
 /// The landing shape computed for one semantic source position.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TemplateLandingShape<Root> {
@@ -128,6 +163,7 @@ impl<Root> TemplateFieldDeclaration<Root> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TemplateFormDeclaration<Root> {
     identity: Option<DecodeFormId>,
+    root_role: StableRoleId,
     fields: Vec<TemplateFieldDeclaration<Root>>,
 }
 
@@ -136,6 +172,10 @@ impl<Root> TemplateFormDeclaration<Root> {
     /// has no decode-form identity.
     pub const fn identity(&self) -> Option<DecodeFormId> {
         self.identity
+    }
+
+    pub const fn root_role(&self) -> StableRoleId {
+        self.root_role
     }
 
     pub fn fields(&self) -> &[TemplateFieldDeclaration<Root>] {
@@ -319,7 +359,91 @@ where
         &self,
         value: &TemplateValue<Root>,
     ) -> Result<(), TemplateValueError<Root>> {
-        value.validate_as(&self.root, self)
+        let requirements = self.analyze_value(value)?;
+        if let Some(requirement) = requirements.into_iter().next() {
+            return Err(TemplateValueError::FutureOutputUnresolved {
+                constructor: value.constructor().clone(),
+                future: requirement.future,
+                expected: requirement.output,
+            });
+        }
+        Ok(())
+    }
+
+    /// Validate the declaration-indexed value and return the typed output
+    /// requirement for every future it contains.
+    ///
+    /// Authored Nomos resolves these requirements from input-signature and
+    /// within-package transformer declarations before the evaluator can run.
+    pub fn analyze_value(
+        &self,
+        value: &TemplateValue<Root>,
+    ) -> Result<Vec<TemplateFutureRequirement<Root>>, TemplateValueError<Root>> {
+        let mut requirements = Vec::new();
+        value.validate_as(&self.root, self, &mut requirements)?;
+        Ok(requirements)
+    }
+
+    /// The encoded fragment produced by a transformer whose result uses this
+    /// language root.
+    ///
+    /// Product roots produce one value of their addressed type. Transparent
+    /// delimited/item-boundary roots produce the landing carried by their
+    /// content role. This is structural metadata, not a language-specific type
+    /// switch.
+    pub fn root_output(&self) -> Result<TemplateFutureOutput<Root>, TemplateLanguageError<Root>> {
+        let declaration = self.type_declaration(&self.root).ok_or_else(|| {
+            TemplateLanguageError::VerifiedLandingTypeMissing {
+                encoded_type: self.root.clone(),
+            }
+        })?;
+        let mut outputs = declaration.constructors().iter().map(
+            |constructor| -> Result<TemplateFutureOutput<Root>, TemplateLanguageError<Root>> {
+                let root_field = constructor
+                    .encode_form()
+                    .fields()
+                    .iter()
+                    .find(|field| field.role() == constructor.encode_form().root_role())
+                    .ok_or_else(|| TemplateLanguageError::VerifiedRoleMissing {
+                        constructor: constructor.constructor().clone(),
+                        role: constructor.encode_form().root_role(),
+                    })?;
+                let content = match root_field.source() {
+                    SharedDescriptor::Delimited { content, .. }
+                    | SharedDescriptor::ItemBoundary { content, .. } => Some(*content),
+                    _ => None,
+                };
+                if let Some(content) = content {
+                    let landing = constructor
+                        .landing_fields()
+                        .iter()
+                        .find(|field| field.role() == content)
+                        .ok_or_else(|| TemplateLanguageError::VerifiedRoleMissing {
+                            constructor: constructor.constructor().clone(),
+                            role: content,
+                        })?;
+                    Ok(output_from_template_shape(landing.shape()))
+                } else {
+                    Ok(TemplateFutureOutput::new(LandingShape::Type(
+                        self.root.clone(),
+                    )))
+                }
+            },
+        );
+        let first = outputs.next().transpose()?.ok_or_else(|| {
+            TemplateLanguageError::RootHasNoConstructor {
+                encoded_type: self.root.clone(),
+            }
+        })?;
+        for output in outputs {
+            let output = output?;
+            if output != first {
+                return Err(TemplateLanguageError::InconsistentRootOutput {
+                    encoded_type: self.root.clone(),
+                });
+            }
+        }
+        Ok(first)
     }
 }
 
@@ -348,7 +472,11 @@ where
             })
         })
         .collect::<Result<Vec<_>, TemplateLanguageError<Root>>>()?;
-    Ok(TemplateFormDeclaration { identity, fields })
+    Ok(TemplateFormDeclaration {
+        identity,
+        root_role: record.root_role(),
+        fields,
+    })
 }
 
 fn derive_landing_fields<Root, Record>(
@@ -407,7 +535,10 @@ fn derive_shape<Root: Clone>(
             TemplateLandingShape::Fixed(LandingShape::Scalar(value.clone())),
         ),
         (LandingShape::Type(target), SharedDescriptor::Delegate { .. }) => {
-            Ok(TemplateLandingShape::Nested(target.clone()))
+            Ok(TemplateLandingShape::ValueOrFuture {
+                value: LandingShape::Type(target.clone()),
+                future: TemplateFutureKind::Realize,
+            })
         }
         (
             LandingShape::Sequence {
@@ -493,6 +624,7 @@ impl<Root: Clone> TemplateValue<Root> {
         &self,
         expected_type: &EncodedTypeId<Root>,
         language: &TemplateLanguage<Root>,
+        requirements: &mut Vec<TemplateFutureRequirement<Root>>,
     ) -> Result<(), TemplateValueError<Root>>
     where
         Root: Ord,
@@ -524,6 +656,7 @@ impl<Root: Clone> TemplateValue<Root> {
                 &self.constructor,
                 expected.role(),
                 language,
+                requirements,
             )?;
         }
         for field in &self.fields {
@@ -593,6 +726,7 @@ fn validate_term<Root: Clone + Ord>(
     constructor: &EncodedConstructorId<Root>,
     role: StableRoleId,
     language: &TemplateLanguage<Root>,
+    requirements: &mut Vec<TemplateFutureRequirement<Root>>,
 ) -> Result<(), TemplateValueError<Root>> {
     match (term, shape) {
         (
@@ -611,8 +745,24 @@ fn validate_term<Root: Clone + Ord>(
         ) => Ok(()),
         (
             TemplateTerm::Future(future),
-            TemplateLandingShape::ValueOrFuture { future: kind, .. },
-        ) if future.kind() == *kind => Ok(()),
+            TemplateLandingShape::ValueOrFuture {
+                value,
+                future: kind,
+            },
+        ) if future.kind() == *kind => {
+            requirements.push(TemplateFutureRequirement {
+                future: future.clone(),
+                output: TemplateFutureOutput::new(value.clone()),
+            });
+            Ok(())
+        }
+        (
+            TemplateTerm::Nested(value),
+            TemplateLandingShape::ValueOrFuture {
+                value: LandingShape::Type(expected),
+                ..
+            },
+        ) => value.validate_as(expected, language, requirements),
         (
             TemplateTerm::Literal(found),
             TemplateLandingShape::Fixed(LandingShape::Literal(expected)),
@@ -622,7 +772,7 @@ fn validate_term<Root: Clone + Ord>(
             TemplateLandingShape::Fixed(LandingShape::Scalar(expected)),
         ) if scalar_kind(found) == expected.clone() => Ok(()),
         (TemplateTerm::Nested(value), TemplateLandingShape::Nested(expected)) => {
-            value.validate_as(expected, language)
+            value.validate_as(expected, language, requirements)
         }
         (
             TemplateTerm::Sequence(items),
@@ -647,9 +797,13 @@ fn validate_term<Root: Clone + Ord>(
                 if let TemplateTerm::Future(future) = item
                     && item_futures.contains(&future.kind())
                 {
+                    requirements.push(TemplateFutureRequirement {
+                        future: future.clone(),
+                        output: output_from_template_shape(shape),
+                    });
                     continue;
                 }
-                validate_term(item, element, constructor, role, language)?;
+                validate_term(item, element, constructor, role, language, requirements)?;
             }
             Ok(())
         }
@@ -662,6 +816,26 @@ fn validate_term<Root: Clone + Ord>(
             constructor: constructor.clone(),
             role,
         }),
+    }
+}
+
+fn output_from_template_shape<Root: Clone>(
+    shape: &TemplateLandingShape<Root>,
+) -> TemplateFutureOutput<Root> {
+    TemplateFutureOutput::new(literal_landing(shape))
+}
+
+fn literal_landing<Root: Clone>(shape: &TemplateLandingShape<Root>) -> LandingShape<Root> {
+    match shape {
+        TemplateLandingShape::Fixed(landing)
+        | TemplateLandingShape::ValueOrFuture { value: landing, .. } => landing.clone(),
+        TemplateLandingShape::Nested(target) => LandingShape::Type(target.clone()),
+        TemplateLandingShape::Sequence {
+            minimum,
+            maximum,
+            element,
+            ..
+        } => LandingShape::sequence(*minimum, *maximum, literal_landing(element)),
     }
 }
 
@@ -694,6 +868,10 @@ pub enum TemplateLanguageError<Root> {
     },
     #[error("verified grammar/landing shape drifted during derivation")]
     VerifiedShapeDrift,
+    #[error("template root {encoded_type:?} has no constructor")]
+    RootHasNoConstructor { encoded_type: EncodedTypeId<Root> },
+    #[error("template root {encoded_type:?} has constructors with incompatible outputs")]
+    InconsistentRootOutput { encoded_type: EncodedTypeId<Root> },
 }
 
 /// Typed failures while constructing or checking a generic template value.
@@ -733,6 +911,14 @@ pub enum TemplateValueError<Root> {
         constructor: EncodedConstructorId<Root>,
         role: StableRoleId,
         future: TemplateFutureKind,
+    },
+    #[error(
+        "template value under {constructor:?} contains unresolved {future:?} output; expected {expected:?}"
+    )]
+    FutureOutputUnresolved {
+        constructor: EncodedConstructorId<Root>,
+        future: TemplateFuture,
+        expected: TemplateFutureOutput<Root>,
     },
     #[error(
         "template sequence role {role:?} under {constructor:?} has {found} items; expected {minimum}..{maximum:?}"

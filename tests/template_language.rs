@@ -2,8 +2,7 @@
 
 use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
-    AuthoredBindingIdentity, AuthoredTransformerIdentity, NameTransform, TemplateFieldValue,
-    TemplateFuture, TemplateFutureKind, TemplateLandingShape, TemplateLanguage, TemplateTerm,
+    TemplateFieldValue, TemplateFutureOutput, TemplateLandingShape, TemplateLanguage, TemplateTerm,
     TemplateValue, TemplateValueError,
 };
 use encoded_name_table::LocalEncodedId;
@@ -40,14 +39,6 @@ fn logos() -> LogosLanguage {
         },
     )
     .expect("source grammar and landing declarations agree")
-}
-
-fn binding() -> AuthoredBindingIdentity {
-    AuthoredBindingIdentity::try_new(encoded(&[30, 1])).expect("Universal binding")
-}
-
-fn transformer() -> AuthoredTransformerIdentity {
-    AuthoredTransformerIdentity::try_new(encoded(&[30, 2])).expect("Universal transformer")
 }
 
 fn generic_value(
@@ -90,14 +81,20 @@ fn generic_term(
             | LandingShape::Type(_)
             | LandingShape::Sequence { .. },
         ) => panic!("derivation never leaves a term-producing landing fixed"),
-        TemplateLandingShape::ValueOrFuture { future, .. } => TemplateTerm::Future(match future {
-            TemplateFutureKind::Realize => TemplateFuture::Realize {
-                binding: binding(),
-                transform: NameTransform::Identity,
-            },
-            TemplateFutureKind::Invoke => TemplateFuture::Invoke(transformer()),
-            TemplateFutureKind::Splice => TemplateFuture::Splice { binding: binding() },
-        }),
+        TemplateLandingShape::ValueOrFuture { value, .. } => match value {
+            LandingShape::Declaration => TemplateTerm::Declaration(encoded(&[30, 1])),
+            LandingShape::Reference => TemplateTerm::Reference(encoded(&[30, 2])),
+            LandingShape::Type(target) => {
+                let constructor = language
+                    .type_declaration(target)
+                    .and_then(|declaration| declaration.constructors().first())
+                    .expect("recursively addressed nested constructor");
+                TemplateTerm::Nested(Box::new(generic_value(constructor.constructor(), language)))
+            }
+            LandingShape::Literal(_) | LandingShape::Scalar(_) | LandingShape::Sequence { .. } => {
+                panic!("value-or-future carries a single term-producing landing")
+            }
+        },
         TemplateLandingShape::Nested(target) => {
             let constructor = language
                 .type_declaration(target)
@@ -139,20 +136,23 @@ fn three_roots_use_one_derivation_and_one_runtime_value_algebra() {
 }
 
 #[test]
-fn computed_sequence_positions_admit_invocation_and_splicing() {
+fn computed_roots_publish_generic_fragment_outputs() {
     let logos = logos();
-    let template =
+    let attributes =
         TemplateLanguage::derive(logos.grammar(), logos.landing(), logos.attributes_type())
             .expect("derive attributes template");
-    assert!(
-        template
-            .addressed_types()
-            .iter()
-            .flat_map(|declaration| declaration.constructors())
-            .flat_map(|constructor| constructor.landing_fields())
-            .map(|field| field.shape())
-            .any(|shape| shape.admits(TemplateFutureKind::Invoke)
-                && shape.admits(TemplateFutureKind::Splice))
+    let newtype = TemplateLanguage::derive(logos.grammar(), logos.landing(), logos.newtype_type())
+        .expect("derive newtype template");
+    assert!(matches!(
+        attributes
+            .root_output()
+            .expect("transparent sequence output")
+            .landing(),
+        LandingShape::Sequence { .. }
+    ));
+    assert_eq!(
+        newtype.root_output().expect("addressed value output"),
+        TemplateFutureOutput::new(LandingShape::Type(logos.newtype_type().clone()))
     );
 }
 

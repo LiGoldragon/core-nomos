@@ -64,7 +64,7 @@ pub mod template_language;
 pub use authored::{
     AuthoredBindingIdentity, AuthoredIdentityPosition, AuthoredInputParameter,
     AuthoredInputSignature, AuthoredNomosError, AuthoredTransformerDeclaration,
-    AuthoredTransformerIdentity,
+    AuthoredTransformerIdentity, AuthoredTransformerSet,
 };
 pub use capsule::capsule_from_issued_hash;
 pub use definition::MacroDefinition;
@@ -86,6 +86,7 @@ pub use template::{
 pub use template_language::{
     LogosTemplateLanguage, TemplateConstructorDeclaration, TemplateFieldDeclaration,
     TemplateFieldValue, TemplateFormDeclaration, TemplateFuture, TemplateFutureKind,
-    TemplateLandingField, TemplateLandingShape, TemplateLanguage, TemplateLanguageError,
-    TemplateTerm, TemplateTypeDeclaration, TemplateValue, TemplateValueError,
+    TemplateFutureOutput, TemplateFutureRequirement, TemplateLandingField, TemplateLandingShape,
+    TemplateLanguage, TemplateLanguageError, TemplateTerm, TemplateTypeDeclaration, TemplateValue,
+    TemplateValueError,
 };

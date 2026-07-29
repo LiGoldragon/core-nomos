@@ -5,10 +5,11 @@ use core_nomos::{
     AuthoredBindingIdentity, AuthoredIdentityPosition, AuthoredInputParameter,
     AuthoredInputSignature, AuthoredNomosError, AuthoredTransformerDeclaration,
     AuthoredTransformerIdentity, MacroKind, MetaType, TemplateFieldValue, TemplateFuture,
-    TemplateLanguage, TemplateTerm, TemplateValue,
+    TemplateFutureOutput, TemplateLanguage, TemplateTerm, TemplateValue,
 };
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
+use structural_codec::LandingShape;
 
 fn encoded(root: VocabularyRoot, chain: &[u16]) -> VocabularyEncodedId {
     VocabularyEncodedId::new(
@@ -150,8 +151,16 @@ fn authored_identity_and_duplicate_binding_failures_remain_typed() {
     let repeated = binding(&[40, 8, 1]);
     assert_eq!(
         AuthoredInputSignature::try_new(vec![
-            AuthoredInputParameter::new(repeated.clone(), MetaType::Name),
-            AuthoredInputParameter::new(repeated.clone(), MetaType::Type),
+            AuthoredInputParameter::new(
+                repeated.clone(),
+                MetaType::Name,
+                TemplateFutureOutput::new(LandingShape::Declaration),
+            ),
+            AuthoredInputParameter::new(
+                repeated.clone(),
+                MetaType::Type,
+                TemplateFutureOutput::new(LandingShape::Reference),
+            ),
         ]),
         Err(AuthoredNomosError::DuplicateBinding {
             binding: repeated.encoded_id().clone(),
