@@ -1,0 +1,512 @@
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
+use core_nomos::{
+    LoadedNomosDocument, MetaType, NomosLoadError, NomosModulePath, TemplateFutureOutput,
+    TemplateLandingShape, TemplateLanguage, TextualNomos, TextualNomosMetaType,
+    TextualNomosTypeIds, TextualNomosWords,
+};
+use encoded_name_table::{LocalEncodedId, Name, OperationKey};
+use sema_translator::{DispatchOutcome, Runtime, StaticAuthorizationPolicy};
+use signal_sema_translator::{
+    AuthorityCapability, AuthorityOperation, AuthorityReply, AuthorityRequest, AuthorityRole,
+    AuthorizationClaim, CommittedReceipt, DatabaseMarker, NoWriteFailure, PrincipalId,
+    ReadOperation, Rename, RenameCommitReceipt, SealCommitReceipt, VocabularyEncodedId,
+    VocabularyRoot, VocabularyTableAddress, WritePrecondition,
+};
+use structural_codec::{EncodedNameResolver, LandingShape};
+
+const PRINCIPAL: PrincipalId = PrincipalId::new([23; 32]);
+const SOURCE: &str = r#"{1}
+[]
+[]
+{
+WireAttributes.Named {
+()
+[]
+}
+WireNewtype.Structural.Newtype {
+(name.Name wrapped.Type)
+Public Invoke.WireAttributes Realize.name Private Realize.wrapped
+}
+}
+{}
+{}"#;
+
+fn encoded(chain: &[u16]) -> VocabularyEncodedId {
+    VocabularyEncodedId::new(
+        VocabularyRoot::Universal,
+        chain.iter().copied().map(LocalEncodedId::new).collect(),
+    )
+    .expect("fixture identity is non-empty")
+}
+
+fn logos() -> LogosLanguage {
+    LogosLanguage::seal(
+        LogosLanguageTypeIds {
+            newtype: encoded(&[1]),
+            enumeration: encoded(&[2]),
+            visibility: encoded(&[3]),
+            attributes: encoded(&[4]),
+            attribute: encoded(&[5]),
+            path: encoded(&[6]),
+            configuration_predicate: encoded(&[7]),
+            derive_group: encoded(&[8]),
+            generics: encoded(&[9]),
+            generic_parameter: encoded(&[10]),
+            type_reference: encoded(&[11]),
+            variant: encoded(&[12]),
+        },
+        LogosLanguageWords {
+            public: encoded(&[20]),
+            private: encoded(&[21]),
+        },
+    )
+    .expect("canonical Logos grammar and landing declarations agree")
+}
+
+fn literal_landing(shape: &TemplateLandingShape<VocabularyRoot>) -> LandingShape<VocabularyRoot> {
+    match shape {
+        TemplateLandingShape::Fixed(landing)
+        | TemplateLandingShape::ValueOrFuture { value: landing, .. } => landing.clone(),
+        TemplateLandingShape::Nested(target) => LandingShape::Type(target.clone()),
+        TemplateLandingShape::Sequence {
+            minimum,
+            maximum,
+            element,
+            ..
+        } => LandingShape::sequence(*minimum, *maximum, literal_landing(element)),
+    }
+}
+
+fn textual(logos: &LogosLanguage) -> TextualNomos {
+    let newtype = TemplateLanguage::derive(logos.grammar(), logos.landing(), logos.newtype_type())
+        .expect("newtype Template(Logos)");
+    let constructor = newtype
+        .type_declaration(newtype.root())
+        .and_then(|declaration| declaration.constructors().first())
+        .expect("fixture newtype constructor");
+    let field_output = |index: usize| {
+        let shape = constructor
+            .landing_fields()
+            .get(index)
+            .expect("fixture landing field")
+            .shape();
+        TemplateFutureOutput::new(literal_landing(shape))
+    };
+
+    TextualNomos::seal(
+        logos,
+        TextualNomosTypeIds {
+            document: encoded(&[100, 1]),
+            revision: encoded(&[100, 2]),
+            empty_braces: encoded(&[100, 3]),
+            empty_square: encoded(&[100, 4]),
+            transformers: encoded(&[100, 5]),
+            transformer: encoded(&[100, 6]),
+            input_signature: encoded(&[100, 7]),
+            input_parameter: encoded(&[100, 8]),
+            newtype_body: encoded(&[100, 9]),
+            enumeration_body: encoded(&[100, 10]),
+            attributes_body: encoded(&[100, 11]),
+        },
+        TextualNomosWords {
+            named: encoded(&[101, 1]),
+            structural: encoded(&[101, 2]),
+            newtype: encoded(&[101, 3]),
+            enumeration: encoded(&[101, 4]),
+            realize: encoded(&[101, 5]),
+            splice: encoded(&[101, 6]),
+            invoke: encoded(&[101, 7]),
+        },
+        vec![
+            TextualNomosMetaType {
+                word: encoded(&[102, 1]),
+                meta: MetaType::Name,
+                output: field_output(2),
+            },
+            TextualNomosMetaType {
+                word: encoded(&[102, 2]),
+                meta: MetaType::Type,
+                output: field_output(4),
+            },
+        ],
+    )
+    .expect("TextualNomos table seals")
+}
+
+struct FixedNames(BTreeMap<VocabularyEncodedId, Name>);
+
+impl FixedNames {
+    fn new() -> Self {
+        Self(
+            [
+                (encoded(&[20]), "Public"),
+                (encoded(&[21]), "Private"),
+                (encoded(&[101, 1]), "Named"),
+                (encoded(&[101, 2]), "Structural"),
+                (encoded(&[101, 3]), "Newtype"),
+                (encoded(&[101, 4]), "Enumeration"),
+                (encoded(&[101, 5]), "Realize"),
+                (encoded(&[101, 6]), "Splice"),
+                (encoded(&[101, 7]), "Invoke"),
+                (encoded(&[102, 1]), "Name"),
+                (encoded(&[102, 2]), "Type"),
+            ]
+            .into_iter()
+            .map(|(identity, spelling)| (identity, Name::new(spelling)))
+            .collect(),
+        )
+    }
+}
+
+impl EncodedNameResolver<VocabularyRoot> for FixedNames {
+    fn resolve(&self, encoded_id: &VocabularyEncodedId) -> Option<&Name> {
+        self.0.get(encoded_id)
+    }
+}
+
+fn operation_key(value: u8) -> [u8; 32] {
+    [value; 32]
+}
+
+fn authorization(operation: &AuthorityOperation) -> AuthorizationClaim {
+    let (role, capability) = match operation {
+        AuthorityOperation::SealUniversal(_) => (
+            AuthorityRole::UniversalAuthor,
+            AuthorityCapability::SealUniversal,
+        ),
+        AuthorityOperation::Rename(_) => (
+            AuthorityRole::UniversalMaintainer,
+            AuthorityCapability::Rename,
+        ),
+        AuthorityOperation::Read(_) => (AuthorityRole::Reader, AuthorityCapability::Read),
+        AuthorityOperation::PublishRustVocabulary(_) => (
+            AuthorityRole::RustVocabularyPublisher,
+            AuthorityCapability::PublishRustVocabulary,
+        ),
+    };
+    AuthorizationClaim {
+        principal: PRINCIPAL,
+        role,
+        capability,
+    }
+}
+
+async fn request(runtime: &Runtime, operation: AuthorityOperation) -> DispatchOutcome {
+    runtime
+        .request(
+            PRINCIPAL,
+            AuthorityRequest {
+                authorization: authorization(&operation),
+                operation,
+            },
+        )
+        .await
+        .expect("authority request reaches the sole writer")
+}
+
+async fn current(runtime: &Runtime) -> DatabaseMarker {
+    match request(runtime, AuthorityOperation::Read(ReadOperation::Current))
+        .await
+        .reply
+    {
+        AuthorityReply::Current(current) => current.database_marker,
+        other => panic!("expected current authority, got {other:?}"),
+    }
+}
+
+async fn current_snapshot(
+    runtime: &Runtime,
+    address: VocabularyTableAddress,
+) -> signal_sema_translator::ObservedSnapshot {
+    match request(
+        runtime,
+        AuthorityOperation::Read(ReadOperation::CurrentSnapshot { address }),
+    )
+    .await
+    .reply
+    {
+        AuthorityReply::Snapshot(snapshot) => snapshot,
+        other => panic!("expected current table snapshot, got {other:?}"),
+    }
+}
+
+fn expected(marker: DatabaseMarker) -> WritePrecondition {
+    WritePrecondition {
+        database_marker: marker,
+        table_generations: Vec::new(),
+    }
+}
+
+async fn submit_plan(
+    runtime: &Runtime,
+    planned: &core_nomos::PlannedNomosLoad<'_>,
+) -> DispatchOutcome {
+    request(
+        runtime,
+        AuthorityOperation::SealUniversal(planned.request().clone()),
+    )
+    .await
+}
+
+fn seal_receipt(outcome: &DispatchOutcome) -> &SealCommitReceipt {
+    match &outcome.reply {
+        AuthorityReply::Committed(CommittedReceipt::SealUniversal(receipt)) => receipt,
+        other => panic!("expected committed Nomos allocation, got {other:?}"),
+    }
+}
+
+fn resolved_id(
+    receipt: &SealCommitReceipt,
+    modules: &[&str],
+    spelling: &str,
+) -> VocabularyEncodedId {
+    receipt
+        .name_table
+        .declarations()
+        .iter()
+        .find(|resolved| {
+            resolved.path().spelling().as_str() == spelling
+                && resolved
+                    .path()
+                    .table()
+                    .modules()
+                    .iter()
+                    .map(Name::as_str)
+                    .eq(modules.iter().copied())
+        })
+        .unwrap_or_else(|| panic!("missing declaration {modules:?}/{spelling}"))
+        .encoded_id()
+        .clone()
+}
+
+fn transformer_id(loaded: &LoadedNomosDocument, spelling: &str) -> VocabularyEncodedId {
+    loaded
+        .transformers()
+        .declarations()
+        .iter()
+        .find(|declaration| {
+            loaded.names().spelling(declaration.name().encoded_id()) == Some(spelling)
+        })
+        .expect("loaded transformer spelling")
+        .name()
+        .encoded_id()
+        .clone()
+}
+
+async fn open_runtime(directory: &tempfile::TempDir) -> Runtime {
+    Runtime::open(
+        &directory.path().join("nomos-authority.sema"),
+        Arc::new(StaticAuthorizationPolicy::new().grant_all(PRINCIPAL)),
+    )
+    .await
+    .expect("authority runtime opens")
+}
+
+#[tokio::test]
+async fn one_seal_allocates_nested_nomos_chains_and_materializes_only_from_its_receipt() {
+    let directory = tempfile::tempdir().expect("temporary authority directory");
+    let runtime = open_runtime(&directory).await;
+    let logos = logos();
+    let textual = textual(&logos);
+    let fixed = FixedNames::new();
+    let planned = textual
+        .plan_load(
+            SOURCE,
+            &fixed,
+            NomosModulePath::try_from_spellings(["fixture"]).expect("module path"),
+            operation_key(1),
+            expected(current(&runtime).await),
+        )
+        .expect("allocation-free structural plan");
+
+    assert_eq!(planned.request().declarations.len(), 1);
+    assert_eq!(planned.request().references.len(), 3);
+    let outcome = submit_plan(&runtime, &planned).await;
+    let receipt = seal_receipt(&outcome);
+    let replay = submit_plan(&runtime, &planned).await;
+    assert_eq!(seal_receipt(&replay), receipt);
+    let loaded = textual
+        .complete_load(&planned, receipt, &fixed)
+        .expect("receipt-backed immutable decode");
+
+    let module = resolved_id(receipt, &[], "fixture");
+    let attributes = resolved_id(receipt, &["fixture"], "WireAttributes");
+    let newtype = resolved_id(receipt, &["fixture"], "WireNewtype");
+    let name = resolved_id(receipt, &["fixture", "WireNewtype"], "name");
+    let wrapped = resolved_id(receipt, &["fixture", "WireNewtype"], "wrapped");
+    assert_eq!(module.chain().len(), 1);
+    assert_eq!(attributes.chain().len(), 2);
+    assert_eq!(newtype.chain().len(), 2);
+    assert_eq!(name.chain().len(), 3);
+    assert_eq!(wrapped.chain().len(), 3);
+    assert_eq!(name.chain()[..2], newtype.chain()[..]);
+    assert_eq!(wrapped.chain()[..2], newtype.chain()[..]);
+    assert_eq!(transformer_id(&loaded, "WireNewtype"), newtype);
+    let viewed = textual
+        .view(loaded.decoded(), loaded.names())
+        .expect("loaded sibling renders every encoded name");
+    assert!(viewed.contains("WireAttributes.Named"));
+    assert!(viewed.contains("WireNewtype.Structural.Newtype"));
+    assert!(viewed.contains("Invoke.WireAttributes"));
+    assert!(viewed.contains("Realize.wrapped"));
+    let archived =
+        rkyv::to_bytes::<rkyv::rancor::Error>(loaded.names()).expect("archive name sibling");
+    let restored = rkyv::from_bytes::<core_nomos::NomosNameTable, rkyv::rancor::Error>(&archived)
+        .expect("restore name sibling");
+    assert_eq!(restored, *loaded.names());
+
+    runtime.shutdown().await.expect("runtime shuts down");
+}
+
+#[tokio::test]
+async fn text_edit_remints_while_operational_rename_changes_only_the_name_sibling() {
+    let directory = tempfile::tempdir().expect("temporary authority directory");
+    let runtime = open_runtime(&directory).await;
+    let logos = logos();
+    let textual = textual(&logos);
+    let fixed = FixedNames::new();
+    let initial_plan = textual
+        .plan_load(
+            SOURCE,
+            &fixed,
+            NomosModulePath::try_from_spellings(["fixture"]).expect("module path"),
+            operation_key(2),
+            expected(current(&runtime).await),
+        )
+        .expect("initial plan");
+    let initial_outcome = submit_plan(&runtime, &initial_plan).await;
+    let initial_receipt = seal_receipt(&initial_outcome);
+    let mut initial = textual
+        .complete_load(&initial_plan, initial_receipt, &fixed)
+        .expect("initial load");
+    let initial_transformer = transformer_id(&initial, "WireNewtype");
+    let wrapped = resolved_id(initial_receipt, &["fixture", "WireNewtype"], "wrapped");
+    let content_before = initial.content_identity().expect("content identity");
+
+    let edited_source = SOURCE.replace("WireNewtype", "WireWrapped");
+    let edited_plan = textual
+        .plan_load(
+            &edited_source,
+            &fixed,
+            NomosModulePath::try_from_spellings(["fixture"]).expect("module path"),
+            operation_key(3),
+            expected(current(&runtime).await),
+        )
+        .expect("text-edit plan");
+    let edited_outcome = submit_plan(&runtime, &edited_plan).await;
+    let edited_receipt = seal_receipt(&edited_outcome);
+    let edited = textual
+        .complete_load(&edited_plan, edited_receipt, &fixed)
+        .expect("text-edit load");
+    let edited_transformer = transformer_id(&edited, "WireWrapped");
+    assert_ne!(initial_transformer, edited_transformer);
+    let owning_snapshot = current_snapshot(&runtime, initial_transformer.owning_table()).await;
+    assert!(
+        owning_snapshot
+            .snapshot
+            .entries()
+            .iter()
+            .any(|spelling| spelling.as_str() == "WireNewtype")
+    );
+    assert!(
+        owning_snapshot
+            .snapshot
+            .entries()
+            .iter()
+            .any(|spelling| spelling.as_str() == "WireWrapped")
+    );
+
+    let renamed = request(
+        &runtime,
+        AuthorityOperation::Rename(Rename {
+            operation_key: OperationKey::new(operation_key(4)),
+            expected: expected(current(&runtime).await),
+            target: wrapped.clone(),
+            new_spelling: Name::new("inner"),
+        }),
+    )
+    .await;
+    let rename_receipt: &RenameCommitReceipt = match &renamed.reply {
+        AuthorityReply::Committed(CommittedReceipt::Rename(receipt)) => receipt,
+        other => panic!("expected committed operational rename, got {other:?}"),
+    };
+    initial
+        .apply_rename(rename_receipt)
+        .expect("loaded sibling accepts the committed rename");
+    assert_eq!(initial.names().spelling(&wrapped), Some("inner"));
+    assert_eq!(
+        initial.content_identity().expect("content identity"),
+        content_before
+    );
+    let binding_after = initial
+        .transformers()
+        .declarations()
+        .iter()
+        .find(|declaration| declaration.name().encoded_id() == &initial_transformer)
+        .expect("initial transformer")
+        .input()
+        .parameters()
+        .iter()
+        .find(|parameter| parameter.binding().encoded_id() == &wrapped)
+        .expect("renamed binding");
+    assert_eq!(binding_after.binding().encoded_id(), &wrapped);
+
+    runtime.shutdown().await.expect("runtime shuts down");
+}
+
+#[tokio::test]
+async fn unresolved_lookup_and_wrong_receipt_refuse_without_a_loaded_document() {
+    let directory = tempfile::tempdir().expect("temporary authority directory");
+    let runtime = open_runtime(&directory).await;
+    let logos = logos();
+    let textual = textual(&logos);
+    let fixed = FixedNames::new();
+    let valid = textual
+        .plan_load(
+            SOURCE,
+            &fixed,
+            NomosModulePath::try_from_spellings(["fixture"]).expect("module path"),
+            operation_key(5),
+            expected(current(&runtime).await),
+        )
+        .expect("valid plan");
+    let valid_outcome = submit_plan(&runtime, &valid).await;
+    let valid_receipt = seal_receipt(&valid_outcome);
+
+    let wrong_receipt_plan = textual
+        .plan_load(
+            SOURCE,
+            &fixed,
+            NomosModulePath::try_from_spellings(["fixture"]).expect("module path"),
+            operation_key(6),
+            expected(current(&runtime).await),
+        )
+        .expect("second plan");
+    assert!(matches!(
+        textual.complete_load(&wrong_receipt_plan, valid_receipt, &fixed),
+        Err(NomosLoadError::ReceiptOperationKeyMismatch)
+    ));
+
+    let unresolved_source = SOURCE.replace("Invoke.WireAttributes", "Invoke.Missing");
+    let before = current(&runtime).await;
+    let unresolved = textual
+        .plan_load(
+            &unresolved_source,
+            &fixed,
+            NomosModulePath::try_from_spellings(["fixture"]).expect("module path"),
+            operation_key(7),
+            expected(before),
+        )
+        .expect("lookup-only reference remains allocation-free in the plan");
+    let refused = submit_plan(&runtime, &unresolved).await;
+    assert!(matches!(
+        refused.reply,
+        AuthorityReply::Rejected(NoWriteFailure::UnresolvedReference { .. })
+    ));
+    assert_eq!(current(&runtime).await, before);
+
+    runtime.shutdown().await.expect("runtime shuts down");
+}

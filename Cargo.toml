@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.18.0"
+version      = "0.19.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -16,6 +16,7 @@ path = "src/lib.rs"
 content-identity         = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "24b43bae5d9748b0e7f679c6ec9f85a643c4d36a" }
 capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "fdf2db1d5a9e8ea52d24d39a03833c3e6885c355" }
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
+encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "1343d0c405cdb6929552ea6b12c48739e73f35ab" }
 core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "700310a0778d164b151a8301cccb4f53bc6fbde1" }
 core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "13e600ec74532f3037850f5d9985c05905456a20" }
@@ -27,7 +28,9 @@ rkyv                     = { version = "0.8", default-features = false, features
 thiserror                = "2"
 
 [dev-dependencies]
-encoded-name-table = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
+sema-translator = { git = "https://github.com/LiGoldragon/sema-translator.git", rev = "7e9e85bb9d199f24b968bcd49a351e910469f5b5" }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [lints.rust]
 unsafe_code = "forbid"
