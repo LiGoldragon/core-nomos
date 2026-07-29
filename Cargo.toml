@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.19.0"
+version      = "0.20.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -18,17 +18,17 @@ capsule-content-identity = { package = "content-identity", git = "https://github
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
 encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "1343d0c405cdb6929552ea6b12c48739e73f35ab" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "700310a0778d164b151a8301cccb4f53bc6fbde1" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "13e600ec74532f3037850f5d9985c05905456a20" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "47c866f101c0e830ecff70451e92f7bdc0ade4e7" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "918869938402a099c3d8cd5d599b2488d0317c15" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "7290f65bbb5e7825ab2ca58340631d154d69d110" }
-signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "dd8e7b5656833f640e49c099ab3be6f09881f9c5" }
-textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "b96a474ee0ec6e7782c18f247d17f112b25ffbaa" }
-structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "6769015f5a040dd158f0a76b3962f31ee8e4f16e" }
+signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "51c02c4a7b6f67d9dad095f11986085d7d65785b" }
+textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "ed6665d50bae56f5e26a764a1fd2f4dc6231a251" }
+structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "1485c1f8edcb9c988492c6eb0378c10a3599d665" }
 rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror                = "2"
 
 [dev-dependencies]
-sema-translator = { git = "https://github.com/LiGoldragon/sema-translator.git", rev = "7e9e85bb9d199f24b968bcd49a351e910469f5b5" }
+sema-translator = { git = "https://github.com/LiGoldragon/sema-translator.git", rev = "6df830ab1ec9f315a5b50e40ffc393b48ea3d412" }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 

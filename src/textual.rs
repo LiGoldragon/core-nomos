@@ -18,8 +18,9 @@ use raw_discovery::{
     SealedTokenProfile, SourceBound, TriggerIdentifier, TriggerSet,
 };
 use signal_sema_translator::{
-    DeclarationNode, ReferencePath, RenameCommitReceipt, SealCommitReceipt, SealUniversal,
-    VocabularyEncodedId, VocabularyRoot, WritePrecondition,
+    AuthorityReply, AuthorityRequestDigest, CommittedReceipt, DatabaseMarker, DeclarationNode,
+    NoWriteFailure, ReferencePath, RenameCommitReceipt, SealUniversal, VocabularyEncodedId,
+    VocabularyRoot, WritePrecondition,
 };
 use structural_codec::{
     AcceptedDecodeForm, AddressedStructuralTable, AtomDescriptor, BorrowedFieldView,
@@ -347,6 +348,28 @@ pub enum NomosLoadError {
     MissingFixedSpelling { encoded_id: VocabularyEncodedId },
     #[error("authority receipt belongs to another operation key")]
     ReceiptOperationKeyMismatch,
+    #[error(
+        "Nomos materialization requires a durable SealUniversal receipt recovered from the naming authority"
+    )]
+    ReceiptNotDurableSeal,
+    #[error("the planned authority request cannot produce its canonical digest: {failure:?}")]
+    RequestDigestUnavailable { failure: NoWriteFailure },
+    #[error(
+        "durable authority receipt has the wrong canonical request digest (expected {expected:?}, found {found:?})"
+    )]
+    ReceiptRequestDigestMismatch {
+        expected: AuthorityRequestDigest,
+        found: AuthorityRequestDigest,
+    },
+    #[error("the planned database marker has no succeeding commit marker: {precondition:?}")]
+    ReceiptDatabaseMarkerExhausted { precondition: DatabaseMarker },
+    #[error(
+        "durable authority receipt has the wrong committed database marker (expected {expected:?}, found {found:?})"
+    )]
+    ReceiptDatabaseMarkerMismatch {
+        expected: DatabaseMarker,
+        found: DatabaseMarker,
+    },
     #[error(
         "authority receipt declaration paths do not match the plan (expected {expected}, found {found})"
     )]
@@ -1378,22 +1401,53 @@ impl TextualNomos {
         })
     }
 
-    /// Verify one committed authority receipt and materialize the planned load.
+    /// Verify one durable authority receipt and materialize the planned load.
     ///
-    /// Receipt validation completes before structural decode. The decoder then
-    /// consumes an immutable source-bound assignment snapshot; no authority
-    /// handle or mutation callback exists on this path.
+    /// The reply must be the `Receipt` response to a `CommittedReceipt` read
+    /// over the real local authority channel. The daemon validates its stored
+    /// receipt, committing transition, and authority state before serving that
+    /// read. This API makes no cryptographic authenticity claim for a Rust
+    /// value constructed outside that channel.
+    ///
+    /// Request, marker, and receipt-content validation completes before
+    /// structural decode. The decoder then consumes an immutable source-bound
+    /// assignment snapshot; no authority handle or mutation callback exists on
+    /// this path.
     pub fn complete_load<Resolver>(
         &self,
         planned: &PlannedNomosLoad<'_>,
-        receipt: &SealCommitReceipt,
+        authoritative_reply: &AuthorityReply,
         resolver: &Resolver,
     ) -> Result<LoadedNomosDocument, NomosLoadError>
     where
         Resolver: EncodedNameResolver<VocabularyRoot> + ?Sized,
     {
+        let AuthorityReply::Receipt(CommittedReceipt::SealUniversal(receipt)) = authoritative_reply
+        else {
+            return Err(NomosLoadError::ReceiptNotDurableSeal);
+        };
         if receipt.name_table.operation_key() != planned.request.operation_key {
             return Err(NomosLoadError::ReceiptOperationKeyMismatch);
+        }
+        let expected_digest = planned
+            .request
+            .canonical_request_digest()
+            .map_err(|failure| NomosLoadError::RequestDigestUnavailable { failure })?;
+        if receipt.request_digest != expected_digest {
+            return Err(NomosLoadError::ReceiptRequestDigestMismatch {
+                expected: expected_digest,
+                found: receipt.request_digest,
+            });
+        }
+        let precondition = planned.request.expected.database_marker;
+        let expected_marker = precondition
+            .checked_successor()
+            .ok_or(NomosLoadError::ReceiptDatabaseMarkerExhausted { precondition })?;
+        if receipt.database_marker != expected_marker {
+            return Err(NomosLoadError::ReceiptDatabaseMarkerMismatch {
+                expected: expected_marker,
+                found: receipt.database_marker,
+            });
         }
 
         let actual_declarations = receipt_paths(receipt.name_table.declarations())?;

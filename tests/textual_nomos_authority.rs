@@ -10,10 +10,10 @@ use core_nomos::{
 use encoded_name_table::{LocalEncodedId, Name, OperationKey};
 use sema_translator::{DispatchOutcome, Runtime, StaticAuthorizationPolicy};
 use signal_sema_translator::{
-    AuthorityCapability, AuthorityOperation, AuthorityReply, AuthorityRequest, AuthorityRole,
-    AuthorizationClaim, CommittedReceipt, DatabaseMarker, NoWriteFailure, PrincipalId,
-    ReadOperation, Rename, RenameCommitReceipt, SealCommitReceipt, VocabularyEncodedId,
-    VocabularyRoot, VocabularyTableAddress, WritePrecondition,
+    AuthorityCapability, AuthorityOperation, AuthorityReply, AuthorityRequest,
+    AuthorityRequestDigest, AuthorityRole, AuthorizationClaim, CommittedReceipt, DatabaseMarker,
+    NoWriteFailure, PrincipalId, ReadOperation, Rename, RenameCommitReceipt, SealCommitReceipt,
+    VocabularyEncodedId, VocabularyRoot, VocabularyTableAddress, WritePrecondition,
 };
 use structural_codec::{EncodedNameResolver, LandingShape};
 
@@ -251,10 +251,26 @@ async fn submit_plan(
     .await
 }
 
+async fn durable_receipt(runtime: &Runtime, operation_key: OperationKey) -> AuthorityReply {
+    request(
+        runtime,
+        AuthorityOperation::Read(ReadOperation::CommittedReceipt { operation_key }),
+    )
+    .await
+    .reply
+}
+
 fn seal_receipt(outcome: &DispatchOutcome) -> &SealCommitReceipt {
     match &outcome.reply {
         AuthorityReply::Committed(CommittedReceipt::SealUniversal(receipt)) => receipt,
         other => panic!("expected committed Nomos allocation, got {other:?}"),
+    }
+}
+
+fn recovered_seal_receipt(reply: &AuthorityReply) -> &SealCommitReceipt {
+    match reply {
+        AuthorityReply::Receipt(CommittedReceipt::SealUniversal(receipt)) => receipt,
+        other => panic!("expected recovered durable Nomos allocation, got {other:?}"),
     }
 }
 
@@ -328,9 +344,11 @@ async fn one_seal_allocates_nested_nomos_chains_and_materializes_only_from_its_r
     let receipt = seal_receipt(&outcome);
     let replay = submit_plan(&runtime, &planned).await;
     assert_eq!(seal_receipt(&replay), receipt);
+    let durable = durable_receipt(&runtime, planned.request().operation_key).await;
+    assert_eq!(recovered_seal_receipt(&durable), receipt);
     let loaded = textual
-        .complete_load(&planned, receipt, &fixed)
-        .expect("receipt-backed immutable decode");
+        .complete_load(&planned, &durable, &fixed)
+        .expect("durable receipt-backed immutable decode");
 
     let module = resolved_id(receipt, &[], "fixture");
     let attributes = resolved_id(receipt, &["fixture"], "WireAttributes");
@@ -359,6 +377,22 @@ async fn one_seal_allocates_nested_nomos_chains_and_materializes_only_from_its_r
     assert_eq!(restored, *loaded.names());
 
     runtime.shutdown().await.expect("runtime shuts down");
+    let runtime = open_runtime(&directory).await;
+    let recovered = durable_receipt(&runtime, planned.request().operation_key).await;
+    assert_eq!(recovered, durable);
+    let recovered_loaded = textual
+        .complete_load(&planned, &recovered, &fixed)
+        .expect("restart-recovered durable receipt materializes");
+    assert_eq!(
+        recovered_loaded
+            .content_identity()
+            .expect("content identity"),
+        loaded.content_identity().expect("content identity")
+    );
+    runtime
+        .shutdown()
+        .await
+        .expect("restarted runtime shuts down");
 }
 
 #[tokio::test]
@@ -379,8 +413,9 @@ async fn text_edit_remints_while_operational_rename_changes_only_the_name_siblin
         .expect("initial plan");
     let initial_outcome = submit_plan(&runtime, &initial_plan).await;
     let initial_receipt = seal_receipt(&initial_outcome);
+    let initial_durable = durable_receipt(&runtime, initial_plan.request().operation_key).await;
     let mut initial = textual
-        .complete_load(&initial_plan, initial_receipt, &fixed)
+        .complete_load(&initial_plan, &initial_durable, &fixed)
         .expect("initial load");
     let initial_transformer = transformer_id(&initial, "WireNewtype");
     let wrapped = resolved_id(initial_receipt, &["fixture", "WireNewtype"], "wrapped");
@@ -398,8 +433,10 @@ async fn text_edit_remints_while_operational_rename_changes_only_the_name_siblin
         .expect("text-edit plan");
     let edited_outcome = submit_plan(&runtime, &edited_plan).await;
     let edited_receipt = seal_receipt(&edited_outcome);
+    let edited_durable = durable_receipt(&runtime, edited_plan.request().operation_key).await;
+    assert_eq!(recovered_seal_receipt(&edited_durable), edited_receipt);
     let edited = textual
-        .complete_load(&edited_plan, edited_receipt, &fixed)
+        .complete_load(&edited_plan, &edited_durable, &fixed)
         .expect("text-edit load");
     let edited_transformer = transformer_id(&edited, "WireWrapped");
     assert_ne!(initial_transformer, edited_transformer);
@@ -475,6 +512,8 @@ async fn unresolved_lookup_and_wrong_receipt_refuse_without_a_loaded_document() 
         .expect("valid plan");
     let valid_outcome = submit_plan(&runtime, &valid).await;
     let valid_receipt = seal_receipt(&valid_outcome);
+    let valid_durable = durable_receipt(&runtime, valid.request().operation_key).await;
+    assert_eq!(recovered_seal_receipt(&valid_durable), valid_receipt);
 
     let wrong_receipt_plan = textual
         .plan_load(
@@ -486,7 +525,7 @@ async fn unresolved_lookup_and_wrong_receipt_refuse_without_a_loaded_document() 
         )
         .expect("second plan");
     assert!(matches!(
-        textual.complete_load(&wrong_receipt_plan, valid_receipt, &fixed),
+        textual.complete_load(&wrong_receipt_plan, &valid_durable, &fixed),
         Err(NomosLoadError::ReceiptOperationKeyMismatch)
     ));
 
@@ -508,5 +547,130 @@ async fn unresolved_lookup_and_wrong_receipt_refuse_without_a_loaded_document() 
     ));
     assert_eq!(current(&runtime).await, before);
 
+    runtime.shutdown().await.expect("runtime shuts down");
+}
+
+#[tokio::test]
+async fn materialization_refuses_non_durable_digest_marker_path_and_multiplicity_substitution() {
+    let directory = tempfile::tempdir().expect("temporary authority directory");
+    let runtime = open_runtime(&directory).await;
+    let logos = logos();
+    let textual = textual(&logos);
+    let fixed = FixedNames::new();
+    let planned = textual
+        .plan_load(
+            SOURCE,
+            &fixed,
+            NomosModulePath::try_from_spellings(["fixture"]).expect("module path"),
+            operation_key(8),
+            expected(current(&runtime).await),
+        )
+        .expect("valid plan");
+    let committed = submit_plan(&runtime, &planned).await;
+    assert!(matches!(
+        textual.complete_load(&planned, &committed.reply, &fixed),
+        Err(NomosLoadError::ReceiptNotDurableSeal)
+    ));
+    let durable = durable_receipt(&runtime, planned.request().operation_key).await;
+    textual
+        .complete_load(&planned, &durable, &fixed)
+        .expect("exact durable receipt succeeds");
+    let expected_digest = planned
+        .request()
+        .canonical_request_digest()
+        .expect("canonical plan digest");
+
+    let mut wrong_digest = durable.clone();
+    let AuthorityReply::Receipt(CommittedReceipt::SealUniversal(receipt)) = &mut wrong_digest
+    else {
+        unreachable!()
+    };
+    receipt.request_digest = AuthorityRequestDigest::new([0xD1; 32]);
+    assert!(matches!(
+        textual.complete_load(&planned, &wrong_digest, &fixed),
+        Err(NomosLoadError::ReceiptRequestDigestMismatch { expected, found })
+            if expected == expected_digest && found == AuthorityRequestDigest::new([0xD1; 32])
+    ));
+
+    let mut wrong_marker = durable.clone();
+    let AuthorityReply::Receipt(CommittedReceipt::SealUniversal(receipt)) = &mut wrong_marker
+    else {
+        unreachable!()
+    };
+    receipt.database_marker = receipt
+        .database_marker
+        .checked_successor()
+        .expect("fixture marker has a future successor");
+    assert!(matches!(
+        textual.complete_load(&planned, &wrong_marker, &fixed),
+        Err(NomosLoadError::ReceiptDatabaseMarkerMismatch { expected, found })
+            if expected == planned.request().expected.database_marker.checked_successor().unwrap()
+                && found == recovered_seal_receipt(&wrong_marker).database_marker
+    ));
+
+    let substituted_directory = tempfile::tempdir().expect("substituted authority directory");
+    let substituted_runtime = open_runtime(&substituted_directory).await;
+    let substituted_source = SOURCE.replace("WireAttributes", "WireDecorations");
+    let substituted_plan = textual
+        .plan_load(
+            &substituted_source,
+            &fixed,
+            NomosModulePath::try_from_spellings(["fixture"]).expect("module path"),
+            operation_key(8),
+            expected(current(&substituted_runtime).await),
+        )
+        .expect("substituted path plan");
+    submit_plan(&substituted_runtime, &substituted_plan).await;
+    let mut substituted = durable_receipt(
+        &substituted_runtime,
+        substituted_plan.request().operation_key,
+    )
+    .await;
+    let AuthorityReply::Receipt(CommittedReceipt::SealUniversal(receipt)) = &mut substituted else {
+        unreachable!()
+    };
+    receipt.request_digest = expected_digest;
+    assert!(matches!(
+        textual.complete_load(&planned, &substituted, &fixed),
+        Err(NomosLoadError::ReceiptDeclarationMismatch { .. })
+    ));
+
+    let duplicate_directory = tempfile::tempdir().expect("duplicate authority directory");
+    let duplicate_runtime = open_runtime(&duplicate_directory).await;
+    let mut duplicate_request = planned.request().clone();
+    duplicate_request
+        .references
+        .push(duplicate_request.references[0].clone());
+    let duplicate_operation_key = duplicate_request.operation_key;
+    let duplicate_outcome = request(
+        &duplicate_runtime,
+        AuthorityOperation::SealUniversal(duplicate_request),
+    )
+    .await;
+    assert!(matches!(
+        duplicate_outcome.reply,
+        AuthorityReply::Committed(CommittedReceipt::SealUniversal(_))
+    ));
+    let mut duplicate = durable_receipt(&duplicate_runtime, duplicate_operation_key).await;
+    let AuthorityReply::Receipt(CommittedReceipt::SealUniversal(receipt)) = &mut duplicate else {
+        unreachable!()
+    };
+    receipt.request_digest = expected_digest;
+    assert!(matches!(
+        textual.complete_load(&planned, &duplicate, &fixed),
+        Err(NomosLoadError::ReceiptReferenceMismatch {
+            expected: 3,
+            found: 4
+        })
+    ));
+
+    duplicate_runtime
+        .shutdown()
+        .await
+        .expect("duplicate runtime shuts down");
+    substituted_runtime
+        .shutdown()
+        .await
+        .expect("substituted runtime shuts down");
     runtime.shutdown().await.expect("runtime shuts down");
 }
