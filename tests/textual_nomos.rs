@@ -394,6 +394,24 @@ fn direct_typed_name_table_constructor_checks_identity_and_table_spelling_unique
         ])
         .is_err()
     );
+    assert!(
+        core_nomos::NomosNameTable::try_from_entries(vec![(
+            encoded_at(VocabularyRoot::Rust, &[220, 3]),
+            "Rust".into(),
+        )])
+        .is_err()
+    );
+    assert!(
+        core_nomos::NomosNameTable::try_from_entries(vec![(encoded(&[220, 4]), String::new(),)])
+            .is_err()
+    );
+    assert!(
+        core_nomos::NomosNameTable::try_from_entries(vec![
+            (encoded(&[221, 1]), "Shared".into()),
+            (encoded(&[222, 1]), "Shared".into()),
+        ])
+        .is_ok()
+    );
 }
 
 #[derive(Default)]
