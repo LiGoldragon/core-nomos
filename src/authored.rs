@@ -11,7 +11,8 @@ use thiserror::Error;
 
 use crate::{
     MacroKind, MetaType, TemplateFuture, TemplateFutureKind, TemplateFutureOutput,
-    TemplateFutureRequirement, TemplateLanguage, TemplateValue, TemplateValueError,
+    TemplateFutureRequirement, TemplateLanguage, TemplateRootOutput, TemplateValue,
+    TemplateValueError,
 };
 
 /// A durable identity position whose production root is fixed by the authored
@@ -212,7 +213,7 @@ pub struct AuthoredTransformerDeclaration(
     MacroKind,
     AuthoredInputSignature,
     TemplateValue<VocabularyRoot>,
-    TemplateFutureOutput<VocabularyRoot>,
+    TemplateRootOutput<VocabularyRoot>,
     Vec<TemplateFutureRequirement<VocabularyRoot>>,
 );
 
@@ -231,12 +232,11 @@ impl AuthoredTransformerDeclaration {
     ) -> Result<Self, AuthoredNomosError> {
         let requirements = language.analyze_value(&result)?;
         let invokes = resolve_binding_outputs(&input, requirements)?;
-        let output =
-            language
-                .root_output()
-                .map_err(|_| AuthoredNomosError::InvalidTemplateRoot {
-                    encoded_type: language.root().clone(),
-                })?;
+        let output = language.root_output_contract().map_err(|_| {
+            AuthoredNomosError::InvalidTemplateRoot {
+                encoded_type: language.root().clone(),
+            }
+        })?;
         Ok(Self(name, kind, input, result, output, invokes))
     }
 
@@ -257,6 +257,10 @@ impl AuthoredTransformerDeclaration {
     }
 
     pub const fn output(&self) -> &TemplateFutureOutput<VocabularyRoot> {
+        self.4.output()
+    }
+
+    pub const fn root_output(&self) -> &TemplateRootOutput<VocabularyRoot> {
         &self.4
     }
 
@@ -335,4 +339,64 @@ impl AuthoredTransformerSet {
     pub fn declarations(&self) -> &[AuthoredTransformerDeclaration] {
         &self.0
     }
+}
+
+#[cfg(test)]
+pub(crate) fn native_text_admission_package_for_test() -> AuthoredTransformerSet {
+    use encoded_name_table::LocalEncodedId;
+    use structural_codec::LandingShape;
+
+    use crate::{
+        TemplateRootOutput, TemplateRootOutputSelector,
+        template_language::nested_text_value_for_native_admission_test,
+    };
+
+    let value = nested_text_value_for_native_admission_test();
+    let name = VocabularyEncodedId::new(
+        VocabularyRoot::Universal,
+        vec![LocalEncodedId::new(31), LocalEncodedId::new(9)],
+    )
+    .expect("non-empty test transformer identity");
+    let output = TemplateRootOutput::for_native_admission_test(
+        TemplateRootOutputSelector::WholeValue,
+        TemplateFutureOutput::new(LandingShape::Type(value.constructor().type_id().clone())),
+    );
+    AuthoredTransformerSet(vec![AuthoredTransformerDeclaration(
+        AuthoredTransformerIdentity(name),
+        MacroKind::Named,
+        AuthoredInputSignature::unit(),
+        value,
+        output,
+        Vec::new(),
+    )])
+}
+
+#[cfg(test)]
+pub(crate) fn native_restore_validation_package_for_test() -> AuthoredTransformerSet {
+    use encoded_name_table::LocalEncodedId;
+    use structural_codec::LandingShape;
+
+    use crate::{
+        SectionDefault, TemplateRootOutput, TemplateRootOutputSelector,
+        template_language::restore_validation_value_for_native_test,
+    };
+
+    let value = restore_validation_value_for_native_test();
+    let name = VocabularyEncodedId::new(
+        VocabularyRoot::Universal,
+        vec![LocalEncodedId::new(31), LocalEncodedId::new(19)],
+    )
+    .expect("non-empty test transformer identity");
+    let output = TemplateRootOutput::for_native_admission_test(
+        TemplateRootOutputSelector::WholeValue,
+        TemplateFutureOutput::new(LandingShape::Type(value.constructor().type_id().clone())),
+    );
+    AuthoredTransformerSet(vec![AuthoredTransformerDeclaration(
+        AuthoredTransformerIdentity(name),
+        MacroKind::Structural(SectionDefault::Newtype),
+        AuthoredInputSignature::unit(),
+        value,
+        output,
+        Vec::new(),
+    )])
 }

@@ -3,9 +3,13 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use capsule_content_identity::PortableArchive;
 use core_ethos::{
     EncodedDeclaration, EncodedEnum, EncodedEthos, EncodedField, EncodedNewtype, EncodedReference,
-    EncodedStruct, EncodedType, EncodedVariant,
+    EncodedStruct, EncodedType, EncodedVariant, WholeEthos, WholeEthosAttributes,
+    WholeEthosEnumeration, WholeEthosItem, WholeEthosNewtype, WholeEthosTupleFields,
+    WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
+    WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
 };
 use core_logos::{
     Attribute, ConfigurationPredicate, DeriveGroup, Generics, LogosLanguage, LogosLanguageTypeIds,
@@ -15,13 +19,17 @@ use core_nomos::{
     AuthoredBindingIdentity, AuthoredInputParameter, AuthoredInputSignature, AuthoredNomosError,
     AuthoredTransformerDeclaration, AuthoredTransformerIdentity, AuthoredTransformerSet,
     BindingRef, Escape, FieldNameRule, GenerationClass, ItemTemplate, MacroKind, MacroPackage,
-    MetaType, NameTransform, ResultTemplate, Scalar, SectionDefault, Sequence, SequenceItem,
-    SpliceElement, TemplateFieldValue, TemplateFuture, TemplateFutureOutput, TemplateLandingShape,
-    TemplateLanguage, TemplateTerm, TemplateValue, TextualNomos, TextualNomosMetaType,
-    TextualNomosTypeIds, TextualNomosWords,
+    MetaType, NameTransform, NativeAuthoredEvaluator, NativeEvaluatedLogos, NativeEvaluatedTerm,
+    NativeLogosNameTree, NativeLogosPopulation, NativeNameTreeBoundary, NativeNameTreePlan,
+    NativeNameTreeRefusal, NativeReferenceMapping, NativeReferenceUniverse, ResultTemplate, Scalar,
+    SectionDefault, Sequence, SequenceItem, SpliceElement, TemplateFieldValue, TemplateFuture,
+    TemplateFutureOutput, TemplateLandingShape, TemplateLanguage, TemplateRootOutputSelector,
+    TemplateTerm, TemplateValue, TextualNomos, TextualNomosMetaType, TextualNomosTypeIds,
+    TextualNomosWords,
 };
 use encoded_name_table::{LocalEncodedId, Name};
 use name_table::{IdentifierNamespace, Name as LegacyName, NameTable};
+use protos::EncodedPopulation;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use structural_codec::{
     DeclarationAssignment, DecodeNameBindings, EncodedConstructorId, EncodedNameResolver,
@@ -66,11 +74,147 @@ Public Invoke.EnumerationAttributes Realize.name () [Splice.variants]
 {}"#;
 
 fn encoded(chain: &[u16]) -> VocabularyEncodedId {
+    encoded_at(VocabularyRoot::Universal, chain)
+}
+
+fn encoded_at(root: VocabularyRoot, chain: &[u16]) -> VocabularyEncodedId {
     VocabularyEncodedId::new(
-        VocabularyRoot::Universal,
+        root,
         chain.iter().copied().map(LocalEncodedId::new).collect(),
     )
     .expect("fixture identity is non-empty")
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FixtureCompleteNameTree;
+
+#[derive(Clone, Debug)]
+struct FixtureNameTreePlan;
+
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+struct FixtureLogosNameTree(usize);
+
+impl NativeNameTreeBoundary for FixtureCompleteNameTree {
+    type LogosNameTree = FixtureLogosNameTree;
+    type Plan = FixtureNameTreePlan;
+
+    fn authenticated_plan(&self) -> Result<Self::Plan, NativeNameTreeRefusal> {
+        Ok(FixtureNameTreePlan)
+    }
+}
+
+impl NativeNameTreePlan for FixtureNameTreePlan {
+    type LogosNameTree = FixtureLogosNameTree;
+
+    fn realize_declaration(
+        &self,
+        source: &VocabularyEncodedId,
+        transform: NameTransform,
+    ) -> Result<VocabularyEncodedId, NativeNameTreeRefusal> {
+        if transform == NameTransform::Identity {
+            return Ok(source.clone());
+        }
+        let suffix = match transform {
+            NameTransform::Identity => unreachable!(),
+            NameTransform::FieldName => 1,
+            NameTransform::Screaming => 2,
+            NameTransform::PascalCase => 3,
+        };
+        let mut chain = source.chain().to_vec();
+        chain.push(LocalEncodedId::new(suffix));
+        VocabularyEncodedId::new(*source.root_variant(), chain).map_err(|_| {
+            NativeNameTreeRefusal::CannotRealize {
+                identity: source.clone(),
+                transform,
+            }
+        })
+    }
+
+    fn logos_name_tree(
+        &self,
+        evaluated: &NativeEvaluatedLogos,
+    ) -> Result<Self::LogosNameTree, NativeNameTreeRefusal> {
+        Ok(FixtureLogosNameTree(evaluated.values().len()))
+    }
+}
+
+impl NativeLogosNameTree for FixtureLogosNameTree {
+    fn validate_for(&self, evaluated: &NativeEvaluatedLogos) -> Result<(), NativeNameTreeRefusal> {
+        if self.0 == evaluated.values().len() {
+            Ok(())
+        } else {
+            Err(NativeNameTreeRefusal::CannotConstructLogosTree)
+        }
+    }
+}
+
+fn collect_template_references(
+    value: &TemplateValue<VocabularyRoot>,
+    references: &mut Vec<VocabularyEncodedId>,
+) {
+    for field in value.fields() {
+        match field.term() {
+            TemplateTerm::Reference(identity) => references.push(identity.clone()),
+            TemplateTerm::Nested(value) => collect_template_references(value, references),
+            TemplateTerm::Sequence(items) => {
+                for item in items {
+                    collect_template_term_references(item, references);
+                }
+            }
+            TemplateTerm::Declaration(_)
+            | TemplateTerm::Literal(_)
+            | TemplateTerm::Scalar(_)
+            | TemplateTerm::Future(_) => {}
+        }
+    }
+}
+
+fn collect_template_term_references(
+    term: &TemplateTerm<VocabularyRoot>,
+    references: &mut Vec<VocabularyEncodedId>,
+) {
+    match term {
+        TemplateTerm::Reference(identity) => references.push(identity.clone()),
+        TemplateTerm::Nested(value) => collect_template_references(value, references),
+        TemplateTerm::Sequence(items) => {
+            for item in items {
+                collect_template_term_references(item, references);
+            }
+        }
+        TemplateTerm::Declaration(_)
+        | TemplateTerm::Literal(_)
+        | TemplateTerm::Scalar(_)
+        | TemplateTerm::Future(_) => {}
+    }
+}
+
+fn collect_native_references(
+    value: &core_nomos::NativeEvaluatedValue,
+    references: &mut Vec<VocabularyEncodedId>,
+) {
+    for field in value.fields() {
+        collect_native_term_references(field.term(), references);
+    }
+}
+
+fn collect_native_term_references(
+    term: &NativeEvaluatedTerm,
+    references: &mut Vec<VocabularyEncodedId>,
+) {
+    match term {
+        NativeEvaluatedTerm::Reference(identity) => references.push(identity.clone()),
+        NativeEvaluatedTerm::Nested(value) => collect_native_references(value, references),
+        NativeEvaluatedTerm::Sequence(items) => {
+            for item in items {
+                collect_native_term_references(item, references);
+            }
+        }
+        NativeEvaluatedTerm::Declaration(_)
+        | NativeEvaluatedTerm::Literal(_)
+        | NativeEvaluatedTerm::Scalar(_)
+        | NativeEvaluatedTerm::TypeReference(_)
+        | NativeEvaluatedTerm::Variant(_) => {}
+    }
 }
 
 fn transformer_chain(spelling: &str) -> Option<&'static [u16]> {
@@ -1744,6 +1888,326 @@ fn structural_proof_admits_a_legacy_evaluator_sanity_on_a_shared_corpus() {
             .collect::<Vec<_>>()
     };
     assert_eq!(project(&expected), project(&found));
+}
+
+#[test]
+fn native_evaluator_substitutes_authored_futures_over_complete_populations() {
+    let logos = logos();
+    let assigned = bindings(SOURCE);
+    let legacy = MacroPackage::wire_fixture().expect("independent authoring oracle");
+    let adapter = FixtureAdapter::new(&legacy, &assigned, &logos);
+    let authored = adapter
+        .authored_set()
+        .expect("five-transformer authored set");
+
+    assert!(matches!(
+        authored.declarations()[0].root_output().selector(),
+        TemplateRootOutputSelector::Field(_)
+    ));
+    assert!(matches!(
+        authored.declarations()[2].root_output().selector(),
+        TemplateRootOutputSelector::WholeValue
+    ));
+    let authored_bytes = authored
+        .to_archive_bytes()
+        .expect("archive selector-bearing authored set");
+    let restored = AuthoredTransformerSet::from_archive_bytes(&authored_bytes)
+        .expect("restore selector-bearing authored set");
+    assert_eq!(restored, authored);
+
+    let integer = encoded(&[200, 1]);
+    let vector = encoded(&[200, 2]);
+    let rust_integer = encoded_at(VocabularyRoot::Rust, &[20, 1]);
+    let rust_vector = encoded_at(VocabularyRoot::Rust, &[20, 2]);
+    let mut authored_references = Vec::new();
+    collect_template_references(
+        authored.declarations()[0].result(),
+        &mut authored_references,
+    );
+    let fixed_source = authored_references[0].clone();
+    let unlisted_source = authored_references
+        .iter()
+        .find(|identity| **identity != fixed_source)
+        .expect("attribute corpus has multiple exact references")
+        .clone();
+    let fixed_target = encoded_at(VocabularyRoot::Rust, &[20, 3]);
+    let references = NativeReferenceUniverse::try_new(vec![
+        NativeReferenceMapping::try_new(integer.clone(), rust_integer.clone())
+            .expect("Universal-to-Rust integer mapping"),
+        NativeReferenceMapping::try_new(vector.clone(), rust_vector.clone())
+            .expect("Universal-to-Rust vector mapping"),
+        NativeReferenceMapping::try_new(fixed_source.clone(), fixed_target.clone())
+            .expect("authored fixed reference mapping"),
+    ])
+    .expect("distinct complete mapping sources");
+    let evaluator = NativeAuthoredEvaluator::try_new(&restored, references.clone())
+        .expect("admit native package");
+
+    let input_newtype = WholeEthosItem::Newtype(WholeEthosNewtype::new(
+        encoded(&[300, 1]),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        WholeEthosWrappedField::new(
+            WholeEthosVisibility::Public,
+            WholeEthosTypeReference::Application(WholeEthosTypeApplication::new(
+                vector,
+                WholeEthosTypeReference::Identity(integer.clone()),
+            )),
+        ),
+    ));
+    let input_enumeration = WholeEthosItem::Enumeration(WholeEthosEnumeration::new(
+        encoded(&[300, 2]),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        vec![
+            WholeEthosVariant::new(
+                encoded(&[300, 2, 1]),
+                WholeEthosAttributes::empty(),
+                WholeEthosVariantPayload::Unit,
+            ),
+            WholeEthosVariant::new(
+                encoded(&[300, 2, 2]),
+                WholeEthosAttributes::empty(),
+                WholeEthosVariantPayload::Tuple(
+                    WholeEthosTupleFields::new(vec![WholeEthosTypeReference::Identity(integer)])
+                        .expect("non-empty tuple"),
+                ),
+            ),
+        ],
+    ));
+    let input = EncodedPopulation::new(
+        WholeEthos::new(vec![input_newtype, input_enumeration]),
+        FixtureCompleteNameTree,
+    );
+    let transformed = evaluator.transform(&input).expect("native transform");
+
+    assert_eq!(
+        transformed.population().name_tree(),
+        &FixtureLogosNameTree(2)
+    );
+    let values = transformed.population().encoded_form().values();
+    assert_eq!(values.len(), 2);
+    let mut evaluated_references = Vec::new();
+    collect_native_references(&values[0], &mut evaluated_references);
+    assert!(evaluated_references.contains(&fixed_target));
+    assert!(!evaluated_references.contains(&fixed_source));
+    assert!(evaluated_references.contains(&unlisted_source));
+    assert!(matches!(
+        values[0].fields()[2].term(),
+        NativeEvaluatedTerm::Declaration(identity)
+            if identity == &encoded(&[300, 1])
+                && identity.root_variant() == &VocabularyRoot::Universal
+    ));
+
+    let NativeEvaluatedTerm::Sequence(attributes) = values[0].fields()[1].term() else {
+        panic!("invoked attributes land as their actual sequence")
+    };
+    assert_eq!(attributes.len(), 3);
+    assert!(
+        attributes
+            .iter()
+            .all(|attribute| matches!(attribute, NativeEvaluatedTerm::Nested(_)))
+    );
+
+    let [whole_newtype, whole_enumeration] = transformed.whole_projection().items() else {
+        panic!("bounded projection retains source item order")
+    };
+    let core_logos::WholeLogosItem::Newtype(whole_newtype) = whole_newtype else {
+        panic!("first projection is a newtype")
+    };
+    assert_eq!(
+        whole_newtype.visibility(),
+        &core_logos::WholeLogosVisibility::Public
+    );
+    assert_eq!(
+        whole_newtype.wrapped_visibility(),
+        &core_logos::WholeLogosVisibility::Private
+    );
+    let core_logos::WholeLogosTypeReference::Application(application) = whole_newtype.wrapped()
+    else {
+        panic!("recursive mapped application")
+    };
+    assert_eq!(application.head(), &rust_vector);
+    assert_eq!(
+        application.payload(),
+        &core_logos::WholeLogosTypeReference::Identity(rust_integer.clone())
+    );
+
+    let core_logos::WholeLogosItem::Enumeration(whole_enumeration) = whole_enumeration else {
+        panic!("second projection is an enumeration")
+    };
+    assert_eq!(
+        whole_enumeration.visibility(),
+        &core_logos::WholeLogosVisibility::Public
+    );
+    let core_logos::WholeLogosVariantPayload::Tuple(tuple) =
+        whole_enumeration.variants()[1].payload()
+    else {
+        panic!("tuple variant is retained")
+    };
+    assert_eq!(
+        tuple.fields(),
+        &[core_logos::WholeLogosTypeReference::Identity(rust_integer)]
+    );
+
+    // Authored visibility literals are authoritative even where po2.5's
+    // SliceOne reference preserved the input visibility.
+    // `[to-be-reviewed-by-psyche]`
+    assert_ne!(
+        transformed.whole_projection(),
+        &core_nomos::SliceOneTransformation::new().lower(input.encoded_form())
+    );
+
+    let visibility_changed_input = EncodedPopulation::new(
+        WholeEthos::new(vec![WholeEthosItem::Newtype(WholeEthosNewtype::new(
+            encoded(&[300, 1]),
+            WholeEthosVisibility::Public,
+            WholeEthosAttributes::empty(),
+            WholeEthosWrappedField::new(
+                WholeEthosVisibility::Private,
+                WholeEthosTypeReference::Application(WholeEthosTypeApplication::new(
+                    encoded(&[200, 2]),
+                    WholeEthosTypeReference::Identity(encoded(&[200, 1])),
+                )),
+            ),
+        ))]),
+        FixtureCompleteNameTree,
+    );
+    let visibility_changed = evaluator
+        .transform(&visibility_changed_input)
+        .expect("input visibility remains outside the authored signature");
+    let core_logos::WholeLogosItem::Newtype(visibility_unchanged) =
+        &visibility_changed.whole_projection().items()[0]
+    else {
+        panic!("visibility witness remains a newtype")
+    };
+    assert_eq!(visibility_unchanged, whole_newtype);
+
+    let original_newtype = &restored.declarations()[2];
+    let mut changed_fields = original_newtype.result().fields().to_vec();
+    changed_fields[0] = TemplateFieldValue::new(
+        changed_fields[0].role(),
+        TemplateTerm::Nested(Box::new(
+            adapter
+                .visibility(
+                    "WireNewtype",
+                    "newtype.visibility",
+                    core_logos::Visibility::Private,
+                )
+                .expect("private visibility value"),
+        )),
+    );
+    let changed_result = TemplateValue::try_new(
+        original_newtype.result().constructor().clone(),
+        changed_fields,
+    )
+    .expect("stable roles remain distinct");
+    let changed_newtype = AuthoredTransformerDeclaration::try_new(
+        original_newtype.name().clone(),
+        original_newtype.kind(),
+        original_newtype.input().clone(),
+        changed_result,
+        &adapter.newtype,
+    )
+    .expect("authored visibility mutation remains well typed");
+    let changed_package = replace_declaration(&restored, 2, changed_newtype);
+    let changed_evaluator = NativeAuthoredEvaluator::try_new(&changed_package, references)
+        .expect("mutated authored package remains admissible");
+    let authored_visibility_changed = changed_evaluator
+        .transform(&input)
+        .expect("authored literal mutation transforms");
+    let core_logos::WholeLogosItem::Newtype(changed_newtype) =
+        &authored_visibility_changed.whole_projection().items()[0]
+    else {
+        panic!("first changed projection is a newtype")
+    };
+    assert_eq!(
+        changed_newtype.visibility(),
+        &core_logos::WholeLogosVisibility::Private
+    );
+
+    let output_bytes = transformed
+        .population()
+        .to_archive_bytes()
+        .expect("archive native Logos population");
+    let output = NativeLogosPopulation::<FixtureLogosNameTree>::from_archive_bytes(
+        &output_bytes,
+        &evaluator,
+    )
+    .expect("validate and restore native Logos population");
+    assert_eq!(output, *transformed.population());
+}
+
+#[test]
+fn native_admission_rejects_cycles_and_invoke_targets_that_require_input() {
+    let logos = logos();
+    let assigned = bindings(SOURCE);
+    let legacy = MacroPackage::wire_fixture().expect("authoring oracle");
+    let adapter = FixtureAdapter::new(&legacy, &assigned, &logos);
+    let authored = adapter.authored_set().expect("authored set");
+    let first = &authored.declarations()[0];
+    let second = &authored.declarations()[1];
+
+    let invoke_result = |target: AuthoredTransformerIdentity| {
+        adapter
+            .value(
+                &adapter.attributes,
+                4,
+                1,
+                vec![TemplateTerm::Sequence(vec![TemplateTerm::Future(
+                    TemplateFuture::Invoke(target),
+                )])],
+            )
+            .expect("Invoke inhabits the transparent attributes root")
+    };
+    let first_cycle = AuthoredTransformerDeclaration::try_new(
+        first.name().clone(),
+        MacroKind::Named,
+        AuthoredInputSignature::unit(),
+        invoke_result(second.name().clone()),
+        &adapter.attributes,
+    )
+    .expect("first cycle edge has a compatible output");
+    let second_cycle = AuthoredTransformerDeclaration::try_new(
+        second.name().clone(),
+        MacroKind::Named,
+        AuthoredInputSignature::unit(),
+        invoke_result(first.name().clone()),
+        &adapter.attributes,
+    )
+    .expect("second cycle edge has a compatible output");
+    let cycle = AuthoredTransformerSet::try_new(vec![first_cycle, second_cycle])
+        .expect("authored set resolves both lookup-only targets");
+    assert!(matches!(
+        NativeAuthoredEvaluator::try_new(&cycle, NativeReferenceUniverse::identity()),
+        Err(core_nomos::NativeEvaluationError::InvocationCycle { .. })
+    ));
+
+    let non_unit_target = AuthoredTransformerDeclaration::try_new(
+        first.name().clone(),
+        MacroKind::Named,
+        AuthoredInputSignature::try_new(vec![
+            authored.declarations()[2].input().parameters()[0].clone(),
+        ])
+        .expect("one distinct parameter"),
+        first.result().clone(),
+        &adapter.attributes,
+    )
+    .expect("unused input does not change the target output");
+    let invoker = AuthoredTransformerDeclaration::try_new(
+        second.name().clone(),
+        MacroKind::Named,
+        AuthoredInputSignature::unit(),
+        invoke_result(first.name().clone()),
+        &adapter.attributes,
+    )
+    .expect("invocation output remains compatible");
+    let non_unit = AuthoredTransformerSet::try_new(vec![non_unit_target, invoker])
+        .expect("lookup/output validation is independent of evaluator admission");
+    assert!(matches!(
+        NativeAuthoredEvaluator::try_new(&non_unit, NativeReferenceUniverse::identity()),
+        Err(core_nomos::NativeEvaluationError::InvocationRequiresInput { .. })
+    ));
 }
 
 #[test]

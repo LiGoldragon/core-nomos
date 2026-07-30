@@ -62,6 +62,7 @@ pub mod identity;
 pub mod manifest;
 pub mod meta;
 mod name_boundary;
+pub mod native;
 pub mod package;
 pub mod prelude;
 pub mod sealed;
@@ -86,6 +87,13 @@ pub use manifest::{
     PlannedNomosPopulation,
 };
 pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
+pub use native::{
+    NativeAuthoredEvaluator, NativeEvaluatedField, NativeEvaluatedLogos, NativeEvaluatedTerm,
+    NativeEvaluatedValue, NativeEvaluationError, NativeIdentityPosition, NativeLogosNameTree,
+    NativeLogosPopulation, NativeNameTreeBoundary, NativeNameTreePlan, NativeNameTreeRefusal,
+    NativePopulationArchiveError, NativeReferenceMapping, NativeReferenceUniverse,
+    NativeTransformation,
+};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
 pub use sealed::{
@@ -104,8 +112,8 @@ pub use template_language::{
     LogosTemplateLanguage, TemplateConstructorDeclaration, TemplateFieldDeclaration,
     TemplateFieldValue, TemplateFormDeclaration, TemplateFuture, TemplateFutureKind,
     TemplateFutureOutput, TemplateFutureRequirement, TemplateLandingField, TemplateLandingShape,
-    TemplateLanguage, TemplateLanguageError, TemplateTerm, TemplateTypeDeclaration, TemplateValue,
-    TemplateValueError,
+    TemplateLanguage, TemplateLanguageError, TemplateRootOutput, TemplateRootOutputSelector,
+    TemplateTerm, TemplateTypeDeclaration, TemplateValue, TemplateValueError,
 };
 pub use textual::{
     DecodedNomosDocument, LoadedNomosDocument, LoadedNomosPopulation, NomosLoadError,

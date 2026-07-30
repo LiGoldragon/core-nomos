@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "core-nomos"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.5.0",
@@ -173,7 +173,7 @@ dependencies = [
  "core-logos",
  "name-table 0.1.0",
  "name-table 0.3.0",
- "protos 0.3.1",
+ "protos 0.4.0",
  "raw-discovery",
  "rkyv",
  "rust-logos",
@@ -396,8 +396,8 @@ dependencies = [
 
 [[package]]
 name = "protos"
-version = "0.3.1"
-source = "git+https://github.com/LiGoldragon/protos.git?rev=1263f9d1f73b57885d695ac033bdd6faa1334ddf#1263f9d1f73b57885d695ac033bdd6faa1334ddf"
+version = "0.4.0"
+source = "git+https://github.com/LiGoldragon/protos.git?rev=c85cec6117bfd4c423d952fd54e0c0bb11562f89#c85cec6117bfd4c423d952fd54e0c0bb11562f89"
 dependencies = [
  "content-identity 0.5.0",
  "rkyv",

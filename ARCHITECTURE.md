@@ -12,8 +12,10 @@ references; it never materializes their spellings.
 
 ## Status boundary
 
-The crate contains one conforming first-slice transformation alongside a
-larger legacy graph that does not yet satisfy this architecture.
+The crate contains the native authored evaluator and a smaller direct
+first-slice reference transformation alongside a retained legacy graph. The
+native evaluator is the production-bound door; engine integration source gates
+must prevent the legacy graph from becoming reachable through deployment.
 
 `SliceOneTransformation` reads only the published `WholeEthos` positional
 carrier and constructs the published `WholeLogos` positional carrier. Its
@@ -34,10 +36,11 @@ or parallel structural-codec type universes. The former structural-codec 0.6
 than adapted: the legacy engine retains its inherent `apply` methods, while
 0.8 conversion contracts are reserved for canonical `EncodedForm` carriers.
 
-The typed macro/package model in `definition.rs`, `identity.rs`, `meta.rs`,
-`package.rs`, and `template.rs` is live. `MacroPackage::apply` and
-`apply_enriched` are also live production entry points. Every apply constructs
-a `NameTableBoundary`. Additional production surfaces still reach:
+The typed legacy macro/package model in `definition.rs`, `identity.rs`,
+`meta.rs`, `package.rs`, and `template.rs` remains as a regression oracle.
+`MacroPackage::apply` and `apply_enriched` still exist as public legacy entry
+points, and every apply constructs a `NameTableBoundary`. The native evaluator
+does not import or call them. The retained legacy graph reaches:
 
 - `name_boundary.rs`, which resolves names to strings, derives and formats new
   spellings, interns them early, and builds ordinal words;
@@ -51,8 +54,8 @@ make their string work permissible inside Nomos. `generation.rs` is not the
 approved replacement and must not be used as architectural precedent for
 bypassing the no-strings law.
 
-The green current tests prove the shipped behavior of this legacy path. They do
-not prove conformance to the approved Nomos boundary.
+The legacy tests prove only that retained oracle. Native acceptance is carried
+by the direct evaluator, archive, source, and process witnesses.
 
 ## Approved transformation boundary
 
@@ -77,10 +80,35 @@ needs to resolve, derive, compare, or build a spelling, that step belongs after
 Nomos in the TextualForm evaluation, or its need must be represented as typed
 projection data.
 
-The first replacement path is `src/slice_one.rs`. It does not travel through
-`NameTableBoundary`, the macro rendering path, prelude rendering, projection
-materialization, or ordinal-word machinery. The old graph remains available
-only through its old entry points and is not called by the slice.
+The production replacement path is `src/native.rs`.
+`NativeAuthoredEvaluator::try_new` admits one immutable
+`AuthoredTransformerSet`, rejecting text scalars, invalid identities,
+unsupported invocation inputs, and invocation cycles before input execution.
+`transform` consumes `EncodedPopulation<WholeEthos, NameTree>` and returns a
+checked `NativeLogosPopulation` plus the current bounded `WholeLogos`
+compatibility projection. Invoke and Splice substitute their actual typed
+landing values; no operational future marker survives.
+
+The NameTree boundary authenticates and plans before the evaluator visits the
+first item. Derived-name realization and the complete output tree are pure plan
+operations; the daemon commits planned names and output storage atomically only
+after successful evaluation. This two-phase boundary is
+`[to-be-reviewed-by-psyche]`.
+
+`NativeReferenceUniverse` maps exact complete Universal reference identities
+and application heads to exact Rust identities. It never compares local leaves;
+same-leaf identities under different ancestors remain distinct. Unlisted
+complete identities remain unchanged. This current Universal-to-Rust universe
+law is `[to-be-reviewed-by-psyche]`.
+
+Authored visibility literals are authoritative. Input visibility is absent from
+the authored signature and therefore cannot override those literals. This
+intentionally diverges from the po2.5 SliceOne/legacy visibility behavior and
+is `[to-be-reviewed-by-psyche]`.
+
+`src/slice_one.rs` remains the direct typed reference/bootstrap oracle. Neither
+path travels through `NameTableBoundary`, the macro rendering path, prelude
+rendering, projection materialization, or ordinal-word machinery.
 
 ## Typed transformation data
 
@@ -107,19 +135,15 @@ complete translator-issued `VocabularyRoot::Universal` encodedID chains. Its
 typed Logos skeleton stores every literal identity as a complete chain, and
 `AuthoredEscape::Invoke` stores the invoked transformer's durable chain.
 
-The existing `MacroDefinition` remains the sealed execution record.
-`MacroIdentity` is package-local implementation structure and is deliberately
-absent from the authored carrier. Atomic sealing later receives a complete,
-resolved authored declaration set; it validates duplicate and unresolved
-targets before changing package state, then rebinds durable invocation targets
-to local execution indices in one commit. Text decoding therefore neither
-mints package identities nor pre-runs registration to make forward references
-possible.
+`AuthoredTransformerSet` is itself the immutable sealed execution content.
+Every declaration retains a typed `TemplateRootOutputSelector` identifying
+either the complete result or one exact transparent landing role. Invoke uses
+that sealed selector; it never infers an output from field count or fixture
+position. Preserving this selector in the content preimage is
+`[to-be-reviewed-by-psyche]`.
 
-This is a stage boundary, not a compatibility alias. The authored value is the
-only pre-seal representation and the legacy execution value is the only sealed
-interpreter representation. The conversion between them belongs to the seal,
-not to the textual decoder.
+There is no production authored-to-`MacroPackage` conversion. `MacroIdentity`
+and `PackageRevision` remain legacy oracle structure only.
 
 ## Stateful data and daemon boundary
 
@@ -132,6 +156,11 @@ license to manipulate names during transformation.
 How the current `MacroPackage` shape evolves is coordinated work. Its current
 content identity and sibling flat `NameTable` describe the implementation, not
 the final Capsule or translator relationship.
+
+The temporary six-value `GenerationClass` selection is not evaluated or sealed
+by the native library. The daemon carries it as separately typed per-slot
+deployment metadata `[to-be-reviewed-by-psyche]`. po2.8 owns authoring that
+behavior in Nomos and retiring the external selection.
 
 ## Capsule carrier boundary
 
@@ -170,7 +199,10 @@ working-program behavior.
 - `src/definition.rs`, `src/identity.rs`, `src/meta.rs`, `src/package.rs`,
   `src/template.rs` — live typed macro/package vocabulary.
 - `src/authored.rs` — full-chain, positional authored transformer declarations
-  and typed Logos skeletons before atomic content sealing.
+  and typed Logos skeletons with sealed root-output selectors.
+- `src/native.rs` — native authored evaluation, paired population/NameTree
+  planning, exact reference universe, checked native Logos archive boundary,
+  and bounded WholeLogos projection.
 - `src/sealed.rs` — immutable content Capsule identity and the separately
   authenticated, versioned reachable NameTree projection.
 - `src/engine.rs` — live macro evaluation; its direct code is mostly typed, but
@@ -187,6 +219,10 @@ working-program behavior.
   wired.
 - `tests/slice_one.rs`, `tests/slice_one_boundary.rs` — focused positional
   behavior and static source/dependency witnesses for the conforming slice.
+- `tests/native.rs`, native unit tests, and the native witnesses in
+  `tests/textual_nomos.rs` — production-door source exclusion, package
+  admission, future substitution, exact reference mapping, NameTree/archive
+  validation, and authored-literal authority.
 - `tests/authored_stage.rs` — archive preservation and typed-refusal witnesses
   for the authored-to-sealed phase boundary.
 - `tests/textual_nomos_authority.rs`, `tests/textual_nomos_manifest.rs` —

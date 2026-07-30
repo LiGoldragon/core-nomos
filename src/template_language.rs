@@ -84,6 +84,41 @@ impl<Root> TemplateFutureOutput<Root> {
     }
 }
 
+/// The exact declaration-indexed selector for one transformer's produced
+/// fragment.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TemplateRootOutputSelector {
+    /// The complete evaluated root value is the produced fragment.
+    WholeValue,
+    /// A transparent root produces one exact landing field.
+    Field(StableRoleId),
+}
+
+/// The typed produced-fragment selector and its validated landing shape.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct TemplateRootOutput<Root> {
+    selector: TemplateRootOutputSelector,
+    output: TemplateFutureOutput<Root>,
+}
+
+impl<Root> TemplateRootOutput<Root> {
+    pub const fn selector(&self) -> TemplateRootOutputSelector {
+        self.selector
+    }
+
+    pub const fn output(&self) -> &TemplateFutureOutput<Root> {
+        &self.output
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_native_admission_test(
+        selector: TemplateRootOutputSelector,
+        output: TemplateFutureOutput<Root>,
+    ) -> Self {
+        Self { selector, output }
+    }
+}
+
 /// One future paired with the output shape required by its computed landing
 /// position.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -392,13 +427,21 @@ where
     /// content role. This is structural metadata, not a language-specific type
     /// switch.
     pub fn root_output(&self) -> Result<TemplateFutureOutput<Root>, TemplateLanguageError<Root>> {
+        Ok(self.root_output_contract()?.output)
+    }
+
+    /// The exact whole-value or transparent-field selection retained by an
+    /// authored declaration for generic invocation substitution.
+    pub fn root_output_contract(
+        &self,
+    ) -> Result<TemplateRootOutput<Root>, TemplateLanguageError<Root>> {
         let declaration = self.type_declaration(&self.root).ok_or_else(|| {
             TemplateLanguageError::VerifiedLandingTypeMissing {
                 encoded_type: self.root.clone(),
             }
         })?;
         let mut outputs = declaration.constructors().iter().map(
-            |constructor| -> Result<TemplateFutureOutput<Root>, TemplateLanguageError<Root>> {
+            |constructor| -> Result<TemplateRootOutput<Root>, TemplateLanguageError<Root>> {
                 let root_field = constructor
                     .encode_form()
                     .fields()
@@ -422,11 +465,15 @@ where
                             constructor: constructor.constructor().clone(),
                             role: content,
                         })?;
-                    Ok(output_from_template_shape(landing.shape()))
+                    Ok(TemplateRootOutput {
+                        selector: TemplateRootOutputSelector::Field(content),
+                        output: output_from_template_shape(landing.shape()),
+                    })
                 } else {
-                    Ok(TemplateFutureOutput::new(LandingShape::Type(
-                        self.root.clone(),
-                    )))
+                    Ok(TemplateRootOutput {
+                        selector: TemplateRootOutputSelector::WholeValue,
+                        output: TemplateFutureOutput::new(LandingShape::Type(self.root.clone())),
+                    })
                 }
             },
         );
@@ -437,8 +484,13 @@ where
         })?;
         for output in outputs {
             let output = output?;
-            if output != first {
+            if output.output != first.output {
                 return Err(TemplateLanguageError::InconsistentRootOutput {
+                    encoded_type: self.root.clone(),
+                });
+            }
+            if output.selector != first.selector {
+                return Err(TemplateLanguageError::InconsistentRootOutputSelector {
                     encoded_type: self.root.clone(),
                 });
             }
@@ -872,6 +924,8 @@ pub enum TemplateLanguageError<Root> {
     RootHasNoConstructor { encoded_type: EncodedTypeId<Root> },
     #[error("template root {encoded_type:?} has constructors with incompatible outputs")]
     InconsistentRootOutput { encoded_type: EncodedTypeId<Root> },
+    #[error("template root {encoded_type:?} has constructors with incompatible output selectors")]
+    InconsistentRootOutputSelector { encoded_type: EncodedTypeId<Root> },
 }
 
 /// Typed failures while constructing or checking a generic template value.
@@ -934,3 +988,116 @@ pub enum TemplateValueError<Root> {
 
 /// The production root set used by the present Nomos-to-Logos derivation.
 pub type LogosTemplateLanguage = TemplateLanguage<VocabularyRoot>;
+
+#[cfg(test)]
+pub(crate) fn nested_text_value_for_native_admission_test() -> TemplateValue<VocabularyRoot> {
+    use encoded_name_table::LocalEncodedId;
+    use structural_codec::{LeafCodec, Position};
+
+    #[derive(rkyv::Archive)]
+    struct OuterRole;
+    impl FieldRole for OuterRole {
+        const STABLE_ID: u16 = 31_001;
+    }
+
+    #[derive(rkyv::Archive)]
+    struct InnerRole;
+    impl FieldRole for InnerRole {
+        const STABLE_ID: u16 = 31_002;
+    }
+
+    fn encoded(chain: &[u16]) -> EncodedId<VocabularyRoot> {
+        EncodedId::new(
+            VocabularyRoot::Universal,
+            chain.iter().copied().map(LocalEncodedId::new).collect(),
+        )
+        .expect("non-empty native admission test identity")
+    }
+
+    let inner_type = EncodedTypeId::new(encoded(&[31, 2]));
+    let inner_role = Position::<InnerRole, VocabularyRoot>::try_new(SharedDescriptor::<
+        VocabularyRoot,
+    >::Leaf(LeafCodec::Text))
+    .expect("nonzero inner role")
+    .role();
+    let inner = TemplateValue::try_new(
+        EncodedConstructorId::under(&inner_type, 1),
+        vec![TemplateFieldValue::new(
+            inner_role,
+            TemplateTerm::Scalar(ScalarValue::Text("forbidden".to_owned())),
+        )],
+    )
+    .expect("one inner role");
+
+    let outer_type = EncodedTypeId::new(encoded(&[31, 1]));
+    let outer_role = Position::<OuterRole, _>::try_new(SharedDescriptor::Repeated {
+        minimum: 0,
+        maximum: None,
+        element: Box::new(SharedDescriptor::Delegate {
+            target: inner_type,
+            payload: None,
+        }),
+    })
+    .expect("nonzero outer role")
+    .role();
+    TemplateValue::try_new(
+        EncodedConstructorId::under(&outer_type, 1),
+        vec![TemplateFieldValue::new(
+            outer_role,
+            TemplateTerm::Sequence(vec![TemplateTerm::Nested(Box::new(inner))]),
+        )],
+    )
+    .expect("one outer role")
+}
+
+#[cfg(test)]
+pub(crate) fn restore_validation_value_for_native_test() -> TemplateValue<VocabularyRoot> {
+    use encoded_name_table::LocalEncodedId;
+    use structural_codec::{LeafCodec, Position};
+
+    #[derive(rkyv::Archive)]
+    struct DeclarationRole;
+    impl FieldRole for DeclarationRole {
+        const STABLE_ID: u16 = 31_011;
+    }
+
+    #[derive(rkyv::Archive)]
+    struct BooleanRole;
+    impl FieldRole for BooleanRole {
+        const STABLE_ID: u16 = 31_012;
+    }
+
+    fn encoded(chain: &[u16]) -> EncodedId<VocabularyRoot> {
+        EncodedId::new(
+            VocabularyRoot::Universal,
+            chain.iter().copied().map(LocalEncodedId::new).collect(),
+        )
+        .expect("non-empty native restore test identity")
+    }
+
+    let encoded_type = EncodedTypeId::new(encoded(&[31, 10]));
+    let declaration_role = Position::<DeclarationRole, VocabularyRoot>::try_new(
+        SharedDescriptor::Leaf(LeafCodec::Boolean),
+    )
+    .expect("nonzero declaration role")
+    .role();
+    let boolean_role = Position::<BooleanRole, VocabularyRoot>::try_new(SharedDescriptor::Leaf(
+        LeafCodec::Boolean,
+    ))
+    .expect("nonzero boolean role")
+    .role();
+    TemplateValue::try_new(
+        EncodedConstructorId::under(&encoded_type, 1),
+        vec![
+            TemplateFieldValue::new(
+                declaration_role,
+                TemplateTerm::Declaration(encoded(&[31, 11])),
+            ),
+            TemplateFieldValue::new(
+                boolean_role,
+                TemplateTerm::Scalar(ScalarValue::Boolean(true)),
+            ),
+        ],
+    )
+    .expect("two distinct native restore roles")
+}
