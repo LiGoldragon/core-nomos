@@ -240,10 +240,7 @@ fn expected(marker: DatabaseMarker) -> WritePrecondition {
     }
 }
 
-async fn submit_plan(
-    runtime: &Runtime,
-    planned: &core_nomos::PlannedNomosLoad<'_>,
-) -> DispatchOutcome {
+async fn submit_plan(runtime: &Runtime, planned: &core_nomos::PlannedNomosLoad) -> DispatchOutcome {
     request(
         runtime,
         AuthorityOperation::SealUniversal(planned.request().clone()),

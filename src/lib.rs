@@ -56,6 +56,7 @@ pub mod error;
 pub mod fixtures;
 pub mod generation;
 pub mod identity;
+pub mod manifest;
 pub mod meta;
 mod name_boundary;
 pub mod package;
@@ -76,6 +77,10 @@ pub use domain::EncodedNomosDomain;
 pub use engine::Lowering;
 pub use error::NomosError;
 pub use identity::{MacroIdentity, MacroKind, SectionDefault};
+pub use manifest::{
+    NomosFileManifest, NomosManifestFile, NomosManifestLoadError, NomosSourcePath,
+    PlannedNomosPopulation,
+};
 pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
@@ -95,7 +100,7 @@ pub use template_language::{
     TemplateValueError,
 };
 pub use textual::{
-    DecodedNomosDocument, LoadedNomosDocument, NomosLoadError, NomosModulePath, NomosNameTable,
-    PlannedNomosLoad, PlannedOccurrenceKind, TextualNomos, TextualNomosError, TextualNomosMetaType,
-    TextualNomosTypeIds, TextualNomosWords,
+    DecodedNomosDocument, LoadedNomosDocument, LoadedNomosPopulation, NomosLoadError,
+    NomosModulePath, NomosNameTable, PlannedNomosLoad, PlannedOccurrenceKind, TextualNomos,
+    TextualNomosError, TextualNomosMetaType, TextualNomosTypeIds, TextualNomosWords,
 };

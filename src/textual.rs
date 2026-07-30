@@ -116,7 +116,7 @@ impl DecodedNomosDocument {
 ///
 /// Spellings live only at this authoring boundary and in the committed
 /// NameTable sibling. Encoded Nomos data retains the translator-issued chains.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct NomosModulePath(Vec<Name>);
 
 impl NomosModulePath {
@@ -146,6 +146,10 @@ impl NomosModulePath {
     /// Exact textual module chain from the Universal root.
     pub fn spellings(&self) -> impl ExactSizeIterator<Item = &str> {
         self.0.iter().map(Name::as_str)
+    }
+
+    pub(crate) fn modules(&self) -> &[Name] {
+        &self.0
     }
 }
 
@@ -273,20 +277,60 @@ impl LoadedNomosDocument {
     pub fn apply_rename(&mut self, receipt: &RenameCommitReceipt) -> Result<(), NomosLoadError> {
         self.names.apply_rename(receipt)
     }
+
+    /// Project the single-file result into the source-neutral population shape.
+    pub fn population(&self) -> LoadedNomosPopulation {
+        LoadedNomosPopulation(self.transformers().clone(), self.names.clone())
+    }
+}
+
+/// Authored Nomos data after any population mechanism has disappeared.
+///
+/// `[not-understood-by-psyche, Entry 7, NomosTrainAddendum-2026-07-30]`
+/// This new carrier is positional. Its transformer set is self-contained in
+/// v1; file loading and future direct daemon population produce this same type.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LoadedNomosPopulation(AuthoredTransformerSet, NomosNameTable);
+
+impl LoadedNomosPopulation {
+    /// Admit an already typed transformer set and its authority-issued names.
+    pub const fn from_typed(transformers: AuthoredTransformerSet, names: NomosNameTable) -> Self {
+        Self(transformers, names)
+    }
+
+    pub const fn transformers(&self) -> &AuthoredTransformerSet {
+        &self.0
+    }
+
+    pub const fn names(&self) -> &NomosNameTable {
+        &self.1
+    }
+
+    /// Content identity excludes the spelling sibling by construction.
+    pub fn content_identity(
+        &self,
+    ) -> Result<content_identity::ContentHash<crate::EncodedNomosDomain>, crate::NomosError> {
+        Ok(content_identity::ContentHash::of_core(self.transformers())?)
+    }
+
+    /// Apply one committed identity-preserving rename to the spelling sibling.
+    pub fn apply_rename(&mut self, receipt: &RenameCommitReceipt) -> Result<(), NomosLoadError> {
+        self.1.apply_rename(receipt)
+    }
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct PlannedNamePath {
+pub(crate) struct PlannedNamePath {
     modules: Vec<Name>,
     spelling: Name,
 }
 
 impl PlannedNamePath {
-    fn new(modules: Vec<Name>, spelling: Name) -> Self {
+    pub(crate) fn new(modules: Vec<Name>, spelling: Name) -> Self {
         Self { modules, spelling }
     }
 
-    fn as_reference(&self) -> ReferencePath {
+    pub(crate) fn as_reference(&self) -> ReferencePath {
         ReferencePath {
             root: VocabularyRoot::Universal,
             modules: self.modules.clone(),
@@ -302,7 +346,7 @@ pub enum PlannedOccurrenceKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct PlannedOccurrence {
+pub(crate) struct PlannedOccurrence {
     kind: PlannedOccurrenceKind,
     name: PlannedName,
     path: PlannedNamePath,
@@ -310,19 +354,21 @@ struct PlannedOccurrence {
 
 /// A complete structurally selected Nomos load awaiting one authority receipt.
 ///
-/// It borrows source text only at this TextualForm boundary. The public request
+/// It owns source text only at this TextualForm boundary. The public request
 /// contains one atomic nested graph; no declaration or reference identity
 /// exists in this value before the authority commits.
-pub struct PlannedNomosLoad<'source> {
-    source: &'source str,
-    request: SealUniversal,
-    declaration_paths: Vec<PlannedNamePath>,
-    reference_paths: Vec<PlannedNamePath>,
-    occurrences: Vec<PlannedOccurrence>,
-    fixed_names: BTreeMap<VocabularyEncodedId, Name>,
+pub struct PlannedNomosLoad {
+    pub(crate) source: String,
+    pub(crate) module: NomosModulePath,
+    pub(crate) module_declarations: Vec<DeclarationNode>,
+    pub(crate) request: SealUniversal,
+    pub(crate) declaration_paths: Vec<PlannedNamePath>,
+    pub(crate) reference_paths: Vec<PlannedNamePath>,
+    pub(crate) occurrences: Vec<PlannedOccurrence>,
+    pub(crate) fixed_names: BTreeMap<VocabularyEncodedId, Name>,
 }
 
-impl PlannedNomosLoad<'_> {
+impl PlannedNomosLoad {
     /// The one authority request to submit unchanged.
     pub const fn request(&self) -> &SealUniversal {
         &self.request
@@ -1258,6 +1304,27 @@ impl TextualNomos {
         source: &str,
         bindings: &Bindings,
     ) -> Result<DecodedNomosDocument, TextualNomosError> {
+        let (revision, declarations, mirror) = self.decode_parts(source, bindings)?;
+        let transformers = AuthoredTransformerSet::try_new(declarations)?;
+        Ok(DecodedNomosDocument {
+            revision,
+            transformers,
+            mirror,
+        })
+    }
+
+    fn decode_parts<Bindings: DecodeNameBindings<VocabularyRoot> + ?Sized>(
+        &self,
+        source: &str,
+        bindings: &Bindings,
+    ) -> Result<
+        (
+            i64,
+            Vec<AuthoredTransformerDeclaration>,
+            StructuralValue<VocabularyRoot>,
+        ),
+        TextualNomosError,
+    > {
         let mirror =
             StructuralEvaluator::new(&self.table)?.decode_text(&self.document, source, bindings)?;
         let revision = decoded_revision(&mirror)?;
@@ -1265,12 +1332,7 @@ impl TextualNomos {
         for transformer in decoded_transformer_values(&mirror)? {
             declarations.push(self.decode_transformer(transformer)?);
         }
-        let transformers = AuthoredTransformerSet::try_new(declarations)?;
-        Ok(DecodedNomosDocument {
-            revision,
-            transformers,
-            mirror,
-        })
+        Ok((revision, declarations, mirror))
     }
 
     /// Plan one complete authored module for a single atomic Universal seal.
@@ -1280,14 +1342,14 @@ impl TextualNomos {
     /// child tables; declarations below a transformer belong to that table.
     /// Realize and Splice resolve there, while Invoke and ordinary shared
     /// Template(Logos) references resolve in the containing authored module.
-    pub fn plan_load<'source, Resolver>(
+    pub fn plan_load<Resolver>(
         &self,
-        source: &'source str,
+        source: &str,
         resolver: &Resolver,
         module: NomosModulePath,
         operation_key: [u8; 32],
         expected: WritePrecondition,
-    ) -> Result<PlannedNomosLoad<'source>, NomosLoadError>
+    ) -> Result<PlannedNomosLoad, NomosLoadError>
     where
         Resolver: EncodedNameResolver<VocabularyRoot> + ?Sized,
     {
@@ -1374,7 +1436,8 @@ impl TextualNomos {
             });
         }
 
-        let mut declarations = transformer_nodes;
+        let module_declarations = transformer_nodes;
+        let mut declarations = module_declarations.clone();
         for spelling in module.0.iter().rev() {
             declarations = vec![DeclarationNode::Module {
                 spelling: spelling.clone(),
@@ -1387,7 +1450,9 @@ impl TextualNomos {
             .collect();
 
         Ok(PlannedNomosLoad {
-            source,
+            source: source.to_owned(),
+            module,
+            module_declarations,
             request: SealUniversal {
                 operation_key: OperationKey::new(operation_key),
                 expected,
@@ -1415,89 +1480,46 @@ impl TextualNomos {
     /// this path.
     pub fn complete_load<Resolver>(
         &self,
-        planned: &PlannedNomosLoad<'_>,
+        planned: &PlannedNomosLoad,
         authoritative_reply: &AuthorityReply,
         resolver: &Resolver,
     ) -> Result<LoadedNomosDocument, NomosLoadError>
     where
         Resolver: EncodedNameResolver<VocabularyRoot> + ?Sized,
     {
-        let AuthorityReply::Receipt(CommittedReceipt::SealUniversal(receipt)) = authoritative_reply
-        else {
-            return Err(NomosLoadError::ReceiptNotDurableSeal);
+        let (names, resolved_paths) = validate_authority_reply(
+            &planned.request,
+            &planned.declaration_paths,
+            &planned.reference_paths,
+            &planned.fixed_names,
+            authoritative_reply,
+            resolver,
+        )?;
+        let (revision, declarations, mirror) =
+            self.decode_planned_parts(planned, &names, &resolved_paths)?;
+        let transformers =
+            AuthoredTransformerSet::try_new(declarations).map_err(TextualNomosError::from)?;
+        let decoded = DecodedNomosDocument {
+            revision,
+            transformers,
+            mirror,
         };
-        if receipt.name_table.operation_key() != planned.request.operation_key {
-            return Err(NomosLoadError::ReceiptOperationKeyMismatch);
-        }
-        let expected_digest = planned
-            .request
-            .canonical_request_digest()
-            .map_err(|failure| NomosLoadError::RequestDigestUnavailable { failure })?;
-        if receipt.request_digest != expected_digest {
-            return Err(NomosLoadError::ReceiptRequestDigestMismatch {
-                expected: expected_digest,
-                found: receipt.request_digest,
-            });
-        }
-        let precondition = planned.request.expected.database_marker;
-        let expected_marker = precondition
-            .checked_successor()
-            .ok_or(NomosLoadError::ReceiptDatabaseMarkerExhausted { precondition })?;
-        if receipt.database_marker != expected_marker {
-            return Err(NomosLoadError::ReceiptDatabaseMarkerMismatch {
-                expected: expected_marker,
-                found: receipt.database_marker,
-            });
-        }
+        Ok(LoadedNomosDocument { decoded, names })
+    }
 
-        let actual_declarations = receipt_paths(receipt.name_table.declarations())?;
-        let actual_references = receipt_paths(receipt.name_table.references())?;
-        if sorted_paths(&actual_declarations) != sorted_paths(&planned.declaration_paths) {
-            return Err(NomosLoadError::ReceiptDeclarationMismatch {
-                expected: planned.declaration_paths.len(),
-                found: actual_declarations.len(),
-            });
-        }
-        if sorted_paths(&actual_references) != sorted_paths(&planned.reference_paths) {
-            return Err(NomosLoadError::ReceiptReferenceMismatch {
-                expected: planned.reference_paths.len(),
-                found: actual_references.len(),
-            });
-        }
-
-        let mut resolved_paths = BTreeMap::new();
-        let mut names = planned.fixed_names.clone();
-        for resolved in receipt
-            .name_table
-            .declarations()
-            .iter()
-            .chain(receipt.name_table.references())
-        {
-            let path = resolved_path(resolved)?;
-            if let Some(existing) = resolved_paths.insert(path, resolved.encoded_id().clone()) {
-                if existing != *resolved.encoded_id() {
-                    return Err(NomosLoadError::ReceiptPathConflict);
-                }
-            }
-            insert_resolved_name(
-                &mut names,
-                resolved.encoded_id().clone(),
-                resolved.path().spelling().clone(),
-            )?;
-        }
-        for (encoded_id, spelling) in &planned.fixed_names {
-            let Some(found) = resolver.resolve(encoded_id) else {
-                return Err(NomosLoadError::MissingFixedSpelling {
-                    encoded_id: encoded_id.clone(),
-                });
-            };
-            if found != spelling {
-                return Err(NomosLoadError::ReceiptIdentityConflict {
-                    encoded_id: encoded_id.clone(),
-                });
-            }
-        }
-
+    pub(crate) fn decode_planned_parts(
+        &self,
+        planned: &PlannedNomosLoad,
+        names: &NomosNameTable,
+        resolved_paths: &BTreeMap<PlannedNamePath, VocabularyEncodedId>,
+    ) -> Result<
+        (
+            i64,
+            Vec<AuthoredTransformerDeclaration>,
+            StructuralValue<VocabularyRoot>,
+        ),
+        NomosLoadError,
+    > {
         let mut declarations = BTreeMap::new();
         let mut references = BTreeMap::new();
         for occurrence in &planned.occurrences {
@@ -1525,14 +1547,12 @@ impl TextualNomos {
             }
         }
 
-        let names = NomosNameTable::from_map(names);
         let bindings = ReceiptDecodeBindings {
-            names: &names,
+            names,
             declarations,
             references,
         };
-        let decoded = self.decode(planned.source, &bindings)?;
-        Ok(LoadedNomosDocument { decoded, names })
+        Ok(self.decode_parts(&planned.source, &bindings)?)
     }
 
     /// Render the retained typed mirror through the same canonical table.
@@ -1647,6 +1667,101 @@ impl TextualNomos {
             .into_iter()
             .find(|language| language.root() == &root)
     }
+}
+
+pub(crate) fn validate_authority_reply<Resolver>(
+    request: &SealUniversal,
+    declaration_paths: &[PlannedNamePath],
+    reference_paths: &[PlannedNamePath],
+    fixed_names: &BTreeMap<VocabularyEncodedId, Name>,
+    authoritative_reply: &AuthorityReply,
+    resolver: &Resolver,
+) -> Result<
+    (
+        NomosNameTable,
+        BTreeMap<PlannedNamePath, VocabularyEncodedId>,
+    ),
+    NomosLoadError,
+>
+where
+    Resolver: EncodedNameResolver<VocabularyRoot> + ?Sized,
+{
+    let AuthorityReply::Receipt(CommittedReceipt::SealUniversal(receipt)) = authoritative_reply
+    else {
+        return Err(NomosLoadError::ReceiptNotDurableSeal);
+    };
+    if receipt.name_table.operation_key() != request.operation_key {
+        return Err(NomosLoadError::ReceiptOperationKeyMismatch);
+    }
+    let expected_digest = request
+        .canonical_request_digest()
+        .map_err(|failure| NomosLoadError::RequestDigestUnavailable { failure })?;
+    if receipt.request_digest != expected_digest {
+        return Err(NomosLoadError::ReceiptRequestDigestMismatch {
+            expected: expected_digest,
+            found: receipt.request_digest,
+        });
+    }
+    let precondition = request.expected.database_marker;
+    let expected_marker = precondition
+        .checked_successor()
+        .ok_or(NomosLoadError::ReceiptDatabaseMarkerExhausted { precondition })?;
+    if receipt.database_marker != expected_marker {
+        return Err(NomosLoadError::ReceiptDatabaseMarkerMismatch {
+            expected: expected_marker,
+            found: receipt.database_marker,
+        });
+    }
+
+    let actual_declarations = receipt_paths(receipt.name_table.declarations())?;
+    let actual_references = receipt_paths(receipt.name_table.references())?;
+    if sorted_paths(&actual_declarations) != sorted_paths(declaration_paths) {
+        return Err(NomosLoadError::ReceiptDeclarationMismatch {
+            expected: declaration_paths.len(),
+            found: actual_declarations.len(),
+        });
+    }
+    if sorted_paths(&actual_references) != sorted_paths(reference_paths) {
+        return Err(NomosLoadError::ReceiptReferenceMismatch {
+            expected: reference_paths.len(),
+            found: actual_references.len(),
+        });
+    }
+
+    let mut resolved_paths = BTreeMap::new();
+    let mut names = fixed_names.clone();
+    for resolved in receipt
+        .name_table
+        .declarations()
+        .iter()
+        .chain(receipt.name_table.references())
+    {
+        let path = resolved_path(resolved)?;
+        if let Some(existing) = resolved_paths.insert(path, resolved.encoded_id().clone()) {
+            if existing != *resolved.encoded_id() {
+                return Err(NomosLoadError::ReceiptPathConflict);
+            }
+        }
+        insert_resolved_name(
+            &mut names,
+            resolved.encoded_id().clone(),
+            resolved.path().spelling().clone(),
+        )?;
+    }
+    for (encoded_id, spelling) in fixed_names {
+        let Some(found) = resolver.resolve(encoded_id) else {
+            return Err(NomosLoadError::MissingFixedSpelling {
+                encoded_id: encoded_id.clone(),
+            });
+        };
+        if found != spelling {
+            return Err(NomosLoadError::ReceiptIdentityConflict {
+                encoded_id: encoded_id.clone(),
+            });
+        }
+    }
+
+    Ok((NomosNameTable::from_map(names), resolved_paths))
 }
 
 fn planned_field<Role: FieldRole>(
