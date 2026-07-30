@@ -9,7 +9,7 @@ use core_nomos::{
     TemplateLandingShape, TemplateLanguage, TextualNomos, TextualNomosMetaType,
     TextualNomosTypeIds, TextualNomosWords,
 };
-use encoded_name_table::{LocalEncodedId, Name};
+use encoded_name_table::{LocalEncodedId, Name, OperationKey};
 use sema_translator::{DispatchOutcome, Runtime, StaticAuthorizationPolicy};
 use signal_sema_translator::{
     AuthorityCapability, AuthorityOperation, AuthorityReply, AuthorityRequest, AuthorityRole,
@@ -257,10 +257,7 @@ fn expected(marker: DatabaseMarker) -> WritePrecondition {
     }
 }
 
-async fn durable_receipt(
-    runtime: &Runtime,
-    operation_key: encoded_name_table::OperationKey,
-) -> AuthorityReply {
+async fn durable_receipt(runtime: &Runtime, operation_key: OperationKey) -> AuthorityReply {
     request(
         runtime,
         AuthorityOperation::Read(ReadOperation::CommittedReceipt { operation_key }),
@@ -283,6 +280,75 @@ async fn open_runtime(directory: &tempfile::TempDir) -> Runtime {
     )
     .await
     .expect("authority runtime opens")
+}
+
+// [not-understood-by-psyche, Entry 7, NomosTrainAddendum-2026-07-30]
+// A previously committed transformer is external to a later manifest package,
+// even when both manifests use the same authored module.
+#[tokio::test]
+async fn invoke_target_from_prior_manifest_refuses_before_any_new_authority_write() {
+    let source_directory = tempfile::tempdir().expect("temporary source directory");
+    write_sources(&source_directory);
+    let authority_directory = tempfile::tempdir().expect("authority directory");
+    let runtime = open_runtime(&authority_directory).await;
+    let logos = logos();
+    let textual = textual(&logos);
+    let fixed = FixedNames::new();
+
+    let seed_manifest = NomosFileManifest(
+        source_path("attributes.nomos"),
+        vec![NomosManifestFile(
+            source_path("attributes.nomos"),
+            module(),
+            vec![],
+        )],
+    );
+    let seed = textual
+        .plan_file_population(
+            source_directory.path(),
+            &seed_manifest,
+            &fixed,
+            [36; 32],
+            expected(current(&runtime).await),
+        )
+        .expect("seed package plans");
+    let committed = request(
+        &runtime,
+        AuthorityOperation::SealUniversal(seed.request().clone()),
+    )
+    .await;
+    seal_receipt(&committed);
+
+    let before = current(&runtime).await;
+    let external_invoke_manifest = NomosFileManifest(
+        source_path("entry.nomos"),
+        vec![NomosManifestFile(
+            source_path("entry.nomos"),
+            module(),
+            vec![],
+        )],
+    );
+    assert!(matches!(
+        textual.plan_file_population(
+            source_directory.path(),
+            &external_invoke_manifest,
+            &fixed,
+            [37; 32],
+            expected(before)
+        ),
+        Err(NomosManifestLoadError::ExternalInvoke(modules, spelling))
+            if modules == vec![Name::new("fixture")]
+                && spelling == Name::new("WireAttributes")
+    ));
+    assert_eq!(current(&runtime).await, before);
+    assert!(matches!(
+        durable_receipt(&runtime, OperationKey::new([37; 32])).await,
+        AuthorityReply::Rejected(NoWriteFailure::UnknownCommittedReceipt {
+            operation_key
+        }) if operation_key == OperationKey::new([37; 32])
+    ));
+
+    runtime.shutdown().await.expect("runtime shuts down");
 }
 
 #[tokio::test]

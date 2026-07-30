@@ -337,6 +337,10 @@ impl PlannedNamePath {
             spelling: self.spelling.clone(),
         }
     }
+
+    pub(crate) fn target(&self) -> (Vec<Name>, Name) {
+        (self.modules.clone(), self.spelling.clone())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -361,9 +365,11 @@ pub struct PlannedNomosLoad {
     pub(crate) source: String,
     pub(crate) module: NomosModulePath,
     pub(crate) module_declarations: Vec<DeclarationNode>,
+    pub(crate) transformer_paths: Vec<PlannedNamePath>,
     pub(crate) request: SealUniversal,
     pub(crate) declaration_paths: Vec<PlannedNamePath>,
     pub(crate) reference_paths: Vec<PlannedNamePath>,
+    pub(crate) invoke_paths: Vec<PlannedNamePath>,
     pub(crate) occurrences: Vec<PlannedOccurrence>,
     pub(crate) fixed_names: BTreeMap<VocabularyEncodedId, Name>,
 }
@@ -1361,6 +1367,7 @@ impl TextualNomos {
 
         let mut declaration_paths = Vec::new();
         let mut reference_paths = Vec::new();
+        let mut invoke_paths = Vec::new();
         let mut occurrences = Vec::new();
         let mut fixed_names = BTreeMap::new();
         let mut module_prefix = Vec::new();
@@ -1373,6 +1380,7 @@ impl TextualNomos {
         }
 
         let mut transformer_nodes = Vec::with_capacity(transformer_values.len());
+        let mut transformer_paths = Vec::with_capacity(transformer_values.len());
         for transformer in transformer_values {
             let form = self
                 .transformer_forms
@@ -1397,6 +1405,7 @@ impl TextualNomos {
             let transformer_path =
                 PlannedNamePath::new(module.0.clone(), transformer_name.spelling().clone());
             declaration_paths.push(transformer_path.clone());
+            transformer_paths.push(transformer_path.clone());
             occurrences.push(PlannedOccurrence {
                 kind: PlannedOccurrenceKind::Declaration,
                 name: transformer_name.clone(),
@@ -1423,6 +1432,7 @@ impl TextualNomos {
                     members: &mut members,
                     declaration_paths: &mut declaration_paths,
                     reference_paths: &mut reference_paths,
+                    invoke_paths: &mut invoke_paths,
                     occurrences: &mut occurrences,
                     fixed_names: &mut fixed_names,
                 };
@@ -1453,6 +1463,7 @@ impl TextualNomos {
             source: source.to_owned(),
             module,
             module_declarations,
+            transformer_paths,
             request: SealUniversal {
                 operation_key: OperationKey::new(operation_key),
                 expected,
@@ -1461,6 +1472,7 @@ impl TextualNomos {
             },
             declaration_paths,
             reference_paths,
+            invoke_paths,
             occurrences,
             fixed_names,
         })
@@ -1817,6 +1829,7 @@ struct AuthorityPlanBuilder<'plan, Resolver: ?Sized> {
     members: &'plan mut Vec<DeclarationNode>,
     declaration_paths: &'plan mut Vec<PlannedNamePath>,
     reference_paths: &'plan mut Vec<PlannedNamePath>,
+    invoke_paths: &'plan mut Vec<PlannedNamePath>,
     occurrences: &'plan mut Vec<PlannedOccurrence>,
     fixed_names: &'plan mut BTreeMap<VocabularyEncodedId, Name>,
 }
@@ -1891,7 +1904,7 @@ where
         match value {
             PlannedFieldValue::Declaration(name) => self.add_declaration(name),
             PlannedFieldValue::Reference(name) => {
-                self.add_reference(name, self.module.to_vec());
+                self.add_reference(name, self.module.to_vec(), false);
             }
             PlannedFieldValue::Literal(encoded_id) => {
                 insert_fixed_name(self.fixed_names, self.resolver, encoded_id)?;
@@ -1913,9 +1926,9 @@ where
                     });
                 };
                 if keyword == &self.syntax.realize || keyword == &self.syntax.splice {
-                    self.add_reference(name, self.transformer.to_vec());
+                    self.add_reference(name, self.transformer.to_vec(), false);
                 } else if keyword == &self.syntax.invoke {
-                    self.add_reference(name, self.module.to_vec());
+                    self.add_reference(name, self.module.to_vec(), true);
                 } else {
                     return Err(NomosLoadError::WrongPlannedShape {
                         role: "Template(Logos) future keyword",
@@ -1944,9 +1957,12 @@ where
         });
     }
 
-    fn add_reference(&mut self, name: &PlannedName, modules: Vec<Name>) {
+    fn add_reference(&mut self, name: &PlannedName, modules: Vec<Name>, invoke: bool) {
         let path = PlannedNamePath::new(modules, name.spelling().clone());
         self.reference_paths.push(path.clone());
+        if invoke {
+            self.invoke_paths.push(path.clone());
+        }
         self.occurrences.push(PlannedOccurrence {
             kind: PlannedOccurrenceKind::Reference,
             name: name.clone(),

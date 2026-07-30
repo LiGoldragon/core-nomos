@@ -105,6 +105,10 @@ pub enum NomosManifestLoadError {
     SourceEscapesRoot(NomosSourcePath),
     #[error("fixed vocabulary identity has conflicting spellings across files: {0:?}")]
     FixedVocabularyConflict(VocabularyEncodedId),
+    #[error(
+        "Invoke target {1:?} in module {0:?} is outside the transformer package selected by this manifest"
+    )]
+    ExternalInvoke(Vec<Name>, Name),
     #[error(transparent)]
     Load(#[from] NomosLoadError),
 }
@@ -157,6 +161,21 @@ impl TextualNomos {
                 operation_key,
                 expected.clone(),
             )?);
+        }
+
+        // [not-understood-by-psyche, Entry 7, NomosTrainAddendum-2026-07-30]
+        // V1 package membership is exactly the transformer declarations selected
+        // by this manifest graph. An Invoke cannot fall through to pre-existing
+        // authority state in the same module.
+        let package_transformers = plans
+            .iter()
+            .flat_map(|plan| plan.transformer_paths.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        for invoke in plans.iter().flat_map(|plan| &plan.invoke_paths) {
+            if !package_transformers.contains(invoke) {
+                let (modules, spelling) = invoke.target();
+                return Err(NomosManifestLoadError::ExternalInvoke(modules, spelling));
+            }
         }
 
         let mut modules = ModulePlan::default();
