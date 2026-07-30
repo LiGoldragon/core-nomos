@@ -170,6 +170,12 @@ struct NomosNameEntry {
 pub struct NomosNameTable(Vec<NomosNameEntry>);
 
 impl NomosNameTable {
+    /// Construct the complete empty sibling for an authored set with no
+    /// reachable identities.
+    pub const fn empty() -> Self {
+        Self(Vec::new())
+    }
+
     pub(crate) fn from_map(names: BTreeMap<VocabularyEncodedId, Name>) -> Self {
         Self(
             names
