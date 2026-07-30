@@ -121,6 +121,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "content-identity"
+version = "0.5.0"
+source = "git+https://github.com/LiGoldragon/content-identity.git?rev=896b21e17f31b66d0802bff899b4b60acea9c0f1#896b21e17f31b66d0802bff899b4b60acea9c0f1"
+dependencies = [
+ "blake3",
+ "rkyv",
+ "thiserror",
+]
+
+[[package]]
 name = "core-ethos"
 version = "0.19.0"
 source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=47c866f101c0e830ecff70451e92f7bdc0ade4e7#47c866f101c0e830ecff70451e92f7bdc0ade4e7"
@@ -128,7 +138,7 @@ dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
  "name-table 0.1.0",
- "protos",
+ "protos 0.3.0",
  "raw-discovery",
  "rkyv",
  "signal-sema-translator",
@@ -145,7 +155,7 @@ dependencies = [
  "content-identity 0.4.0",
  "name-table 0.1.0",
  "name-table 0.3.0",
- "protos",
+ "protos 0.3.0",
  "raw-discovery",
  "rkyv",
  "signal-sema-translator",
@@ -155,15 +165,15 @@ dependencies = [
 
 [[package]]
 name = "core-nomos"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "content-identity 0.3.0",
- "content-identity 0.4.0",
+ "content-identity 0.5.0",
  "core-ethos",
  "core-logos",
  "name-table 0.1.0",
  "name-table 0.3.0",
- "protos",
+ "protos 0.3.1",
  "raw-discovery",
  "rkyv",
  "rust-logos",
@@ -380,6 +390,16 @@ version = "0.3.0"
 source = "git+https://github.com/LiGoldragon/protos.git?rev=1343d0c405cdb6929552ea6b12c48739e73f35ab#1343d0c405cdb6929552ea6b12c48739e73f35ab"
 dependencies = [
  "content-identity 0.4.0",
+ "rkyv",
+ "signal-frame 0.4.0",
+]
+
+[[package]]
+name = "protos"
+version = "0.3.1"
+source = "git+https://github.com/LiGoldragon/protos.git?rev=1263f9d1f73b57885d695ac033bdd6faa1334ddf#1263f9d1f73b57885d695ac033bdd6faa1334ddf"
+dependencies = [
+ "content-identity 0.5.0",
  "rkyv",
  "signal-frame 0.4.0",
 ]
@@ -627,7 +647,7 @@ source = "git+https://github.com/LiGoldragon/signal-sema-translator.git?rev=51c0
 dependencies = [
  "blake3",
  "name-table 0.3.0",
- "protos",
+ "protos 0.3.0",
  "rkyv",
  "signal-frame 0.4.0",
  "thiserror",

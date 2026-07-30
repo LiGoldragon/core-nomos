@@ -168,7 +168,7 @@ struct NomosNameEntry {
 pub struct NomosNameTable(Vec<NomosNameEntry>);
 
 impl NomosNameTable {
-    fn from_map(names: BTreeMap<VocabularyEncodedId, Name>) -> Self {
+    pub(crate) fn from_map(names: BTreeMap<VocabularyEncodedId, Name>) -> Self {
         Self(
             names
                 .into_iter()
@@ -264,8 +264,11 @@ impl LoadedNomosDocument {
         &self.names
     }
 
-    /// Content identity excludes the spelling sibling by construction.
-    pub fn content_identity(
+    /// The pre-seal authored hash retained for diagnostic compatibility.
+    ///
+    /// Production whole-Capsule identity is exposed by
+    /// [`LoadedNomosPopulation::content_identity`](crate::LoadedNomosPopulation::content_identity).
+    pub fn authored_content_hash(
         &self,
     ) -> Result<content_identity::ContentHash<crate::EncodedNomosDomain>, crate::NomosError> {
         Ok(content_identity::ContentHash::of_core(self.transformers())?)
@@ -304,13 +307,6 @@ impl LoadedNomosPopulation {
 
     pub const fn names(&self) -> &NomosNameTable {
         &self.1
-    }
-
-    /// Content identity excludes the spelling sibling by construction.
-    pub fn content_identity(
-        &self,
-    ) -> Result<content_identity::ContentHash<crate::EncodedNomosDomain>, crate::NomosError> {
-        Ok(content_identity::ContentHash::of_core(self.transformers())?)
     }
 
     /// Apply one committed identity-preserving rename to the spelling sibling.
@@ -432,6 +428,13 @@ pub enum NomosLoadError {
     ReceiptReferenceMismatch { expected: usize, found: usize },
     #[error("authority receipt contains a non-Universal result")]
     ReceiptWrongRoot,
+    #[error(
+        "authority receipt encoded chain depth {chain_depth} does not match textual path depth {path_depth}"
+    )]
+    ReceiptPathDepthMismatch {
+        path_depth: usize,
+        chain_depth: usize,
+    },
     #[error("authority receipt resolves one textual path to conflicting complete chains")]
     ReceiptPathConflict,
     #[error("authority receipt gives complete chain {encoded_id:?} conflicting spellings")]
@@ -1754,11 +1757,7 @@ where
                 return Err(NomosLoadError::ReceiptPathConflict);
             }
         }
-        insert_resolved_name(
-            &mut names,
-            resolved.encoded_id().clone(),
-            resolved.path().spelling().clone(),
-        )?;
+        insert_resolved_chain(&mut names, resolved)?;
     }
     for (encoded_id, spelling) in fixed_names {
         let Some(found) = resolver.resolve(encoded_id) else {
@@ -2016,6 +2015,16 @@ fn insert_fixed_name<Resolver>(
 where
     Resolver: EncodedNameResolver<VocabularyRoot> + ?Sized,
 {
+    for length in 1..encoded_id.chain().len() {
+        let prefix = VocabularyEncodedId::new(
+            *encoded_id.root_variant(),
+            encoded_id.chain()[..length].to_vec(),
+        )
+        .expect("every fixed identity prefix is non-empty");
+        if let Some(spelling) = resolver.resolve(&prefix) {
+            insert_resolved_name(fixed_names, prefix, spelling.clone())?;
+        }
+    }
     let spelling =
         resolver
             .resolve(encoded_id)
@@ -2038,6 +2047,33 @@ fn insert_resolved_name(
         names.insert(encoded_id, spelling);
     }
     Ok(())
+}
+
+fn insert_resolved_chain(
+    names: &mut BTreeMap<VocabularyEncodedId, Name>,
+    resolved: &encoded_name_table::ResolvedName<VocabularyRoot>,
+) -> Result<(), NomosLoadError> {
+    let modules = resolved.path().table().modules();
+    let chain = resolved.encoded_id().chain();
+    if chain.len() != modules.len() + 1 {
+        return Err(NomosLoadError::ReceiptPathDepthMismatch {
+            path_depth: modules.len() + 1,
+            chain_depth: chain.len(),
+        });
+    }
+    for (index, spelling) in modules.iter().enumerate() {
+        let encoded_id = VocabularyEncodedId::new(
+            *resolved.encoded_id().root_variant(),
+            chain[..=index].to_vec(),
+        )
+        .expect("every path prefix is non-empty");
+        insert_resolved_name(names, encoded_id, spelling.clone())?;
+    }
+    insert_resolved_name(
+        names,
+        resolved.encoded_id().clone(),
+        resolved.path().spelling().clone(),
+    )
 }
 
 fn resolved_path(

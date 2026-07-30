@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
-    LoadedNomosDocument, MetaType, NomosLoadError, NomosModulePath, TemplateFutureOutput,
+    LoadedNomosDocument, LoadedNomosPopulation, MetaType, NameTreeProjectionVersion,
+    NomosLoadError, NomosModulePath, SealedNomosPopulation, TemplateFutureOutput,
     TemplateLandingShape, TemplateLanguage, TextualNomos, TextualNomosMetaType,
     TextualNomosTypeIds, TextualNomosWords,
 };
@@ -382,9 +383,13 @@ async fn one_seal_allocates_nested_nomos_chains_and_materializes_only_from_its_r
         .expect("restart-recovered durable receipt materializes");
     assert_eq!(
         recovered_loaded
+            .population()
             .content_identity()
             .expect("content identity"),
-        loaded.content_identity().expect("content identity")
+        loaded
+            .population()
+            .content_identity()
+            .expect("content identity")
     );
     runtime
         .shutdown()
@@ -416,7 +421,26 @@ async fn text_edit_remints_while_operational_rename_changes_only_the_name_siblin
         .expect("initial load");
     let initial_transformer = transformer_id(&initial, "WireNewtype");
     let wrapped = resolved_id(initial_receipt, &["fixture", "WireNewtype"], "wrapped");
-    let content_before = initial.content_identity().expect("content identity");
+    let sealed_before = initial
+        .population()
+        .seal(NameTreeProjectionVersion::initial())
+        .expect("receipt-validated population seals");
+    let capsule_bytes_before = sealed_before
+        .capsule()
+        .to_archive_bytes()
+        .expect("archive immutable Capsule");
+    let invalid_chain_refused = (0..capsule_bytes_before.len().saturating_sub(3)).any(|offset| {
+        let mut mutation = capsule_bytes_before.clone();
+        mutation[offset..offset + 4].fill(0);
+        matches!(
+            core_nomos::SealedNomosCapsule::from_archive_bytes(&mutation),
+            Err(core_nomos::NomosSealError::InvalidEncodedChain { .. })
+        )
+    });
+    assert!(
+        invalid_chain_refused,
+        "an empty encoded-chain archive mutation must reach typed refusal"
+    );
 
     let edited_source = SOURCE.replace("WireNewtype", "WireWrapped");
     let edited_plan = textual
@@ -437,6 +461,14 @@ async fn text_edit_remints_while_operational_rename_changes_only_the_name_siblin
         .expect("text-edit load");
     let edited_transformer = transformer_id(&edited, "WireWrapped");
     assert_ne!(initial_transformer, edited_transformer);
+    let edited_sealed = edited
+        .population()
+        .seal(NameTreeProjectionVersion::initial())
+        .expect("changed authorship seals");
+    assert_ne!(
+        sealed_before.capsule().content_identity(),
+        edited_sealed.capsule().content_identity()
+    );
     let owning_snapshot = current_snapshot(&runtime, initial_transformer.owning_table()).await;
     assert!(
         owning_snapshot
@@ -470,10 +502,17 @@ async fn text_edit_remints_while_operational_rename_changes_only_the_name_siblin
     initial
         .apply_rename(rename_receipt)
         .expect("loaded sibling accepts the committed rename");
+    let sealed_after = initial
+        .population()
+        .advance_projection(&sealed_before)
+        .expect("rename advances projection only");
     assert_eq!(initial.names().spelling(&wrapped), Some("inner"));
     assert_eq!(
-        initial.content_identity().expect("content identity"),
-        content_before
+        initial
+            .population()
+            .content_identity()
+            .expect("content identity"),
+        sealed_before.capsule().content_identity()
     );
     let binding_after = initial
         .transformers()
@@ -487,6 +526,84 @@ async fn text_edit_remints_while_operational_rename_changes_only_the_name_siblin
         .find(|parameter| parameter.binding().encoded_id() == &wrapped)
         .expect("renamed binding");
     assert_eq!(binding_after.binding().encoded_id(), &wrapped);
+    assert_eq!(
+        sealed_after.capsule().content_identity(),
+        sealed_before.capsule().content_identity()
+    );
+    assert_eq!(
+        sealed_after
+            .capsule()
+            .to_archive_bytes()
+            .expect("archive renamed Capsule"),
+        capsule_bytes_before
+    );
+    assert_eq!(
+        sealed_after.projection().version(),
+        NameTreeProjectionVersion::new(1)
+    );
+    assert_ne!(
+        sealed_after.projection().integrity_bytes(),
+        sealed_before.projection().integrity_bytes()
+    );
+    let rendered = sealed_after
+        .projection()
+        .render_chain(&wrapped)
+        .expect("projection renders every ancestor");
+    assert_eq!(rendered, ["fixture", "WireNewtype", "inner"]);
+    assert_eq!(
+        sealed_after
+            .projection()
+            .resolve_chain(VocabularyRoot::Universal, &rendered),
+        Some(wrapped.clone())
+    );
+
+    let projected_population = LoadedNomosPopulation::from_typed(
+        initial.transformers().clone(),
+        sealed_after.projection().to_name_table(),
+    );
+    let resealed = projected_population
+        .seal(sealed_after.projection().version())
+        .expect("rendered projection reseals");
+    assert_eq!(resealed, sealed_after);
+    let restored = SealedNomosPopulation::from_archive_parts(
+        &sealed_after
+            .capsule()
+            .to_archive_bytes()
+            .expect("archive Capsule"),
+        &sealed_after
+            .projection()
+            .to_archive_bytes()
+            .expect("archive projection"),
+    )
+    .expect("restore independently persisted seal parts");
+    assert_eq!(restored, sealed_after);
+
+    let ancestor_plan = textual
+        .plan_load(
+            SOURCE,
+            &fixed,
+            NomosModulePath::try_from_spellings(["other"]).expect("alternate module path"),
+            operation_key(5),
+            expected(current(&runtime).await),
+        )
+        .expect("ancestor-edit plan");
+    let ancestor_outcome = submit_plan(&runtime, &ancestor_plan).await;
+    let ancestor_durable = durable_receipt(&runtime, ancestor_plan.request().operation_key).await;
+    let ancestor = textual
+        .complete_load(&ancestor_plan, &ancestor_durable, &fixed)
+        .expect("ancestor-edit load");
+    assert!(matches!(
+        ancestor_outcome.reply,
+        AuthorityReply::Committed(CommittedReceipt::SealUniversal(_))
+    ));
+    let ancestor_sealed = ancestor
+        .population()
+        .seal(NameTreeProjectionVersion::initial())
+        .expect("ancestor-edited population seals");
+    assert_ne!(
+        ancestor_sealed.capsule().content_identity(),
+        sealed_before.capsule().content_identity()
+    );
 
     runtime.shutdown().await.expect("runtime shuts down");
 }

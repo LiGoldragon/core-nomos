@@ -7,11 +7,11 @@
 //!
 //! ## EncodedNomos and the plain TextualNomos base door
 //!
-//! EncodedNomos includes transformers as typed data, the two legacy execution
-//! kinds, the stateful-at-rest package, and the engine. The phase-stable
+//! EncodedNomos includes transformers as typed data and retains the legacy
+//! execution fixture for equivalence work. The phase-stable
 //! [`AuthoredTransformerDeclaration`] is the stringless target of the approved
 //! [`TextualNomos`] base door: it retains complete encoded-ID chains and durable
-//! invocation targets before atomic package sealing. [`TextualNomos`] uses the
+//! invocation targets before atomic sealing. [`TextualNomos`] uses the
 //! plain Standard raw-discovery profile and the shared structural evaluator.
 //! Its Logos-shaped result grammar and landing carrier are computed together
 //! from the Logos declarations; no transformer-specific or Logos-type-specific
@@ -25,13 +25,16 @@
 //!   an Ethos declaration's kind; `WireNewtype` and the particular-struct transformer are
 //!   structural.
 //!
-//! ## Stateful at rest
+//! ## Production seal
 //!
-//! A [`MacroPackage`] is a durable, archivable, content-identified value — a
-//! loaded-definitions registry as data (a [`MacroIdentity`]-keyed table plus
-//! section defaults), carrying its own authoring NameTable sibling excluded from
-//! the content identity. Daemon seating is later work; this crate provides the
-//! portable package type.
+//! [`SealedNomosCapsule`] hashes exactly canonical [`AuthoredTransformerSet`]
+//! bytes. [`AuthenticatedNameTreeProjection`] stores only the versioned,
+//! integrity-authenticated reachable spelling closure bound to that immutable
+//! identity. Rename advances the projection while preserving Capsule bytes and
+//! identity. Live-slot seating and persistence are later daemon work.
+//!
+//! [`MacroPackage`], [`MacroIdentity`], and [`PackageRevision`] are retained
+//! only as the legacy execution fixture for equivalence work.
 //!
 //! ## The closed escape algebra
 //!
@@ -61,6 +64,7 @@ pub mod meta;
 mod name_boundary;
 pub mod package;
 pub mod prelude;
+pub mod sealed;
 pub mod slice_one;
 pub mod template;
 pub mod template_language;
@@ -84,6 +88,10 @@ pub use manifest::{
 pub use meta::{BoundInput, InputParameter, InputSignature, MetaType, MetaValue};
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
+pub use sealed::{
+    AuthenticatedNameTreeProjection, NameTreeProjectionEntry, NameTreeProjectionVersion,
+    NomosSealError, SealedNomosCapsule, SealedNomosPopulation,
+};
 pub use slice_one::{
     SliceOneTransformation, SliceOneTransformationError, SliceOneVocabularyReferenceMapping,
 };

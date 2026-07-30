@@ -1,11 +1,11 @@
 [package]
 name         = "core-nomos"
-version      = "0.22.0"
+version      = "0.23.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/core-nomos"
-description  = "The stringless encoded form of Nomos: authored transformer declarations retain complete encoded-ID chains before atomic sealing into the legacy execution package."
+description  = "The stringless encoded form of Nomos with full-chain authored content sealing and separate authenticated NameTree projection."
 publish      = false
 
 [lib]
@@ -14,10 +14,10 @@ path = "src/lib.rs"
 
 [dependencies]
 content-identity         = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "24b43bae5d9748b0e7f679c6ec9f85a643c4d36a" }
-capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "fdf2db1d5a9e8ea52d24d39a03833c3e6885c355" }
+capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "896b21e17f31b66d0802bff899b4b60acea9c0f1" }
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
 encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
-protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "1343d0c405cdb6929552ea6b12c48739e73f35ab" }
+protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "1263f9d1f73b57885d695ac033bdd6faa1334ddf" }
 core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "47c866f101c0e830ecff70451e92f7bdc0ade4e7" }
 core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "918869938402a099c3d8cd5d599b2488d0317c15" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "7290f65bbb5e7825ab2ca58340631d154d69d110" }

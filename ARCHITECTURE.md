@@ -137,18 +137,17 @@ the final Capsule or translator relationship.
 
 `capsule_from_issued_hash` fixes only the outer kind to `protos::Nomos`. It
 passes a caller-issued `ContentAddressedHash` and caller-supplied opaque complete
-NameTree pin into `protos::Capsule`. It does not create a whole-Nomos encoded
-carrier, derive or verify a whole-content hash, inspect the pin, compose module
-tables, or identify the current `MacroPackage` hash with the Capsule hash.
-Complete-pin verification and the module-table-to-Capsule relationship remain
-unwired.
+NameTree pin into `protos::Capsule`. It remains a legacy caller-issued
+pass-through and does not identify the current `MacroPackage` hash with a
+production Capsule hash.
 
 The existing `MacroPackage::content_identity` API and archive layout are
-unchanged. The new identity producer is dependency-renamed
-`capsule-content-identity`; the original dependency remains the package/archive
-type in the legacy graph. Current flat identifiers and sibling `NameTable`
-remain migration debt, and this carrier is not evidence that encodedID-chain
-migration or a whole Nomos content boundary has landed.
+unchanged as the po2.5 fixture oracle. Production `SealedNomosCapsule` identity
+hashes only canonical `AuthoredTransformerSet` bytes through the
+dependency-renamed `capsule-content-identity`. Versioned reachable NameTree
+spellings live in the separate integrity-authenticated
+`AuthenticatedNameTreeProjection`. No flat identity, package revision, spelling,
+projection, provenance, cache, or live-slot state enters the content preimage.
 
 ## Acceptance
 
@@ -171,7 +170,9 @@ working-program behavior.
 - `src/definition.rs`, `src/identity.rs`, `src/meta.rs`, `src/package.rs`,
   `src/template.rs` — live typed macro/package vocabulary.
 - `src/authored.rs` — full-chain, positional authored transformer declarations
-  and typed Logos skeletons before atomic package sealing.
+  and typed Logos skeletons before atomic content sealing.
+- `src/sealed.rs` — immutable content Capsule identity and the separately
+  authenticated, versioned reachable NameTree projection.
 - `src/engine.rs` — live macro evaluation; its direct code is mostly typed, but
   every apply owns the legacy `NameTableBoundary`.
 - `src/name_boundary.rs` — legacy string resolution, derivation, formatting,
@@ -188,3 +189,6 @@ working-program behavior.
   behavior and static source/dependency witnesses for the conforming slice.
 - `tests/authored_stage.rs` — archive preservation and typed-refusal witnesses
   for the authored-to-sealed phase boundary.
+- `tests/textual_nomos_authority.rs`, `tests/textual_nomos_manifest.rs` —
+  receipt-backed seal, rename stability, projection reversibility, and
+  canonical-order witnesses.

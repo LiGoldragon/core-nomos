@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
-    AuthoredTransformerSet, LoadedNomosPopulation, MetaType, NomosFileManifest, NomosManifestFile,
-    NomosManifestLoadError, NomosModulePath, NomosSourcePath, TemplateFutureOutput,
-    TemplateLandingShape, TemplateLanguage, TextualNomos, TextualNomosMetaType,
-    TextualNomosTypeIds, TextualNomosWords,
+    AuthoredTransformerSet, LoadedNomosPopulation, MetaType, NameTreeProjectionVersion,
+    NomosFileManifest, NomosManifestFile, NomosManifestLoadError, NomosModulePath, NomosSourcePath,
+    TemplateFutureOutput, TemplateLandingShape, TemplateLanguage, TextualNomos,
+    TextualNomosMetaType, TextualNomosTypeIds, TextualNomosWords,
 };
 use encoded_name_table::{LocalEncodedId, Name, OperationKey};
 use sema_translator::{DispatchOutcome, Runtime, StaticAuthorizationPolicy};
@@ -423,6 +423,19 @@ async fn multi_file_population_is_one_canonical_request_and_source_neutral_shape
         population.names().clone(),
     );
     assert_eq!(direct, population);
+    let canonical_seal = population
+        .seal(NameTreeProjectionVersion::initial())
+        .expect("canonical population seals");
+    let mut reversed_declarations = population.transformers().declarations().to_vec();
+    reversed_declarations.reverse();
+    let construction_order_permutation = LoadedNomosPopulation::from_typed(
+        AuthoredTransformerSet::try_new(reversed_declarations)
+            .expect("permuted declarations canonicalize"),
+        population.names().clone(),
+    )
+    .seal(NameTreeProjectionVersion::initial())
+    .expect("permuted construction seals");
+    assert_eq!(construction_order_permutation, canonical_seal);
 
     let second_authority = tempfile::tempdir().expect("second authority directory");
     let second_runtime = open_runtime(&second_authority).await;
@@ -439,6 +452,16 @@ async fn multi_file_population_is_one_canonical_request_and_source_neutral_shape
     assert_eq!(
         first_receipt.name_table.references(),
         second_receipt.name_table.references()
+    );
+    let reversed_durable = durable_receipt(&second_runtime, reversed.request().operation_key).await;
+    let reversed_population = textual
+        .complete_file_population(&reversed, &reversed_durable, &fixed)
+        .expect("reversed traversal materializes");
+    assert_eq!(
+        reversed_population
+            .seal(NameTreeProjectionVersion::initial())
+            .expect("reversed traversal seals"),
+        canonical_seal
     );
 
     first_runtime

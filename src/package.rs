@@ -1,4 +1,4 @@
-//! The macro package — Nomos stateful at rest.
+//! The legacy flat macro package retained as an execution fixture.
 
 use std::collections::BTreeMap;
 
@@ -11,9 +11,9 @@ use crate::error::NomosError;
 use crate::identity::{MacroIdentity, MacroKind, SectionDefault};
 use crate::template::GenerationClass;
 
-/// A package revision — a monotonic counter over the loaded-definitions registry,
-/// bumped when the durable package is re-authored. Truthful versioning of the
-/// at-rest value (per the versioning discipline), distinct from content identity.
+/// A legacy fixture revision over the flat loaded-definitions registry.
+///
+/// This value is not part of the production authored Nomos seal.
 #[derive(
     rkyv::Archive,
     rkyv::Serialize,
@@ -29,7 +29,7 @@ use crate::template::GenerationClass;
 )]
 pub struct PackageRevision(pub u32);
 
-/// The stringless, content-identified macro data: the revision, the macro table
+/// The legacy content-identified macro data: the revision, the macro table
 /// keyed by minted identity, and the structural section defaults. This is the
 /// pre-image of the package's content identity — it holds no names (only
 /// identifiers), so the identity is rename-stable by construction.
@@ -44,11 +44,9 @@ pub struct MacroDefinitions {
     pub structural_defaults: BTreeMap<SectionDefault, MacroIdentity>,
 }
 
-/// A loaded macro package: the content-identified macro data plus its authoring
-/// NameTable sibling. The NameTable is *excluded* from content identity (it is a
-/// sibling, exactly as everywhere in the family), so the package is portable — an
-/// archivable, content-addressed value carrying its own names — which is what
-/// makes Nomos stateful at rest.
+/// A legacy loaded macro package: the content-identified macro data plus its
+/// authoring NameTable sibling. The NameTable is excluded from the fixture's
+/// content identity.
 ///
 /// Applying the package to a ethos (`MacroPackage::apply`) re-interns every
 /// template-literal name through this sibling into the Logos-owned NameTable
