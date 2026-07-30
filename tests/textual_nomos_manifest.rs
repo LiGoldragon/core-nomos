@@ -54,6 +54,7 @@ fn logos() -> LogosLanguage {
     LogosLanguage::seal(
         LogosLanguageTypeIds {
             newtype: encoded(&[1]),
+            structure: encoded(&[13]),
             enumeration: encoded(&[2]),
             visibility: encoded(&[3]),
             attributes: encoded(&[4]),
@@ -64,6 +65,7 @@ fn logos() -> LogosLanguage {
             generics: encoded(&[9]),
             generic_parameter: encoded(&[10]),
             type_reference: encoded(&[11]),
+            field: encoded(&[14]),
             variant: encoded(&[12]),
         },
         LogosLanguageWords {
@@ -116,6 +118,7 @@ fn textual(logos: &LogosLanguage) -> TextualNomos {
             input_signature: encoded(&[100, 7]),
             input_parameter: encoded(&[100, 8]),
             newtype_body: encoded(&[100, 9]),
+            struct_body: encoded(&[100, 12]),
             enumeration_body: encoded(&[100, 10]),
             attributes_body: encoded(&[100, 11]),
         },
@@ -123,6 +126,7 @@ fn textual(logos: &LogosLanguage) -> TextualNomos {
             named: encoded(&[101, 1]),
             structural: encoded(&[101, 2]),
             newtype: encoded(&[101, 3]),
+            structure: encoded(&[101, 8]),
             enumeration: encoded(&[101, 4]),
             realize: encoded(&[101, 5]),
             splice: encoded(&[101, 6]),

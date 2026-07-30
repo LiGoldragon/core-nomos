@@ -63,6 +63,7 @@ pub struct TextualNomosTypeIds {
     pub input_signature: VocabularyEncodedId,
     pub input_parameter: VocabularyEncodedId,
     pub newtype_body: VocabularyEncodedId,
+    pub struct_body: VocabularyEncodedId,
     pub enumeration_body: VocabularyEncodedId,
     pub attributes_body: VocabularyEncodedId,
 }
@@ -73,6 +74,7 @@ pub struct TextualNomosWords {
     pub named: VocabularyEncodedId,
     pub structural: VocabularyEncodedId,
     pub newtype: VocabularyEncodedId,
+    pub structure: VocabularyEncodedId,
     pub enumeration: VocabularyEncodedId,
     pub realize: VocabularyEncodedId,
     pub splice: VocabularyEncodedId,
@@ -556,6 +558,7 @@ struct EncodedTypes {
     input_signature: EncodedTypeId<VocabularyRoot>,
     input_parameter: EncodedTypeId<VocabularyRoot>,
     newtype_body: EncodedTypeId<VocabularyRoot>,
+    struct_body: EncodedTypeId<VocabularyRoot>,
     enumeration_body: EncodedTypeId<VocabularyRoot>,
     attributes_body: EncodedTypeId<VocabularyRoot>,
 }
@@ -572,6 +575,7 @@ impl TextualNomosTypeIds {
             ("input-signature type", &self.input_signature),
             ("input-parameter type", &self.input_parameter),
             ("newtype-body type", &self.newtype_body),
+            ("struct-body type", &self.struct_body),
             ("enumeration-body type", &self.enumeration_body),
             ("attributes-body type", &self.attributes_body),
         ] {
@@ -587,6 +591,7 @@ impl TextualNomosTypeIds {
             input_signature: EncodedTypeId::new(self.input_signature.clone()),
             input_parameter: EncodedTypeId::new(self.input_parameter.clone()),
             newtype_body: EncodedTypeId::new(self.newtype_body.clone()),
+            struct_body: EncodedTypeId::new(self.struct_body.clone()),
             enumeration_body: EncodedTypeId::new(self.enumeration_body.clone()),
             attributes_body: EncodedTypeId::new(self.attributes_body.clone()),
         })
@@ -1190,6 +1195,7 @@ pub struct TextualNomos {
     table: AddressedStructuralTable<VocabularyRoot, TextualNomosRule>,
     document: EncodedTypeId<VocabularyRoot>,
     newtype: TemplateLanguage<VocabularyRoot>,
+    structure: TemplateLanguage<VocabularyRoot>,
     enumeration: TemplateLanguage<VocabularyRoot>,
     attributes: TemplateLanguage<VocabularyRoot>,
     transformer_forms: Vec<TransformerForm>,
@@ -1209,6 +1215,7 @@ impl TextualNomos {
             ("Named word", &words.named),
             ("Structural word", &words.structural),
             ("Newtype word", &words.newtype),
+            ("Struct word", &words.structure),
             ("Enumeration word", &words.enumeration),
             ("Realize word", &words.realize),
             ("Splice word", &words.splice),
@@ -1220,6 +1227,8 @@ impl TextualNomos {
 
         let newtype =
             TemplateLanguage::derive(logos.grammar(), logos.landing(), logos.newtype_type())?;
+        let structure =
+            TemplateLanguage::derive(logos.grammar(), logos.landing(), logos.struct_type())?;
         let enumeration =
             TemplateLanguage::derive(logos.grammar(), logos.landing(), logos.enumeration_type())?;
         let attributes =
@@ -1236,12 +1245,13 @@ impl TextualNomos {
             &words,
             &meta_types,
             logos.newtype_type(),
+            logos.struct_type(),
             logos.enumeration_type(),
             logos.attributes_type(),
         )?;
         entries.extend(lifted_entries(
             logos.grammar(),
-            [&newtype, &enumeration, &attributes],
+            [&newtype, &structure, &enumeration, &attributes],
             &syntax,
         ));
         let table = AddressedStructuralTable::seal(
@@ -1272,11 +1282,16 @@ impl TextualNomos {
             },
             TransformerForm {
                 constructor: EncodedConstructorId::under(&types.transformer, 2),
+                kind: MacroKind::Structural(SectionDefault::Struct),
+                template_root: logos.struct_type().clone(),
+            },
+            TransformerForm {
+                constructor: EncodedConstructorId::under(&types.transformer, 3),
                 kind: MacroKind::Structural(SectionDefault::Enumeration),
                 template_root: logos.enumeration_type().clone(),
             },
             TransformerForm {
-                constructor: EncodedConstructorId::under(&types.transformer, 3),
+                constructor: EncodedConstructorId::under(&types.transformer, 4),
                 kind: MacroKind::Named,
                 template_root: logos.attributes_type().clone(),
             },
@@ -1298,6 +1313,7 @@ impl TextualNomos {
             table,
             document: types.document,
             newtype,
+            structure,
             enumeration,
             attributes,
             transformer_forms,
@@ -1678,9 +1694,14 @@ impl TextualNomos {
         &self,
         root: EncodedTypeId<VocabularyRoot>,
     ) -> Option<&TemplateLanguage<VocabularyRoot>> {
-        [&self.newtype, &self.enumeration, &self.attributes]
-            .into_iter()
-            .find(|language| language.root() == &root)
+        [
+            &self.newtype,
+            &self.structure,
+            &self.enumeration,
+            &self.attributes,
+        ]
+        .into_iter()
+        .find(|language| language.root() == &root)
     }
 }
 
@@ -2176,6 +2197,7 @@ fn outer_entries(
     words: &TextualNomosWords,
     meta_types: &[TextualNomosMetaType],
     newtype_root: &EncodedTypeId<VocabularyRoot>,
+    struct_root: &EncodedTypeId<VocabularyRoot>,
     enumeration_root: &EncodedTypeId<VocabularyRoot>,
     attributes_root: &EncodedTypeId<VocabularyRoot>,
 ) -> Result<Vec<StructuralEntry<VocabularyRoot, TextualNomosRule>>, TextualNomosError> {
@@ -2195,12 +2217,19 @@ fn outer_entries(
         (
             2,
             NomosRule::Transformer(TransformerRecord::new(
+                structural_kind(&words.structure),
+                &types.struct_body,
+            )?),
+        ),
+        (
+            3,
+            NomosRule::Transformer(TransformerRecord::new(
                 structural_kind(&words.enumeration),
                 &types.enumeration_body,
             )?),
         ),
         (
-            3,
+            4,
             NomosRule::Transformer(TransformerRecord::new(
                 SharedDescriptor::Literal(words.named.clone()),
                 &types.attributes_body,
@@ -2294,6 +2323,13 @@ fn outer_entries(
             vec![(
                 1,
                 NomosRule::Body(BodyRecord::new(&types.input_signature, enumeration_root)?),
+            )],
+        ),
+        outer_entry(
+            &types.struct_body,
+            vec![(
+                1,
+                NomosRule::Body(BodyRecord::new(&types.input_signature, struct_root)?),
             )],
         ),
         outer_entry(

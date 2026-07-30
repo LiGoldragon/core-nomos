@@ -37,6 +37,7 @@ fn logos() -> LogosLanguage {
     LogosLanguage::seal(
         LogosLanguageTypeIds {
             newtype: encoded(&[1]),
+            structure: encoded(&[13]),
             enumeration: encoded(&[2]),
             visibility: encoded(&[3]),
             attributes: encoded(&[4]),
@@ -47,6 +48,7 @@ fn logos() -> LogosLanguage {
             generics: encoded(&[9]),
             generic_parameter: encoded(&[10]),
             type_reference: encoded(&[11]),
+            field: encoded(&[14]),
             variant: encoded(&[12]),
         },
         LogosLanguageWords {
