@@ -117,6 +117,7 @@ pub use template_language::{
 };
 pub use textual::{
     DecodedNomosDocument, LoadedNomosDocument, LoadedNomosPopulation, NomosLoadError,
-    NomosModulePath, NomosNameTable, PlannedNomosLoad, PlannedOccurrenceKind, TextualNomos,
-    TextualNomosError, TextualNomosMetaType, TextualNomosTypeIds, TextualNomosWords,
+    NomosModulePath, NomosNameTable, NomosNameTableConstructionError, PlannedNomosLoad,
+    PlannedOccurrenceKind, TextualNomos, TextualNomosError, TextualNomosMetaType,
+    TextualNomosTypeIds, TextualNomosWords,
 };

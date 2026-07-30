@@ -364,6 +364,38 @@ fn textual(logos: &LogosLanguage) -> TextualNomos {
     .expect("TextualNomos table seals")
 }
 
+#[test]
+fn direct_typed_name_table_constructor_checks_identity_and_table_spelling_uniqueness() {
+    let first = encoded(&[220, 1]);
+    let second = encoded(&[220, 2]);
+    let names = core_nomos::NomosNameTable::try_from_entries(vec![
+        (second.clone(), "Second".into()),
+        (first.clone(), "First".into()),
+    ])
+    .expect("typed direct NameTree");
+    assert_eq!(
+        names
+            .entries()
+            .map(|(identity, _)| identity)
+            .collect::<Vec<_>>(),
+        vec![&first, &second]
+    );
+    assert!(
+        core_nomos::NomosNameTable::try_from_entries(vec![
+            (first.clone(), "Same".into()),
+            (second, "Same".into()),
+        ])
+        .is_err()
+    );
+    assert!(
+        core_nomos::NomosNameTable::try_from_entries(vec![
+            (first.clone(), "First".into()),
+            (first, "Again".into()),
+        ])
+        .is_err()
+    );
+}
+
 #[derive(Default)]
 struct Bindings {
     declarations: BTreeMap<(usize, usize), (String, VocabularyEncodedId)>,

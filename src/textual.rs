@@ -176,6 +176,54 @@ impl NomosNameTable {
         Self(Vec::new())
     }
 
+    /// Construct a complete typed sibling from authority-issued identities and
+    /// their captured spellings.
+    pub fn try_from_entries(
+        mut entries: Vec<(VocabularyEncodedId, String)>,
+    ) -> Result<Self, NomosNameTableConstructionError> {
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+        for (index, (identity, spelling)) in entries.iter().enumerate() {
+            if identity.root_variant() != &VocabularyRoot::Universal {
+                return Err(NomosNameTableConstructionError::WrongRoot {
+                    identity: identity.clone(),
+                    found: *identity.root_variant(),
+                });
+            }
+            if identity.chain().is_empty() {
+                return Err(NomosNameTableConstructionError::EmptyIdentity);
+            }
+            if spelling.is_empty() {
+                return Err(NomosNameTableConstructionError::EmptySpelling {
+                    identity: identity.clone(),
+                });
+            }
+            if index > 0 && entries[index - 1].0 == *identity {
+                return Err(NomosNameTableConstructionError::DuplicateIdentity {
+                    identity: identity.clone(),
+                });
+            }
+        }
+        for (index, (identity, spelling)) in entries.iter().enumerate() {
+            if entries[..index].iter().any(|(other, other_spelling)| {
+                other.owning_table() == identity.owning_table() && other_spelling == spelling
+            }) {
+                return Err(NomosNameTableConstructionError::SpellingCollision {
+                    identity: identity.clone(),
+                    spelling: spelling.clone(),
+                });
+            }
+        }
+        Ok(Self(
+            entries
+                .into_iter()
+                .map(|(encoded_id, spelling)| NomosNameEntry {
+                    encoded_id,
+                    spelling: Name::new(spelling),
+                })
+                .collect(),
+        ))
+    }
+
     pub(crate) fn from_map(names: BTreeMap<VocabularyEncodedId, Name>) -> Self {
         Self(
             names
@@ -240,6 +288,26 @@ impl NomosNameTable {
             .ok()
             .map(|index| &self.0[index])
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum NomosNameTableConstructionError {
+    #[error("Nomos NameTree identity {identity:?} belongs to {found:?}; expected Universal")]
+    WrongRoot {
+        identity: VocabularyEncodedId,
+        found: VocabularyRoot,
+    },
+    #[error("Nomos NameTree identity chain is empty")]
+    EmptyIdentity,
+    #[error("Nomos NameTree identity {identity:?} has an empty spelling")]
+    EmptySpelling { identity: VocabularyEncodedId },
+    #[error("Nomos NameTree identity {identity:?} is repeated")]
+    DuplicateIdentity { identity: VocabularyEncodedId },
+    #[error("Nomos NameTree spelling {spelling:?} for {identity:?} collides in its owning table")]
+    SpellingCollision {
+        identity: VocabularyEncodedId,
+        spelling: String,
+    },
 }
 
 impl EncodedNameResolver<VocabularyRoot> for NomosNameTable {
