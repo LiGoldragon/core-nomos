@@ -10,7 +10,7 @@
 //! `[to-be-reviewed-by-psyche]`; po2.8 owns moving that behavior into authored
 //! Nomos and retiring the external selection.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use capsule_content_identity::{ArchiveError, PortableArchive};
 use core_ethos::{
@@ -28,10 +28,11 @@ use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use structural_codec::{EncodedConstructorId, ScalarValue, StableRoleId};
 use thiserror::Error;
 
+use crate::template_language::RecursiveCallJudgment;
 use crate::{
     AuthoredBindingIdentity, AuthoredTransformerDeclaration, AuthoredTransformerIdentity,
-    AuthoredTransformerSet, MacroKind, MetaType, NameTransform, SectionDefault, TemplateFieldValue,
-    TemplateFuture, TemplateRootOutputSelector, TemplateTerm, TemplateValue,
+    AuthoredTransformerSet, InsertAt, MacroKind, MetaType, NameTransform, SectionDefault,
+    TemplateFieldValue, TemplateFuture, TemplateRootOutputSelector, TemplateTerm, TemplateValue,
 };
 
 /// The future-free, declaration-indexed native Logos encoded form.
@@ -351,6 +352,163 @@ pub struct NativeAuthoredEvaluator<'package> {
     references: NativeReferenceUniverse,
 }
 
+// `[delegated-assent]` The designated Claude advisor accepted this whole-source
+// preflight and evaluator design for po2.19. This records delegated review, not
+// psyche intent.
+struct RecursiveEnumeration<'ethos> {
+    source: &'ethos WholeEthosEnumeration,
+    children: Vec<VocabularyEncodedId>,
+}
+
+struct NativeRecursiveUniverse<'ethos> {
+    enumerations: BTreeMap<VocabularyEncodedId, RecursiveEnumeration<'ethos>>,
+}
+
+impl<'ethos> NativeRecursiveUniverse<'ethos> {
+    fn preflight(
+        package: &AuthoredTransformerSet,
+        ethos: &'ethos WholeEthos,
+    ) -> Result<Self, NativeEvaluationError> {
+        if !package
+            .declarations()
+            .iter()
+            .any(|declaration| matches!(declaration.kind(), MacroKind::Recursive { .. }))
+        {
+            return Ok(Self {
+                enumerations: BTreeMap::new(),
+            });
+        }
+
+        let mut identities = BTreeSet::new();
+        let mut enumerations = BTreeMap::new();
+        for item in ethos.items() {
+            let identity = match item {
+                WholeEthosItem::Newtype(newtype) => newtype.name(),
+                WholeEthosItem::Enumeration(enumeration) => enumeration.name(),
+            };
+            if !identities.insert(identity.clone()) {
+                return Err(NativeEvaluationError::DuplicateRecursiveSourceIdentity {
+                    identity: identity.clone(),
+                });
+            }
+            if let WholeEthosItem::Enumeration(enumeration) = item {
+                enumerations.insert(
+                    identity.clone(),
+                    RecursiveEnumeration {
+                        source: enumeration,
+                        children: Vec::new(),
+                    },
+                );
+            }
+        }
+
+        let mut indegrees = BTreeMap::<VocabularyEncodedId, usize>::new();
+        let enumeration_identities = enumerations.keys().cloned().collect::<BTreeSet<_>>();
+        for item in ethos.items() {
+            let WholeEthosItem::Enumeration(enumeration) = item else {
+                continue;
+            };
+            let mut children = Vec::new();
+            for variant in enumeration.variants() {
+                let WholeEthosVariantPayload::Tuple(fields) = variant.payload() else {
+                    continue;
+                };
+                for field in fields.fields() {
+                    match field {
+                        WholeEthosTypeReference::Identity(identity)
+                            if enumeration_identities.contains(identity) =>
+                        {
+                            children.push(identity.clone());
+                            let indegree = indegrees.entry(identity.clone()).or_default();
+                            *indegree += 1;
+                            if *indegree > 1 {
+                                return Err(NativeEvaluationError::RecursiveSourceSharing {
+                                    enumeration: identity.clone(),
+                                });
+                            }
+                        }
+                        WholeEthosTypeReference::Identity(_) => {}
+                        WholeEthosTypeReference::Application(_) => {
+                            return Err(NativeEvaluationError::RecursiveSourceApplication {
+                                enumeration: enumeration.name().clone(),
+                                variant: variant.name().clone(),
+                            });
+                        }
+                    }
+                }
+            }
+            enumerations
+                .get_mut(enumeration.name())
+                .expect("the enumeration was indexed above")
+                .children = children;
+        }
+
+        let universe = Self { enumerations };
+        let mut visiting = BTreeSet::new();
+        let mut visited = BTreeSet::new();
+        for identity in universe.enumerations.keys() {
+            validate_recursive_source_acyclic(identity, &universe, &mut visiting, &mut visited)?;
+        }
+        Ok(universe)
+    }
+
+    fn enumeration(&self, identity: &VocabularyEncodedId) -> Option<&'ethos WholeEthosEnumeration> {
+        self.enumerations.get(identity).map(|entry| entry.source)
+    }
+}
+
+fn validate_recursive_source_acyclic(
+    identity: &VocabularyEncodedId,
+    universe: &NativeRecursiveUniverse<'_>,
+    visiting: &mut BTreeSet<VocabularyEncodedId>,
+    visited: &mut BTreeSet<VocabularyEncodedId>,
+) -> Result<(), NativeEvaluationError> {
+    if visited.contains(identity) {
+        return Ok(());
+    }
+    if !visiting.insert(identity.clone()) {
+        return Err(NativeEvaluationError::RecursiveSourceCycle {
+            enumeration: identity.clone(),
+        });
+    }
+    let entry = universe
+        .enumerations
+        .get(identity)
+        .expect("recursive source edges only name indexed enumerations");
+    for child in &entry.children {
+        validate_recursive_source_acyclic(child, universe, visiting, visited)?;
+    }
+    visiting.remove(identity);
+    visited.insert(identity.clone());
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct RecursiveFrame<'ethos> {
+    enumeration: &'ethos WholeEthosEnumeration,
+    variant: &'ethos WholeEthosVariant,
+}
+
+struct NativeEvaluationContext<'context, 'ethos, NameTree: ?Sized> {
+    package: &'context AuthoredTransformerSet,
+    names: &'context NameTree,
+    references: &'context NativeReferenceUniverse,
+    recursive_universe: &'context NativeRecursiveUniverse<'ethos>,
+    recursive_subject: Option<&'ethos WholeEthosEnumeration>,
+}
+
+#[derive(Clone)]
+struct EmittedSpan {
+    binding: AuthoredBindingIdentity,
+    start: usize,
+    len: usize,
+}
+
+struct AppliedInsertion {
+    binding: AuthoredBindingIdentity,
+    boundary: u64,
+}
+
 impl<'package> NativeAuthoredEvaluator<'package> {
     /// Admit one immutable authored set before any transformation executes.
     ///
@@ -377,14 +535,17 @@ impl<'package> NativeAuthoredEvaluator<'package> {
         NameTree: NativeNameTreeBoundary,
     {
         let ethos = population.encoded_form();
+        let recursive_universe = NativeRecursiveUniverse::preflight(self.package, ethos)?;
         let names = population.name_tree().authenticated_plan()?;
         let mut values = Vec::with_capacity(ethos.items().len());
         let mut whole_items = Vec::with_capacity(ethos.items().len());
         for item in ethos.items() {
             let evaluated = match item {
-                WholeEthosItem::Newtype(newtype) => self.evaluate_newtype(newtype, &names)?,
+                WholeEthosItem::Newtype(newtype) => {
+                    self.evaluate_newtype(newtype, &names, &recursive_universe)?
+                }
                 WholeEthosItem::Enumeration(enumeration) => {
-                    self.evaluate_enumeration(enumeration, &names)?
+                    self.evaluate_enumeration(enumeration, &names, &recursive_universe)?
                 }
             };
             values.push(evaluated.0);
@@ -404,13 +565,21 @@ impl<'package> NativeAuthoredEvaluator<'package> {
         &self,
         newtype: &WholeEthosNewtype,
         names: &NameTree,
+        recursive_universe: &NativeRecursiveUniverse<'_>,
     ) -> Result<(NativeEvaluatedValue, WholeLogosItem), NativeEvaluationError>
     where
         NameTree: NativeNameTreePlan,
     {
         let declaration = self.structural_transformer(SectionDefault::Newtype)?;
         let bindings = bind_newtype(declaration, newtype, &self.references)?;
-        let result = self.evaluate_declaration(declaration, &bindings, names, &mut Vec::new())?;
+        let result = self.evaluate_declaration(
+            declaration,
+            &bindings,
+            names,
+            recursive_universe,
+            None,
+            &mut Vec::new(),
+        )?;
         let whole_projection = project_newtype(&result, declaration)?;
         Ok((result, WholeLogosItem::Newtype(whole_projection)))
     }
@@ -419,13 +588,21 @@ impl<'package> NativeAuthoredEvaluator<'package> {
         &self,
         enumeration: &WholeEthosEnumeration,
         names: &NameTree,
+        recursive_universe: &NativeRecursiveUniverse<'_>,
     ) -> Result<(NativeEvaluatedValue, WholeLogosItem), NativeEvaluationError>
     where
         NameTree: NativeNameTreePlan,
     {
         let declaration = self.structural_transformer(SectionDefault::Enumeration)?;
         let bindings = bind_enumeration(declaration, enumeration, &self.references)?;
-        let result = self.evaluate_declaration(declaration, &bindings, names, &mut Vec::new())?;
+        let result = self.evaluate_declaration(
+            declaration,
+            &bindings,
+            names,
+            recursive_universe,
+            Some(enumeration),
+            &mut Vec::new(),
+        )?;
         let whole_projection = project_enumeration(&result, declaration)?;
         Ok((result, WholeLogosItem::Enumeration(whole_projection)))
     }
@@ -482,6 +659,8 @@ impl<'package> NativeAuthoredEvaluator<'package> {
         declaration: &AuthoredTransformerDeclaration,
         bindings: &[NativeBinding],
         names: &NameTree,
+        recursive_universe: &NativeRecursiveUniverse<'_>,
+        recursive_subject: Option<&WholeEthosEnumeration>,
         stack: &mut Vec<AuthoredTransformerIdentity>,
     ) -> Result<NativeEvaluatedValue, NativeEvaluationError>
     where
@@ -493,14 +672,14 @@ impl<'package> NativeAuthoredEvaluator<'package> {
             });
         }
         stack.push(declaration.name().clone());
-        let result = evaluate_value(
-            self.package,
-            declaration.result(),
-            bindings,
+        let context = NativeEvaluationContext {
+            package: self.package,
             names,
-            &self.references,
-            stack,
-        );
+            references: &self.references,
+            recursive_universe,
+            recursive_subject,
+        };
+        let result = evaluate_value(&context, declaration.result(), bindings, None, stack);
         stack.pop();
         result
     }
@@ -516,7 +695,8 @@ struct NativeBinding {
 enum NativeBindingValue {
     Name(VocabularyEncodedId),
     Type(WholeLogosTypeReference),
-    Variants(Vec<WholeLogosVariant>),
+    SourceVariants(Vec<WholeLogosVariant>),
+    EvaluatedChildren(Vec<NativeEvaluatedTerm>),
 }
 
 fn bind_newtype(
@@ -562,7 +742,7 @@ fn bind_enumeration(
         .map(|parameter| {
             let value = match parameter.meta() {
                 MetaType::Name => NativeBindingValue::Name(enumeration.name().clone()),
-                MetaType::Variants => NativeBindingValue::Variants(
+                MetaType::Variants => NativeBindingValue::SourceVariants(
                     enumeration
                         .variants()
                         .iter()
@@ -585,11 +765,10 @@ fn bind_enumeration(
 }
 
 fn evaluate_value<NameTree>(
-    package: &AuthoredTransformerSet,
+    context: &NativeEvaluationContext<'_, '_, NameTree>,
     value: &TemplateValue<VocabularyRoot>,
     bindings: &[NativeBinding],
-    names: &NameTree,
-    references: &NativeReferenceUniverse,
+    recursive_frame: Option<RecursiveFrame<'_>>,
     stack: &mut Vec<AuthoredTransformerIdentity>,
 ) -> Result<NativeEvaluatedValue, NativeEvaluationError>
 where
@@ -598,7 +777,7 @@ where
     let fields = value
         .fields()
         .iter()
-        .map(|field| evaluate_field(package, field, bindings, names, references, stack))
+        .map(|field| evaluate_field(context, field, bindings, recursive_frame, stack))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(NativeEvaluatedValue {
         constructor: value.constructor().clone(),
@@ -607,11 +786,10 @@ where
 }
 
 fn evaluate_field<NameTree>(
-    package: &AuthoredTransformerSet,
+    context: &NativeEvaluationContext<'_, '_, NameTree>,
     field: &TemplateFieldValue<VocabularyRoot>,
     bindings: &[NativeBinding],
-    names: &NameTree,
-    references: &NativeReferenceUniverse,
+    recursive_frame: Option<RecursiveFrame<'_>>,
     stack: &mut Vec<AuthoredTransformerIdentity>,
 ) -> Result<NativeEvaluatedField, NativeEvaluationError>
 where
@@ -619,16 +797,15 @@ where
 {
     Ok(NativeEvaluatedField {
         role: field.role(),
-        term: evaluate_term(package, field.term(), bindings, names, references, stack)?,
+        term: evaluate_term(context, field.term(), bindings, recursive_frame, stack)?,
     })
 }
 
 fn evaluate_term<NameTree>(
-    package: &AuthoredTransformerSet,
+    context: &NativeEvaluationContext<'_, '_, NameTree>,
     term: &TemplateTerm<VocabularyRoot>,
     bindings: &[NativeBinding],
-    names: &NameTree,
-    references: &NativeReferenceUniverse,
+    recursive_frame: Option<RecursiveFrame<'_>>,
     stack: &mut Vec<AuthoredTransformerIdentity>,
 ) -> Result<NativeEvaluatedTerm, NativeEvaluationError>
 where
@@ -636,19 +813,29 @@ where
 {
     match term {
         TemplateTerm::Declaration(value) => Ok(NativeEvaluatedTerm::Declaration(value.clone())),
-        TemplateTerm::Reference(value) => Ok(NativeEvaluatedTerm::Reference(references.map(value))),
+        TemplateTerm::Reference(value) => Ok(NativeEvaluatedTerm::Reference(
+            context.references.map(value),
+        )),
         TemplateTerm::Literal(value) => Ok(NativeEvaluatedTerm::Literal(value.clone())),
         TemplateTerm::Scalar(value) => Ok(NativeEvaluatedTerm::Scalar(value.clone())),
         TemplateTerm::Nested(value) => Ok(NativeEvaluatedTerm::Nested(Box::new(evaluate_value(
-            package, value, bindings, names, references, stack,
+            context,
+            value,
+            bindings,
+            recursive_frame,
+            stack,
         )?))),
         TemplateTerm::Sequence(values) => {
             let mut evaluated = Vec::new();
-            for value in values {
-                match value {
+            let mut sequence_bindings = bindings.to_vec();
+            let mut spans = Vec::<EmittedSpan>::new();
+            let mut insertions = Vec::<AppliedInsertion>::new();
+            let mut index = 0;
+            while index < values.len() {
+                match &values[index] {
                     TemplateTerm::Future(TemplateFuture::Invoke(transformer)) => {
                         let NativeEvaluatedTerm::Sequence(items) =
-                            evaluate_invocation(package, transformer, names, references, stack)?
+                            evaluate_invocation(context, transformer, stack)?
                         else {
                             return Err(NativeEvaluationError::InvocationOutputShape {
                                 transformer: transformer.clone(),
@@ -657,23 +844,70 @@ where
                         evaluated.extend(items);
                     }
                     TemplateTerm::Future(TemplateFuture::Splice { binding }) => {
-                        match binding_value(bindings, binding)? {
-                            NativeBindingValue::Variants(variants) => {
-                                evaluated.extend(
-                                    variants.iter().cloned().map(NativeEvaluatedTerm::Variant),
-                                );
-                            }
+                        let emitted = match binding_value(&sequence_bindings, binding)? {
+                            NativeBindingValue::SourceVariants(variants) => variants
+                                .iter()
+                                .cloned()
+                                .map(NativeEvaluatedTerm::Variant)
+                                .collect::<Vec<_>>(),
+                            NativeBindingValue::EvaluatedChildren(children) => children.clone(),
                             NativeBindingValue::Name(_) | NativeBindingValue::Type(_) => {
                                 return Err(NativeEvaluationError::InvalidSplice {
                                     binding: binding.clone(),
                                 });
                             }
-                        }
+                        };
+                        spans.push(EmittedSpan {
+                            binding: binding.clone(),
+                            start: evaluated.len(),
+                            len: emitted.len(),
+                        });
+                        evaluated.extend(emitted);
+                    }
+                    TemplateTerm::Future(TemplateFuture::RecursiveInvoke { payload }) => {
+                        let frame = recursive_frame.ok_or_else(|| {
+                            NativeEvaluationError::RecursiveInvokeOutsidePreflight {
+                                transformer: payload.target().clone(),
+                            }
+                        })?;
+                        let children = evaluate_recursive_children(context, payload, frame, stack)?;
+                        replace_binding_value(
+                            &mut sequence_bindings,
+                            payload.children_binding(),
+                            NativeBindingValue::EvaluatedChildren(children),
+                        )?;
+                    }
+                    TemplateTerm::Future(TemplateFuture::InsertAt { payload }) => {
+                        let inserted = values.get(index + 1).ok_or_else(|| {
+                            NativeEvaluationError::InvalidInsertAt {
+                                binding: payload.target().clone(),
+                            }
+                        })?;
+                        let inserted = evaluate_term(
+                            context,
+                            inserted,
+                            &sequence_bindings,
+                            recursive_frame,
+                            stack,
+                        )?;
+                        apply_insert_at(
+                            &mut evaluated,
+                            &mut spans,
+                            &mut insertions,
+                            payload,
+                            inserted,
+                        )?;
+                        index += 1;
                     }
                     _ => evaluated.push(evaluate_term(
-                        package, value, bindings, names, references, stack,
+                        context,
+                        &values[index],
+                        &sequence_bindings,
+                        recursive_frame,
+                        stack,
                     )?),
                 }
+                index += 1;
             }
             Ok(NativeEvaluatedTerm::Sequence(evaluated))
         }
@@ -684,7 +918,7 @@ where
                     let result = if *transform == NameTransform::Identity {
                         source.clone()
                     } else {
-                        names.realize_declaration(source, *transform)?
+                        context.names.realize_declaration(source, *transform)?
                     };
                     validate_realized_declaration(&result)?;
                     Ok(NativeEvaluatedTerm::Declaration(result))
@@ -692,7 +926,9 @@ where
                 NativeBindingValue::Type(reference) if *transform == NameTransform::Identity => {
                     Ok(NativeEvaluatedTerm::TypeReference(reference.clone()))
                 }
-                NativeBindingValue::Type(_) | NativeBindingValue::Variants(_) => {
+                NativeBindingValue::Type(_)
+                | NativeBindingValue::SourceVariants(_)
+                | NativeBindingValue::EvaluatedChildren(_) => {
                     Err(NativeEvaluationError::InvalidRealize {
                         binding: binding.clone(),
                         transform: *transform,
@@ -706,28 +942,280 @@ where
             })
         }
         TemplateTerm::Future(TemplateFuture::Invoke(transformer)) => {
-            evaluate_invocation(package, transformer, names, references, stack)
+            evaluate_invocation(context, transformer, stack)
+        }
+        TemplateTerm::Future(TemplateFuture::RecursiveInvoke { payload }) => {
+            Err(NativeEvaluationError::RecursiveInvokeOutsidePreflight {
+                transformer: payload.target().clone(),
+            })
+        }
+        TemplateTerm::Future(TemplateFuture::InsertAt { payload }) => {
+            Err(NativeEvaluationError::InvalidInsertAt {
+                binding: payload.target().clone(),
+            })
         }
     }
 }
 
-fn evaluate_invocation<NameTree>(
-    package: &AuthoredTransformerSet,
-    transformer: &AuthoredTransformerIdentity,
-    names: &NameTree,
-    references: &NativeReferenceUniverse,
+fn replace_binding_value(
+    bindings: &mut [NativeBinding],
+    identity: &AuthoredBindingIdentity,
+    value: NativeBindingValue,
+) -> Result<(), NativeEvaluationError> {
+    let binding = bindings
+        .iter_mut()
+        .find(|binding| &binding.identity == identity)
+        .ok_or_else(|| NativeEvaluationError::MissingBinding {
+            binding: identity.clone(),
+        })?;
+    binding.value = value;
+    Ok(())
+}
+
+fn apply_insert_at(
+    evaluated: &mut Vec<NativeEvaluatedTerm>,
+    spans: &mut [EmittedSpan],
+    insertions: &mut Vec<AppliedInsertion>,
+    insertion: &InsertAt,
+    value: NativeEvaluatedTerm,
+) -> Result<(), NativeEvaluationError> {
+    let span_index = spans
+        .iter()
+        .position(|span| &span.binding == insertion.target())
+        .ok_or_else(|| NativeEvaluationError::InvalidInsertAt {
+            binding: insertion.target().clone(),
+        })?;
+    let span = &spans[span_index];
+    let boundary = usize::try_from(insertion.boundary()).map_err(|_| {
+        NativeEvaluationError::InsertBoundaryOutOfRange {
+            binding: insertion.target().clone(),
+            boundary: insertion.boundary(),
+            len: span.len,
+        }
+    })?;
+    if boundary > span.len {
+        return Err(NativeEvaluationError::InsertBoundaryOutOfRange {
+            binding: insertion.target().clone(),
+            boundary: insertion.boundary(),
+            len: span.len,
+        });
+    }
+    let prior_insertions = insertions
+        .iter()
+        .filter(|prior| {
+            prior.binding == *insertion.target() && prior.boundary <= insertion.boundary()
+        })
+        .count();
+    let insertion_index = span.start + boundary + prior_insertions;
+    if insertion_index > evaluated.len() {
+        return Err(NativeEvaluationError::InvalidInsertAt {
+            binding: insertion.target().clone(),
+        });
+    }
+    evaluated.insert(insertion_index, value);
+    for later_span in spans.iter_mut().skip(span_index + 1) {
+        later_span.start += 1;
+    }
+    insertions.push(AppliedInsertion {
+        binding: insertion.target().clone(),
+        boundary: insertion.boundary(),
+    });
+    Ok(())
+}
+
+fn evaluate_recursive_children<NameTree>(
+    context: &NativeEvaluationContext<'_, '_, NameTree>,
+    judgment: &RecursiveCallJudgment,
+    frame: RecursiveFrame<'_>,
+    stack: &mut Vec<AuthoredTransformerIdentity>,
+) -> Result<Vec<NativeEvaluatedTerm>, NativeEvaluationError>
+where
+    NameTree: NativeNameTreePlan,
+{
+    let declaration = context
+        .package
+        .declarations()
+        .iter()
+        .find(|candidate| candidate.name() == judgment.target())
+        .ok_or_else(|| NativeEvaluationError::MissingInvocation {
+            transformer: judgment.target().clone(),
+        })?;
+    let mut children = Vec::new();
+    let WholeEthosVariantPayload::Tuple(fields) = frame.variant.payload() else {
+        return Ok(children);
+    };
+    for field in fields.fields() {
+        let WholeEthosTypeReference::Identity(identity) = field else {
+            return Err(NativeEvaluationError::RecursiveSourceApplication {
+                enumeration: frame.enumeration.name().clone(),
+                variant: frame.variant.name().clone(),
+            });
+        };
+        let Some(enumeration) = context.recursive_universe.enumeration(identity) else {
+            continue;
+        };
+        for variant in enumeration.variants() {
+            let term = evaluate_recursive_variant(
+                context,
+                declaration,
+                judgment,
+                enumeration,
+                variant,
+                stack,
+            )?;
+            let NativeEvaluatedTerm::Sequence(items) = term else {
+                return Err(NativeEvaluationError::RecursiveOutputShape {
+                    transformer: judgment.target().clone(),
+                });
+            };
+            children.extend(items);
+        }
+    }
+    Ok(children)
+}
+
+fn evaluate_recursive_variant<NameTree>(
+    context: &NativeEvaluationContext<'_, '_, NameTree>,
+    declaration: &AuthoredTransformerDeclaration,
+    judgment: &RecursiveCallJudgment,
+    enumeration: &WholeEthosEnumeration,
+    variant: &WholeEthosVariant,
     stack: &mut Vec<AuthoredTransformerIdentity>,
 ) -> Result<NativeEvaluatedTerm, NativeEvaluationError>
 where
     NameTree: NativeNameTreePlan,
 {
-    let declaration = package
+    let bindings = vec![
+        NativeBinding {
+            identity: judgment.subject_binding().clone(),
+            value: NativeBindingValue::SourceVariants(vec![lower_variant(
+                variant,
+                context.references,
+            )]),
+        },
+        NativeBinding {
+            identity: judgment.constructor_binding().clone(),
+            value: NativeBindingValue::Name(variant.name().clone()),
+        },
+        NativeBinding {
+            identity: judgment.children_binding().clone(),
+            value: NativeBindingValue::EvaluatedChildren(Vec::new()),
+        },
+    ];
+    let recursive_context = NativeEvaluationContext {
+        package: context.package,
+        names: context.names,
+        references: context.references,
+        recursive_universe: context.recursive_universe,
+        recursive_subject: Some(enumeration),
+    };
+    let result = evaluate_value(
+        &recursive_context,
+        declaration.result(),
+        &bindings,
+        Some(RecursiveFrame {
+            enumeration,
+            variant,
+        }),
+        stack,
+    )?;
+    select_evaluated_output(declaration, result)
+}
+
+fn recursive_judgment(
+    declaration: &AuthoredTransformerDeclaration,
+) -> Result<&RecursiveCallJudgment, NativeEvaluationError> {
+    fn collect<'value>(
+        term: &'value TemplateTerm<VocabularyRoot>,
+        judgments: &mut Vec<&'value RecursiveCallJudgment>,
+    ) {
+        match term {
+            TemplateTerm::Future(TemplateFuture::RecursiveInvoke { payload }) => {
+                judgments.push(payload);
+            }
+            TemplateTerm::Nested(value) => {
+                for field in value.fields() {
+                    collect(field.term(), judgments);
+                }
+            }
+            TemplateTerm::Sequence(items) => {
+                for item in items {
+                    collect(item, judgments);
+                }
+            }
+            TemplateTerm::Declaration(_)
+            | TemplateTerm::Reference(_)
+            | TemplateTerm::Literal(_)
+            | TemplateTerm::Scalar(_)
+            | TemplateTerm::Future(_) => {}
+        }
+    }
+
+    let mut judgments = Vec::new();
+    for field in declaration.result().fields() {
+        collect(field.term(), &mut judgments);
+    }
+    if let [judgment] = judgments.as_slice() {
+        Ok(judgment)
+    } else {
+        Err(NativeEvaluationError::RecursiveJudgmentMissing {
+            transformer: declaration.name().clone(),
+        })
+    }
+}
+
+fn evaluate_invocation<NameTree>(
+    context: &NativeEvaluationContext<'_, '_, NameTree>,
+    transformer: &AuthoredTransformerIdentity,
+    stack: &mut Vec<AuthoredTransformerIdentity>,
+) -> Result<NativeEvaluatedTerm, NativeEvaluationError>
+where
+    NameTree: NativeNameTreePlan,
+{
+    let declaration = context
+        .package
         .declarations()
         .iter()
         .find(|candidate| candidate.name() == transformer)
         .ok_or_else(|| NativeEvaluationError::MissingInvocation {
             transformer: transformer.clone(),
         })?;
+    if matches!(declaration.kind(), MacroKind::Recursive { .. }) {
+        let subject = context.recursive_subject.ok_or_else(|| {
+            NativeEvaluationError::RecursiveSubjectUnavailable {
+                transformer: transformer.clone(),
+            }
+        })?;
+        if stack.contains(transformer) {
+            return Err(NativeEvaluationError::InvocationCycle {
+                transformer: transformer.clone(),
+            });
+        }
+        let judgment = recursive_judgment(declaration)?;
+        stack.push(transformer.clone());
+        let result = subject
+            .variants()
+            .iter()
+            .try_fold(Vec::new(), |mut output, variant| {
+                let term = evaluate_recursive_variant(
+                    context,
+                    declaration,
+                    judgment,
+                    subject,
+                    variant,
+                    stack,
+                )?;
+                let NativeEvaluatedTerm::Sequence(items) = term else {
+                    return Err(NativeEvaluationError::RecursiveOutputShape {
+                        transformer: transformer.clone(),
+                    });
+                };
+                output.extend(items);
+                Ok(output)
+            });
+        stack.pop();
+        return result.map(NativeEvaluatedTerm::Sequence);
+    }
     if !declaration.input().parameters().is_empty() {
         return Err(NativeEvaluationError::InvocationRequiresInput {
             transformer: transformer.clone(),
@@ -739,9 +1227,15 @@ where
         });
     }
     stack.push(transformer.clone());
-    let result = evaluate_value(package, declaration.result(), &[], names, references, stack);
+    let result = evaluate_value(context, declaration.result(), &[], None, stack);
     stack.pop();
-    let mut result = result?;
+    select_evaluated_output(declaration, result?)
+}
+
+fn select_evaluated_output(
+    declaration: &AuthoredTransformerDeclaration,
+    mut result: NativeEvaluatedValue,
+) -> Result<NativeEvaluatedTerm, NativeEvaluationError> {
     match declaration.root_output().selector() {
         TemplateRootOutputSelector::WholeValue => Ok(NativeEvaluatedTerm::Nested(Box::new(result))),
         TemplateRootOutputSelector::Field(role) => {
@@ -750,7 +1244,7 @@ where
                 .iter()
                 .position(|field| field.role == role)
                 .ok_or_else(|| NativeEvaluationError::InvocationOutputSelector {
-                    transformer: transformer.clone(),
+                    transformer: declaration.name().clone(),
                     role,
                 })?;
             Ok(result.fields.remove(index).term)
@@ -798,6 +1292,7 @@ enum NativeTermShape {
     ScalarBoolean(bool),
     Nested(EncodedConstructorId<VocabularyRoot>),
     Sequence(Vec<NativeSequenceShape>),
+    DynamicSequence(Vec<NativeTermShape>),
     TypeReference,
     Variant,
     Field,
@@ -895,6 +1390,9 @@ fn native_term_shape(
         }),
         TemplateTerm::Nested(value) => Ok(NativeTermShape::Nested(value.constructor().clone())),
         TemplateTerm::Sequence(items) => {
+            if sequence_has_dynamic_output(package, items)? {
+                return native_dynamic_sequence_shape(package, declaration, items);
+            }
             let mut shapes = Vec::new();
             for item in items {
                 match item {
@@ -927,6 +1425,18 @@ fn native_term_shape(
                             }
                         };
                         shapes.push(NativeSequenceShape::Repeated(shape));
+                    }
+                    TemplateTerm::Future(TemplateFuture::RecursiveInvoke { payload }) => {
+                        unreachable!(
+                            "recursive marker was routed through dynamic sequence shape: {:?}",
+                            payload.target()
+                        );
+                    }
+                    TemplateTerm::Future(TemplateFuture::InsertAt { payload }) => {
+                        unreachable!(
+                            "InsertAt was routed through dynamic sequence shape: {:?}",
+                            payload.target()
+                        );
                     }
                     _ => shapes.push(NativeSequenceShape::One(native_term_shape(
                         package,
@@ -965,6 +1475,132 @@ fn native_term_shape(
                 binding: binding.clone(),
             })
         }
+        TemplateTerm::Future(TemplateFuture::RecursiveInvoke { payload }) => {
+            Err(NativeEvaluationError::RecursiveInvokeOutsidePreflight {
+                transformer: payload.target().clone(),
+            })
+        }
+        TemplateTerm::Future(TemplateFuture::InsertAt { payload }) => {
+            Err(NativeEvaluationError::InvalidInsertAt {
+                binding: payload.target().clone(),
+            })
+        }
+    }
+}
+
+fn sequence_has_dynamic_output(
+    package: &AuthoredTransformerSet,
+    items: &[TemplateTerm<VocabularyRoot>],
+) -> Result<bool, NativeEvaluationError> {
+    for item in items {
+        match item {
+            TemplateTerm::Future(
+                TemplateFuture::RecursiveInvoke { .. } | TemplateFuture::InsertAt { .. },
+            ) => return Ok(true),
+            TemplateTerm::Future(TemplateFuture::Invoke(target))
+                if matches!(
+                    native_invocation_shape(package, target)?,
+                    NativeTermShape::DynamicSequence(_)
+                ) =>
+            {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
+fn native_dynamic_sequence_shape(
+    package: &AuthoredTransformerSet,
+    declaration: &AuthoredTransformerDeclaration,
+    items: &[TemplateTerm<VocabularyRoot>],
+) -> Result<NativeTermShape, NativeEvaluationError> {
+    let children_bindings = items
+        .iter()
+        .filter_map(|item| match item {
+            TemplateTerm::Future(TemplateFuture::RecursiveInvoke { payload }) => {
+                Some(payload.children_binding().clone())
+            }
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
+    let mut admitted = Vec::new();
+    let mut index = 0;
+    while index < items.len() {
+        match &items[index] {
+            TemplateTerm::Future(TemplateFuture::RecursiveInvoke { .. }) => {}
+            TemplateTerm::Future(TemplateFuture::InsertAt { payload }) => {
+                let value =
+                    items
+                        .get(index + 1)
+                        .ok_or_else(|| NativeEvaluationError::InvalidInsertAt {
+                            binding: payload.target().clone(),
+                        })?;
+                admit_native_shape(
+                    native_term_shape(package, declaration, value)?,
+                    &mut admitted,
+                );
+                index += 1;
+            }
+            TemplateTerm::Future(TemplateFuture::Invoke(target)) => {
+                admit_invoked_shape(native_invocation_shape(package, target)?, &mut admitted);
+            }
+            TemplateTerm::Future(TemplateFuture::Splice { binding })
+                if children_bindings.contains(binding) => {}
+            TemplateTerm::Future(TemplateFuture::Splice { binding }) => {
+                let parameter = declaration
+                    .input()
+                    .parameters()
+                    .iter()
+                    .find(|parameter| parameter.binding() == binding)
+                    .ok_or_else(|| NativeEvaluationError::MissingBinding {
+                        binding: binding.clone(),
+                    })?;
+                let shape = match parameter.meta() {
+                    MetaType::Variants => NativeTermShape::Variant,
+                    MetaType::Fields => NativeTermShape::Field,
+                    MetaType::Name | MetaType::Type => {
+                        return Err(NativeEvaluationError::InvalidSplice {
+                            binding: binding.clone(),
+                        });
+                    }
+                };
+                admit_native_shape(shape, &mut admitted);
+            }
+            item => admit_native_shape(
+                native_term_shape(package, declaration, item)?,
+                &mut admitted,
+            ),
+        }
+        index += 1;
+    }
+    Ok(NativeTermShape::DynamicSequence(admitted))
+}
+
+fn admit_invoked_shape(shape: NativeTermShape, admitted: &mut Vec<NativeTermShape>) {
+    match shape {
+        NativeTermShape::Sequence(shapes) => {
+            for shape in shapes {
+                match shape {
+                    NativeSequenceShape::One(shape) | NativeSequenceShape::Repeated(shape) => {
+                        admit_native_shape(shape, admitted);
+                    }
+                }
+            }
+        }
+        NativeTermShape::DynamicSequence(shapes) => {
+            for shape in shapes {
+                admit_native_shape(shape, admitted);
+            }
+        }
+        shape => admit_native_shape(shape, admitted),
+    }
+}
+
+fn admit_native_shape(shape: NativeTermShape, admitted: &mut Vec<NativeTermShape>) {
+    if !admitted.contains(&shape) {
+        admitted.push(shape);
     }
 }
 
@@ -1105,6 +1741,13 @@ fn native_term_matches(
         }
         (NativeEvaluatedTerm::Sequence(items), NativeTermShape::Sequence(expected)) => {
             native_sequence_matches(items, expected, schemas)
+        }
+        (NativeEvaluatedTerm::Sequence(items), NativeTermShape::DynamicSequence(admitted)) => {
+            items.iter().all(|item| {
+                admitted
+                    .iter()
+                    .any(|shape| native_term_matches(item, shape, schemas))
+            })
         }
         _ => false,
     }
@@ -1248,6 +1891,28 @@ fn validate_authored_term_ids(
             transformer.encoded_id(),
             NativeIdentityPosition::Transformer,
         ),
+        TemplateTerm::Future(TemplateFuture::RecursiveInvoke { payload }) => {
+            validate_authored_identity(
+                payload.target().encoded_id(),
+                NativeIdentityPosition::Transformer,
+            )?;
+            validate_authored_identity(
+                payload.subject_binding().encoded_id(),
+                NativeIdentityPosition::Binding,
+            )?;
+            validate_authored_identity(
+                payload.constructor_binding().encoded_id(),
+                NativeIdentityPosition::Binding,
+            )?;
+            validate_authored_identity(
+                payload.children_binding().encoded_id(),
+                NativeIdentityPosition::Binding,
+            )
+        }
+        TemplateTerm::Future(TemplateFuture::InsertAt { payload }) => validate_authored_identity(
+            payload.target().encoded_id(),
+            NativeIdentityPosition::Binding,
+        ),
         TemplateTerm::Scalar(_) => Ok(()),
     }
 }
@@ -1353,7 +2018,9 @@ fn validate_invocation_acyclic(
             .ok_or_else(|| NativeEvaluationError::MissingInvocation {
                 transformer: target.clone(),
             })?;
-        if !target_declaration.input().parameters().is_empty() {
+        if !matches!(target_declaration.kind(), MacroKind::Recursive { .. })
+            && !target_declaration.input().parameters().is_empty()
+        {
             return Err(NativeEvaluationError::InvocationRequiresInput {
                 transformer: target.clone(),
             });
@@ -1636,6 +2303,45 @@ pub enum NativeEvaluationError {
     },
     #[error("Splice on {binding:?} does not reference a native sequence")]
     InvalidSplice { binding: AuthoredBindingIdentity },
+    #[error("InsertAt cannot assemble target binding {binding:?}")]
+    InvalidInsertAt { binding: AuthoredBindingIdentity },
+    #[error(
+        "InsertAt boundary {boundary} exceeds original span length {len} for binding {binding:?}"
+    )]
+    InsertBoundaryOutOfRange {
+        binding: AuthoredBindingIdentity,
+        boundary: u64,
+        len: usize,
+    },
+    #[error("recursive source repeats complete declaration identity {identity:?}")]
+    DuplicateRecursiveSourceIdentity { identity: VocabularyEncodedId },
+    #[error(
+        "recursive source enumeration {enumeration:?} variant {variant:?} contains an application edge"
+    )]
+    RecursiveSourceApplication {
+        enumeration: VocabularyEncodedId,
+        variant: VocabularyEncodedId,
+    },
+    #[error("recursive source enumeration {enumeration:?} has more than one incoming edge")]
+    RecursiveSourceSharing { enumeration: VocabularyEncodedId },
+    #[error("recursive source cycle reaches enumeration {enumeration:?}")]
+    RecursiveSourceCycle { enumeration: VocabularyEncodedId },
+    #[error("recursive transformer {transformer:?} has no unique compiled self judgment")]
+    RecursiveJudgmentMissing {
+        transformer: AuthoredTransformerIdentity,
+    },
+    #[error("recursive transformer {transformer:?} has no ambient enumeration subject")]
+    RecursiveSubjectUnavailable {
+        transformer: AuthoredTransformerIdentity,
+    },
+    #[error("recursive transformer {transformer:?} did not produce a sequence")]
+    RecursiveOutputShape {
+        transformer: AuthoredTransformerIdentity,
+    },
+    #[error("recursive Invoke for {transformer:?} escaped whole-universe preflight")]
+    RecursiveInvokeOutsidePreflight {
+        transformer: AuthoredTransformerIdentity,
+    },
     #[error("invoked transformer {transformer:?} disappeared from the package")]
     MissingInvocation {
         transformer: AuthoredTransformerIdentity,
@@ -1697,6 +2403,168 @@ mod tests {
             chain.iter().copied().map(LocalEncodedId::new).collect(),
         )
         .expect("non-empty test identity")
+    }
+
+    fn binding(chain: &[u16]) -> AuthoredBindingIdentity {
+        AuthoredBindingIdentity::try_new(identity(chain)).expect("Universal binding identity")
+    }
+
+    fn integer(value: i64) -> NativeEvaluatedTerm {
+        NativeEvaluatedTerm::Scalar(ScalarValue::Integer(value))
+    }
+
+    fn integer_values(values: &[NativeEvaluatedTerm]) -> Vec<i64> {
+        values
+            .iter()
+            .map(|value| {
+                let NativeEvaluatedTerm::Scalar(ScalarValue::Integer(value)) = value else {
+                    panic!("insertion witness remains integral")
+                };
+                *value
+            })
+            .collect()
+    }
+
+    #[test]
+    fn insert_at_preserves_template_order_for_equal_and_mixed_boundaries() {
+        let target = binding(&[90, 1]);
+        let mut equal_values = vec![integer(10), integer(20), integer(30)];
+        let mut equal_spans = vec![EmittedSpan {
+            binding: target.clone(),
+            start: 0,
+            len: 3,
+        }];
+        let mut equal_insertions = Vec::new();
+        apply_insert_at(
+            &mut equal_values,
+            &mut equal_spans,
+            &mut equal_insertions,
+            &InsertAt::new(target.clone(), 1),
+            integer(100),
+        )
+        .expect("first equal-boundary insertion");
+        apply_insert_at(
+            &mut equal_values,
+            &mut equal_spans,
+            &mut equal_insertions,
+            &InsertAt::new(target.clone(), 1),
+            integer(101),
+        )
+        .expect("second equal-boundary insertion");
+        assert_eq!(integer_values(&equal_values), vec![10, 100, 101, 20, 30]);
+
+        let mut mixed_values = vec![integer(10), integer(20), integer(30)];
+        let mut mixed_spans = vec![EmittedSpan {
+            binding: target.clone(),
+            start: 0,
+            len: 3,
+        }];
+        let mut mixed_insertions = Vec::new();
+        apply_insert_at(
+            &mut mixed_values,
+            &mut mixed_spans,
+            &mut mixed_insertions,
+            &InsertAt::new(target.clone(), 2),
+            integer(200),
+        )
+        .expect("later-boundary insertion");
+        apply_insert_at(
+            &mut mixed_values,
+            &mut mixed_spans,
+            &mut mixed_insertions,
+            &InsertAt::new(target.clone(), 0),
+            integer(100),
+        )
+        .expect("earlier-boundary insertion");
+        apply_insert_at(
+            &mut mixed_values,
+            &mut mixed_spans,
+            &mut mixed_insertions,
+            &InsertAt::new(target, 2),
+            integer(201),
+        )
+        .expect("second later-boundary insertion");
+        assert_eq!(
+            integer_values(&mixed_values),
+            vec![100, 10, 20, 200, 201, 30]
+        );
+
+        let out_of_range = binding(&[90, 2]);
+        let mut bounded_values = vec![integer(10), integer(20), integer(30)];
+        let mut bounded_spans = vec![EmittedSpan {
+            binding: out_of_range.clone(),
+            start: 0,
+            len: 3,
+        }];
+        let error = apply_insert_at(
+            &mut bounded_values,
+            &mut bounded_spans,
+            &mut Vec::new(),
+            &InsertAt::new(out_of_range.clone(), 4),
+            integer(40),
+        )
+        .expect_err("boundary beyond the original span refuses");
+        assert!(matches!(
+            error,
+            NativeEvaluationError::InsertBoundaryOutOfRange {
+                binding,
+                boundary: 4,
+                len: 3
+            } if binding == out_of_range
+        ));
+    }
+
+    #[test]
+    fn insert_at_shifts_only_later_emitted_spans() {
+        let first = binding(&[91, 1]);
+        let second = binding(&[91, 2]);
+        let mut values = vec![integer(10), integer(20), integer(30), integer(40)];
+        let mut spans = vec![
+            EmittedSpan {
+                binding: first.clone(),
+                start: 0,
+                len: 2,
+            },
+            EmittedSpan {
+                binding: second.clone(),
+                start: 2,
+                len: 2,
+            },
+        ];
+        let mut insertions = Vec::new();
+        apply_insert_at(
+            &mut values,
+            &mut spans,
+            &mut insertions,
+            &InsertAt::new(first.clone(), 2),
+            integer(25),
+        )
+        .expect("append to first span");
+        apply_insert_at(
+            &mut values,
+            &mut spans,
+            &mut insertions,
+            &InsertAt::new(second.clone(), 0),
+            integer(29),
+        )
+        .expect("prepend to shifted second span");
+        apply_insert_at(
+            &mut values,
+            &mut spans,
+            &mut insertions,
+            &InsertAt::new(first, 0),
+            integer(5),
+        )
+        .expect("prepend to first span");
+        apply_insert_at(
+            &mut values,
+            &mut spans,
+            &mut insertions,
+            &InsertAt::new(second, 1),
+            integer(35),
+        )
+        .expect("insert within twice-shifted second span");
+        assert_eq!(integer_values(&values), vec![5, 10, 20, 25, 29, 30, 35, 40]);
     }
 
     #[test]

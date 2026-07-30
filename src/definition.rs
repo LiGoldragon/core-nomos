@@ -14,7 +14,7 @@ pub struct MacroDefinition {
     /// The macro's name, an identifier into the package's authoring NameTable
     /// (`WireNewtype`). Stringless: renaming is a NameTable edit.
     pub name: Identifier,
-    /// Named or structural (and, if structural, which section it defaults).
+    /// Named, structural, or recursive, including the selected source section.
     pub kind: MacroKind,
     /// The input meta-shape.
     pub input: InputSignature,

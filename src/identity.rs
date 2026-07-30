@@ -1,4 +1,4 @@
-//! Macro identity and the two settled macro kinds.
+//! Macro identity and the three settled transformer kinds.
 
 use core_ethos::EncodedType;
 
@@ -49,8 +49,7 @@ impl std::fmt::Display for MacroIdentity {
     }
 }
 
-/// The two macro kinds. A new class of dispatch would be a new variant; the
-/// closed enum has one variant for each dispatch path.
+/// The transformer dispatch and structural-recursion judgments.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MacroKind {
     /// A macro dispatched by explicit identity: it sits in the macro table and is
@@ -63,6 +62,18 @@ pub enum MacroKind {
     /// that section's default macro. `WireNewtype` and the particular-struct macro
     /// are structural.
     Structural(SectionDefault),
+    /// A typed transformer entered from one structural source section whose
+    /// authored self-`Invoke` descends through a finite owned source tree.
+    Recursive { section: SectionDefault },
+}
+
+impl MacroKind {
+    pub const fn section(self) -> Option<SectionDefault> {
+        match self {
+            Self::Named => None,
+            Self::Structural(section) | Self::Recursive { section } => Some(section),
+        }
+    }
 }
 
 /// Which ethos declaration section a structural macro is the default for. This is

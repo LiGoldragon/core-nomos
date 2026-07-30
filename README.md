@@ -50,7 +50,12 @@ invoked transformer's complete durable identity. No package-local
 `MacroIdentity` exists in this phase.
 
 The result is a typed Logos skeleton with typed
-`Realize`/`Invoke`/`Splice` positions, never a string template. Every literal
+`Realize`/`Invoke`/`Splice`/`InsertAt` positions, never a string template.
+Transformers are `Named`, per-section `Structural`, or finite-owned-tree
+`Recursive`. Recursive authored spelling remains `Invoke`; the compiled
+recursive judgment is internal and never appears in TextualNomos. `InsertAt`
+targets one preceding `Splice` and inserts its following element at an original
+span boundary. Every literal
 Logos name position — paths, attributes, type references, fields, variants, and
 generics — also retains a complete encodedID chain. Rust structs expose typed
 positional accessors; field spellings are not authored data.
@@ -84,10 +89,14 @@ They do not widen the production slice:
 
 The obsolete structural-codec 0.6 `EncodedConversion` implementation over
 flat `EncodedEthos`/`Vec<EncodedItem>` has been removed. The retained legacy
-engine is called through its inherent `apply` methods. Structural-codec 0.8
+engine is called through its inherent `apply` methods. Structural-codec 0.19
 conversion contracts require the canonical language `EncodedForm` carriers;
 the flat execution records are deliberately not adapted into a parallel
 conversion universe.
+
+`[delegated-assent]` The designated Claude advisor accepted the po2.19 authored
+algebra, recursive compilation, source-graph preflight, and evaluator contract.
+This records delegated review and does not claim psyche conviction or intent.
 
 The legacy graph carries flat identifiers, stored or derived field names, and
 string-bearing evidence. Those mechanics are not precedents for future Nomos
@@ -117,6 +126,9 @@ for wrong roots, duplicate bindings, and undeclared escape bindings.
 Capsule bytes, versioned projection change, full-chain render/resolve/reseal,
 and ancestor-chain identity movement. `tests/textual_nomos_manifest.rs` proves
 construction and traversal order do not change the seal.
+`tests/textual_nomos.rs` proves exact recursive/`InsertAt` canonical text,
+children-before-parent evaluation, leaf behavior, and whole-universe refusal
+of application edges, sharing, and cycles.
 `tests/slice_one.rs` proves the direct positional mapping and complete-chain
 preservation. `tests/slice_one_boundary.rs` mechanically excludes the legacy
 NameTable, macro, generation, prelude, rendering, and string surfaces from that

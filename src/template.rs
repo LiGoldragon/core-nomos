@@ -1,12 +1,12 @@
-//! The result template: logos-encoded-form data with escape nodes. A macro's result
+//! The legacy result template: logos-encoded-form data with escape nodes. A macro's result
 //! is a *quoted* logos skeleton in which specific positions are escapes rather than
 //! literals. The escape set is closed — **Realize**, **Invoke**, **Splice** — and
 //! shared across every position; a position's literal type is fixed by where it
 //! sits (a name slot holds an `Identifier`, a type slot a `TypeReference`), so the
 //! template stays strongly typed while the escape algebra stays one closed set.
 //!
-//! The text spelling of an escape is TextualNomos, a genuinely unsettled question,
-//! and is deferred: nothing here parses text. An escape is data.
+//! This module is retained for `MacroPackage` equivalence evidence. Production
+//! TextualNomos uses the declaration-indexed `TemplateFuture` algebra.
 
 use core_logos::{Attribute, Field, Generics, TypeReference, Variant, Visibility};
 use name_table::Identifier;

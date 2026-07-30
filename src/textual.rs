@@ -36,8 +36,8 @@ use structural_codec::{
 
 use crate::{
     AuthoredBindingIdentity, AuthoredInputParameter, AuthoredInputSignature, AuthoredNomosError,
-    AuthoredTransformerDeclaration, AuthoredTransformerIdentity, AuthoredTransformerSet, MacroKind,
-    MetaType, NameTransform, SectionDefault, TemplateFuture, TemplateFutureOutput,
+    AuthoredTransformerDeclaration, AuthoredTransformerIdentity, AuthoredTransformerSet, InsertAt,
+    MacroKind, MetaType, NameTransform, SectionDefault, TemplateFuture, TemplateFutureOutput,
     TemplateLandingShape, TemplateLanguage, TemplateLanguageError, TemplateTerm, TemplateValue,
 };
 
@@ -73,12 +73,14 @@ pub struct TextualNomosTypeIds {
 pub struct TextualNomosWords {
     pub named: VocabularyEncodedId,
     pub structural: VocabularyEncodedId,
+    pub recursive: VocabularyEncodedId,
     pub newtype: VocabularyEncodedId,
     pub structure: VocabularyEncodedId,
     pub enumeration: VocabularyEncodedId,
     pub realize: VocabularyEncodedId,
     pub splice: VocabularyEncodedId,
     pub invoke: VocabularyEncodedId,
+    pub insert_at: VocabularyEncodedId,
 }
 
 /// One Nomos input meta-type word paired with its declaration-supplied output.
@@ -587,6 +589,18 @@ pub enum TextualNomosError {
     UnknownFutureKeyword { keyword: VocabularyEncodedId },
     #[error("template future payload is not a lookup-only encoded reference")]
     InvalidFuturePayload,
+    #[error("InsertAt is missing its boundary")]
+    InsertAtMissingBoundary,
+    #[error("InsertAt boundary is not a non-negative integer")]
+    InsertAtBoundaryNotNonNegativeInteger,
+    #[error("InsertAt is missing its following value")]
+    InsertAtMissingValue,
+    #[error("InsertAt is only admitted as an item in a repeated sequence")]
+    InsertAtNotInSequence,
+    #[error("recursive declaration has no unique Name subject binding")]
+    InvalidRecursiveSubject,
+    #[error("decoded structural mirror does not match compiled transformer state")]
+    CompiledMirrorMismatch,
     #[error("decoded revision is not an integer")]
     InvalidRevision,
 }
@@ -702,6 +716,7 @@ struct FutureSyntax {
     realize: VocabularyEncodedId,
     splice: VocabularyEncodedId,
     invoke: VocabularyEncodedId,
+    insert_at: VocabularyEncodedId,
 }
 
 /// The one fixed record wrapper used for every addressed type in Template(X).
@@ -772,6 +787,17 @@ fn inline_future(keyword: &VocabularyEncodedId) -> SharedDescriptor<VocabularyRo
     }
 }
 
+fn insert_at_type(syntax: &FutureSyntax) -> EncodedTypeId<VocabularyRoot> {
+    EncodedTypeId::new(syntax.insert_at.clone())
+}
+
+fn insert_at_item(syntax: &FutureSyntax) -> SharedDescriptor<VocabularyRoot> {
+    SharedDescriptor::Delegate {
+        target: insert_at_type(syntax),
+        payload: None,
+    }
+}
+
 fn alternation(
     alternatives: impl IntoIterator<Item = SharedDescriptor<VocabularyRoot>>,
 ) -> SharedDescriptor<VocabularyRoot> {
@@ -793,6 +819,7 @@ fn lift_descriptor(
             syntax.realize.clone(),
             syntax.splice.clone(),
             syntax.invoke.clone(),
+            syntax.insert_at.clone(),
         ]
     };
     match source {
@@ -853,6 +880,7 @@ fn lift_descriptor(
             element: Box::new(alternation([
                 inline_future(&syntax.invoke),
                 inline_future(&syntax.splice),
+                insert_at_item(syntax),
                 lift_descriptor(element, syntax),
             ])),
         },
@@ -921,6 +949,56 @@ role!(BodyRoot, 2040);
 role!(BodyContent, 2041);
 role!(BodyInput, 2042);
 role!(BodyResult, 2043);
+role!(InsertAtRoot, 2050);
+role!(InsertAtTarget, 2051);
+role!(InsertAtBoundary, 2052);
+
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+struct InsertAtRecord {
+    root: Position<InsertAtRoot, VocabularyRoot>,
+    target: Position<InsertAtTarget, VocabularyRoot>,
+    boundary: Position<InsertAtBoundary, VocabularyRoot>,
+}
+
+impl InsertAtRecord {
+    fn new(keyword: VocabularyEncodedId) -> Result<Self, structural_codec::AuthoringError> {
+        let sequence = OrderedSequence::try_new::<InsertAtTarget>()?.then::<InsertAtBoundary>()?;
+        Ok(Self {
+            root: Position::try_new(SharedDescriptor::OrderedSequence(sequence))?,
+            target: Position::try_new(SharedDescriptor::InlineApplication {
+                operator: APPLICATION,
+                head: Box::new(SharedDescriptor::Literal(keyword)),
+                payload: Box::new(SharedDescriptor::Reference(AtomDescriptor::any_case())),
+            })?,
+            boundary: Position::try_new(SharedDescriptor::Leaf(LeafCodec::Integer))?,
+        })
+    }
+}
+
+impl StructureRecord<VocabularyRoot> for InsertAtRecord {
+    type View<'record> = FieldLink<
+        'record,
+        InsertAtRoot,
+        VocabularyRoot,
+        FieldLink<
+            'record,
+            InsertAtTarget,
+            VocabularyRoot,
+            FieldLink<'record, InsertAtBoundary, VocabularyRoot, FieldEnd>,
+        >,
+    >;
+
+    fn root_role(&self) -> StableRoleId {
+        self.root.role()
+    }
+
+    fn fields(&self) -> Self::View<'_> {
+        FieldLink::new(
+            &self.root,
+            FieldLink::new(&self.target, FieldLink::new(&self.boundary, FieldEnd)),
+        )
+    }
+}
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 struct DocumentRecord {
@@ -1187,6 +1265,7 @@ enum NomosRule {
     Delimited(DelimitedItemsRecord),
     Transformer(TransformerRecord),
     Body(BodyRecord),
+    InsertAt(InsertAtRecord),
     Structural(StructuralRule<VocabularyRoot>),
 }
 
@@ -1213,6 +1292,17 @@ type TransformerView<'record> = FieldLink<
         FieldLink<'record, TransformerBody, VocabularyRoot, FieldEnd>,
     >,
 >;
+type InsertAtView<'record> = FieldLink<
+    'record,
+    InsertAtRoot,
+    VocabularyRoot,
+    FieldLink<
+        'record,
+        InsertAtTarget,
+        VocabularyRoot,
+        FieldLink<'record, InsertAtBoundary, VocabularyRoot, FieldEnd>,
+    >,
+>;
 
 enum NomosRuleView<'record> {
     Document(DocumentView<'record>),
@@ -1220,6 +1310,7 @@ enum NomosRuleView<'record> {
     Delimited(DelimitedView<'record>),
     Transformer(TransformerView<'record>),
     Body(BodyView<'record>),
+    InsertAt(InsertAtView<'record>),
     Structural(StructuralRuleView<'record, VocabularyRoot>),
 }
 
@@ -1231,6 +1322,7 @@ impl BorrowedFieldView<VocabularyRoot> for NomosRuleView<'_> {
             Self::Delimited(view) => view.expose(visitor),
             Self::Transformer(view) => view.expose(visitor),
             Self::Body(view) => view.expose(visitor),
+            Self::InsertAt(view) => view.expose(visitor),
             Self::Structural(view) => view.expose(visitor),
         }
     }
@@ -1246,6 +1338,7 @@ impl StructureRecord<VocabularyRoot> for NomosRule {
             Self::Delimited(record) => record.root_role(),
             Self::Transformer(record) => record.root_role(),
             Self::Body(record) => record.root_role(),
+            Self::InsertAt(record) => record.root_role(),
             Self::Structural(record) => StructureRecord::root_role(record),
         }
     }
@@ -1257,6 +1350,7 @@ impl StructureRecord<VocabularyRoot> for NomosRule {
             Self::Delimited(record) => NomosRuleView::Delimited(record.fields()),
             Self::Transformer(record) => NomosRuleView::Transformer(record.fields()),
             Self::Body(record) => NomosRuleView::Body(record.fields()),
+            Self::InsertAt(record) => NomosRuleView::InsertAt(record.fields()),
             Self::Structural(record) => NomosRuleView::Structural(record.fields()),
         }
     }
@@ -1288,12 +1382,14 @@ impl TextualNomos {
         for (position, word) in [
             ("Named word", &words.named),
             ("Structural word", &words.structural),
+            ("Recursive word", &words.recursive),
             ("Newtype word", &words.newtype),
             ("Struct word", &words.structure),
             ("Enumeration word", &words.enumeration),
             ("Realize word", &words.realize),
             ("Splice word", &words.splice),
             ("Invoke word", &words.invoke),
+            ("InsertAt word", &words.insert_at),
         ] {
             require_universal(position, word)?;
         }
@@ -1311,6 +1407,7 @@ impl TextualNomos {
             realize: words.realize.clone(),
             splice: words.splice.clone(),
             invoke: words.invoke.clone(),
+            insert_at: words.insert_at.clone(),
         };
 
         let profile = RawProfile::standard().seal()?;
@@ -1331,11 +1428,11 @@ impl TextualNomos {
         let table = AddressedStructuralTable::seal(
             TableIdentityPayload::new(
                 TargetLayoutIdentity::derive(
-                    b"core-nomos plain Standard TextualNomos Template(X) v1",
+                    b"core-nomos plain Standard TextualNomos Template(X) v2",
                 ),
                 profile.identity(),
                 StructuralVocabularyIdentity::language(
-                    b"core-nomos derived TextualNomos structural vocabulary v1",
+                    b"core-nomos derived TextualNomos structural vocabulary v2",
                 ),
                 discovery(),
                 TextualRenderingPolicy::new(vec![ContextualTextualPolicy::new(
@@ -1367,6 +1464,13 @@ impl TextualNomos {
             TransformerForm {
                 constructor: EncodedConstructorId::under(&types.transformer, 4),
                 kind: MacroKind::Named,
+                template_root: logos.attributes_type().clone(),
+            },
+            TransformerForm {
+                constructor: EncodedConstructorId::under(&types.transformer, 5),
+                kind: MacroKind::Recursive {
+                    section: SectionDefault::Enumeration,
+                },
                 template_root: logos.attributes_type().clone(),
             },
         ];
@@ -1439,8 +1543,9 @@ impl TextualNomos {
     /// Planning runs the same structural evaluator as materialization and
     /// retains only source-bounded spellings. Transformer declarations own
     /// child tables; declarations below a transformer belong to that table.
-    /// Realize and Splice resolve there, while Invoke and ordinary shared
-    /// Template(Logos) references resolve in the containing authored module.
+    /// Realize, Splice, and InsertAt targets resolve there, while Invoke and
+    /// ordinary shared Template(Logos) references resolve in the containing
+    /// authored module.
     pub fn plan_load<Resolver>(
         &self,
         source: &str,
@@ -1666,6 +1771,15 @@ impl TextualNomos {
         decoded: &DecodedNomosDocument,
         resolver: &Resolver,
     ) -> Result<String, TextualNomosError> {
+        let mirror_revision = decoded_revision(decoded.structural_value())?;
+        let mut mirror_declarations = Vec::new();
+        for transformer in decoded_transformer_values(decoded.structural_value())? {
+            mirror_declarations.push(self.decode_transformer(transformer)?);
+        }
+        let mirror_transformers = AuthoredTransformerSet::try_new(mirror_declarations)?;
+        if mirror_revision != decoded.revision() || &mirror_transformers != decoded.transformers() {
+            return Err(TextualNomosError::CompiledMirrorMismatch);
+        }
         Ok(StructuralEvaluator::new(&self.table)?.encode_text(
             &self.document,
             decoded.structural_value(),
@@ -1710,6 +1824,11 @@ impl TextualNomos {
                 constructor: value.constructor().clone(),
             }
         })?;
+        let input = if matches!(form.kind, MacroKind::Recursive { .. }) {
+            recursive_input(input, language.root_output()?)?
+        } else {
+            input
+        };
         let result = reify_template(result, language, &self.syntax)?;
         Ok(AuthoredTransformerDeclaration::try_new(
             name, form.kind, input, result, language,
@@ -1777,6 +1896,35 @@ impl TextualNomos {
         .into_iter()
         .find(|language| language.root() == &root)
     }
+}
+
+fn recursive_input(
+    input: AuthoredInputSignature,
+    landing: TemplateFutureOutput<VocabularyRoot>,
+) -> Result<AuthoredInputSignature, TextualNomosError> {
+    let mut variants_seen = 0;
+    let mut parameters = Vec::with_capacity(input.parameters().len());
+    for parameter in input.parameters() {
+        let output = if parameter.meta() == MetaType::Variants {
+            variants_seen += 1;
+            if variants_seen == 2 {
+                landing.clone()
+            } else {
+                parameter.output().clone()
+            }
+        } else {
+            parameter.output().clone()
+        };
+        parameters.push(AuthoredInputParameter::new(
+            parameter.binding().clone(),
+            parameter.meta(),
+            output,
+        ));
+    }
+    if variants_seen != 2 {
+        return Err(TextualNomosError::InvalidRecursiveSubject);
+    }
+    Ok(AuthoredInputSignature::try_new(parameters)?)
 }
 
 pub(crate) fn validate_authority_reply<Resolver>(
@@ -2019,13 +2167,47 @@ where
                         role: "Template(Logos) future payload",
                     });
                 };
-                if keyword == &self.syntax.realize || keyword == &self.syntax.splice {
+                if keyword == &self.syntax.realize
+                    || keyword == &self.syntax.splice
+                    || keyword == &self.syntax.insert_at
+                {
                     self.add_reference(name, self.transformer.to_vec(), false);
                 } else if keyword == &self.syntax.invoke {
                     self.add_reference(name, self.module.to_vec(), true);
                 } else {
                     return Err(NomosLoadError::WrongPlannedShape {
                         role: "Template(Logos) future keyword",
+                    });
+                }
+            }
+            PlannedFieldValue::Delegated(value)
+                if value.constructor().type_id() == &insert_at_type(self.syntax) =>
+            {
+                let target = planned_field::<InsertAtTarget>(value)?;
+                let PlannedFieldValue::Application { head, payload } = target else {
+                    return Err(NomosLoadError::WrongPlannedShape {
+                        role: std::any::type_name::<InsertAtTarget>(),
+                    });
+                };
+                let PlannedFieldValue::Literal(keyword) = head.as_ref() else {
+                    return Err(NomosLoadError::WrongPlannedShape {
+                        role: std::any::type_name::<InsertAtTarget>(),
+                    });
+                };
+                let PlannedFieldValue::Reference(target) = payload.as_ref() else {
+                    return Err(NomosLoadError::WrongPlannedShape {
+                        role: std::any::type_name::<InsertAtTarget>(),
+                    });
+                };
+                insert_fixed_name(self.fixed_names, self.resolver, keyword)?;
+                self.add_reference(target, self.transformer.to_vec(), false);
+                let boundary = planned_field::<InsertAtBoundary>(value)?;
+                if !matches!(
+                    boundary,
+                    PlannedFieldValue::Scalar(structural_codec::ScalarValue::Integer(_))
+                ) {
+                    return Err(NomosLoadError::WrongPlannedShape {
+                        role: std::any::type_name::<InsertAtBoundary>(),
                     });
                 }
             }
@@ -2280,6 +2462,11 @@ fn outer_entries(
         head: Box::new(SharedDescriptor::Literal(words.structural.clone())),
         payload: Box::new(SharedDescriptor::Literal(payload.clone())),
     };
+    let recursive_kind = |payload: &VocabularyEncodedId| SharedDescriptor::InlineApplication {
+        operator: APPLICATION,
+        head: Box::new(SharedDescriptor::Literal(words.recursive.clone())),
+        payload: Box::new(SharedDescriptor::Literal(payload.clone())),
+    };
     let transformer_rules = vec![
         (
             1,
@@ -2309,6 +2496,13 @@ fn outer_entries(
                 &types.attributes_body,
             )?),
         ),
+        (
+            5,
+            NomosRule::Transformer(TransformerRecord::new(
+                recursive_kind(&words.enumeration),
+                &types.attributes_body,
+            )?),
+        ),
     ];
     let meta_rules = meta_types
         .iter()
@@ -2326,6 +2520,7 @@ fn outer_entries(
             ))
         })
         .collect::<Result<Vec<_>, structural_codec::AuthoringError>>()?;
+    let insert_at_type = EncodedTypeId::new(words.insert_at.clone());
     Ok(vec![
         outer_entry(
             &types.document,
@@ -2411,6 +2606,13 @@ fn outer_entries(
             vec![(
                 1,
                 NomosRule::Body(BodyRecord::new(&types.input_signature, attributes_root)?),
+            )],
+        ),
+        outer_entry(
+            &insert_at_type,
+            vec![(
+                1,
+                NomosRule::InsertAt(InsertAtRecord::new(words.insert_at.clone())?),
             )],
         ),
     ])
@@ -2602,12 +2804,26 @@ fn reify_term(
             let TemplateLandingShape::Sequence { element, .. } = shape else {
                 return Err(TextualNomosError::InvalidFuturePayload);
             };
-            Ok(TemplateTerm::Sequence(
-                values
-                    .iter()
-                    .map(|value| reify_term(value, element, language, syntax))
-                    .collect::<Result<Vec<_>, _>>()?,
-            ))
+            let mut terms = Vec::with_capacity(values.len());
+            let mut index = 0;
+            while index < values.len() {
+                if let FieldValue::Delegated(marker) = &values[index]
+                    && marker.constructor().type_id() == &insert_at_type(syntax)
+                {
+                    let value = values
+                        .get(index + 1)
+                        .ok_or(TextualNomosError::InsertAtMissingValue)?;
+                    terms.push(TemplateTerm::Future(TemplateFuture::InsertAt {
+                        payload: Box::new(reify_insert_at(marker)?),
+                    }));
+                    terms.push(reify_term(value, element, language, syntax)?);
+                    index += 2;
+                    continue;
+                }
+                terms.push(reify_term(&values[index], element, language, syntax)?);
+                index += 1;
+            }
+            Ok(TemplateTerm::Sequence(terms))
         }
         FieldValue::Application { head, payload } => {
             reify_future(head, payload, syntax).map(TemplateTerm::Future)
@@ -2617,6 +2833,27 @@ fn reify_term(
         }
         FieldValue::OrderedProduct => Err(TextualNomosError::InvalidFuturePayload),
     }
+}
+
+fn reify_insert_at(value: &StructuralValue<VocabularyRoot>) -> Result<InsertAt, TextualNomosError> {
+    let target = field::<InsertAtTarget>(value)?;
+    let FieldValue::Application { payload, .. } = target else {
+        return Err(TextualNomosError::InvalidFuturePayload);
+    };
+    let FieldValue::Reference(target) = payload.as_ref() else {
+        return Err(TextualNomosError::InvalidFuturePayload);
+    };
+    let boundary =
+        field::<InsertAtBoundary>(value).map_err(|_| TextualNomosError::InsertAtMissingBoundary)?;
+    let FieldValue::Scalar(structural_codec::ScalarValue::Integer(boundary)) = boundary else {
+        return Err(TextualNomosError::InsertAtBoundaryNotNonNegativeInteger);
+    };
+    let boundary = u64::try_from(*boundary)
+        .map_err(|_| TextualNomosError::InsertAtBoundaryNotNonNegativeInteger)?;
+    Ok(InsertAt::new(
+        AuthoredBindingIdentity::try_new(target.encoded_id().clone())?,
+        boundary,
+    ))
 }
 
 fn reify_future(
@@ -2645,6 +2882,9 @@ fn reify_future(
         return Ok(TemplateFuture::Invoke(
             AuthoredTransformerIdentity::try_new(payload.encoded_id().clone())?,
         ));
+    }
+    if keyword == &syntax.insert_at {
+        return Err(TextualNomosError::InsertAtNotInSequence);
     }
     Err(TextualNomosError::UnknownFutureKeyword {
         keyword: keyword.clone(),

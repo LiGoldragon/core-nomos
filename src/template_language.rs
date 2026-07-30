@@ -35,6 +35,98 @@ pub enum TemplateFutureKind {
     Realize,
     Invoke,
     Splice,
+    InsertAt,
+}
+
+/// The only source-edge policy admitted by the first recursive judgment.
+///
+/// `[delegated-assent]` The designated Claude advisor accepted this recursive
+/// type contract for po2.19. This records delegated review, not psyche intent.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RecursiveEdgePolicy {
+    /// Direct identity references within one finite, singly owned WholeEthos
+    /// tree. Identity references to non-enumerations are leaves; applications,
+    /// enumeration sharing and cycles refuse.
+    FiniteOwnedTree,
+}
+
+/// Persisted internal judgment for one authored self-`Invoke`.
+///
+/// This has no authored spelling. TextualNomos constructs it only inside a
+/// visibly recursive declaration and canonical viewing renders it as `Invoke`.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct RecursiveCallJudgment {
+    target: AuthoredTransformerIdentity,
+    subject_binding: AuthoredBindingIdentity,
+    constructor_binding: AuthoredBindingIdentity,
+    children_binding: AuthoredBindingIdentity,
+    edge_policy: RecursiveEdgePolicy,
+    landing: TemplateFutureOutput<VocabularyRoot>,
+}
+
+impl RecursiveCallJudgment {
+    pub const fn target(&self) -> &AuthoredTransformerIdentity {
+        &self.target
+    }
+
+    pub const fn subject_binding(&self) -> &AuthoredBindingIdentity {
+        &self.subject_binding
+    }
+
+    pub const fn constructor_binding(&self) -> &AuthoredBindingIdentity {
+        &self.constructor_binding
+    }
+
+    pub const fn children_binding(&self) -> &AuthoredBindingIdentity {
+        &self.children_binding
+    }
+
+    pub const fn edge_policy(&self) -> RecursiveEdgePolicy {
+        self.edge_policy
+    }
+
+    pub const fn landing(&self) -> &TemplateFutureOutput<VocabularyRoot> {
+        &self.landing
+    }
+
+    pub(crate) fn new(
+        target: AuthoredTransformerIdentity,
+        subject_binding: AuthoredBindingIdentity,
+        constructor_binding: AuthoredBindingIdentity,
+        children_binding: AuthoredBindingIdentity,
+        landing: TemplateFutureOutput<VocabularyRoot>,
+    ) -> Self {
+        Self {
+            target,
+            subject_binding,
+            constructor_binding,
+            children_binding,
+            edge_policy: RecursiveEdgePolicy::FiniteOwnedTree,
+            landing,
+        }
+    }
+}
+
+/// One authored insertion marker. The next term in the enclosing sequence is
+/// the inserted value; the target must name one preceding Splice.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct InsertAt {
+    target: AuthoredBindingIdentity,
+    boundary: u64,
+}
+
+impl InsertAt {
+    pub const fn target(&self) -> &AuthoredBindingIdentity {
+        &self.target
+    }
+
+    pub const fn boundary(&self) -> u64 {
+        self.boundary
+    }
+
+    pub(crate) fn new(target: AuthoredBindingIdentity, boundary: u64) -> Self {
+        Self { target, boundary }
+    }
 }
 
 /// One future value in a computed template landing position.
@@ -48,21 +140,30 @@ pub enum TemplateFuture {
     Splice {
         binding: AuthoredBindingIdentity,
     },
+    #[doc(hidden)]
+    RecursiveInvoke {
+        payload: Box<RecursiveCallJudgment>,
+    },
+    InsertAt {
+        payload: Box<InsertAt>,
+    },
 }
 
 impl TemplateFuture {
     pub const fn kind(&self) -> TemplateFutureKind {
         match self {
             Self::Realize { .. } => TemplateFutureKind::Realize,
-            Self::Invoke(_) => TemplateFutureKind::Invoke,
+            Self::Invoke(_) | Self::RecursiveInvoke { .. } => TemplateFutureKind::Invoke,
             Self::Splice { .. } => TemplateFutureKind::Splice,
+            Self::InsertAt { .. } => TemplateFutureKind::InsertAt,
         }
     }
 
     pub const fn referenced_binding(&self) -> Option<&AuthoredBindingIdentity> {
         match self {
             Self::Realize { binding, .. } | Self::Splice { binding } => Some(binding),
-            Self::Invoke(_) => None,
+            Self::InsertAt { payload } => Some(payload.target()),
+            Self::Invoke(_) | Self::RecursiveInvoke { .. } => None,
         }
     }
 }
@@ -134,6 +235,14 @@ impl<Root> TemplateFutureRequirement<Root> {
 
     pub const fn output(&self) -> &TemplateFutureOutput<Root> {
         &self.output
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_restore_mutation_test(
+        future: TemplateFuture,
+        output: TemplateFutureOutput<Root>,
+    ) -> Self {
+        Self { future, output }
     }
 }
 
@@ -606,7 +715,11 @@ fn derive_shape<Root: Clone>(
             minimum: *minimum,
             maximum: *maximum,
             element: Box::new(derive_shape(element, source_element)?),
-            item_futures: vec![TemplateFutureKind::Invoke, TemplateFutureKind::Splice],
+            item_futures: vec![
+                TemplateFutureKind::Invoke,
+                TemplateFutureKind::Splice,
+                TemplateFutureKind::InsertAt,
+            ],
         }),
         _ => Err(TemplateLanguageError::VerifiedShapeDrift),
     }
@@ -835,7 +948,14 @@ fn validate_term<Root: Clone + Ord>(
                 item_futures,
             },
         ) => {
-            let length = items.len() as u64;
+            let insertion_markers = items
+                .iter()
+                .filter(|item| {
+                    matches!(item, TemplateTerm::Future(TemplateFuture::InsertAt { .. }))
+                })
+                .count();
+            let length = u64::try_from(items.len() - insertion_markers)
+                .expect("template sequence length fits u64");
             if length < *minimum || maximum.is_some_and(|limit| length > limit) {
                 return Err(TemplateValueError::Cardinality {
                     constructor: constructor.clone(),
@@ -845,7 +965,49 @@ fn validate_term<Root: Clone + Ord>(
                     found: length,
                 });
             }
-            for item in items {
+            let mut index = 0;
+            while index < items.len() {
+                let item = &items[index];
+                if let TemplateTerm::Future(TemplateFuture::InsertAt { payload }) = item {
+                    let preceding = items[..index]
+                        .iter()
+                        .filter(|candidate| {
+                            matches!(
+                                candidate,
+                                TemplateTerm::Future(TemplateFuture::Splice { binding })
+                                    if binding == payload.target()
+                            )
+                        })
+                        .count();
+                    if preceding == 0 {
+                        return Err(TemplateValueError::InsertAtTargetMissing {
+                            constructor: constructor.clone(),
+                            role,
+                            target: payload.target().encoded_id().clone(),
+                        });
+                    }
+                    if preceding > 1 {
+                        return Err(TemplateValueError::InsertAtTargetAmbiguous {
+                            constructor: constructor.clone(),
+                            role,
+                            target: payload.target().encoded_id().clone(),
+                        });
+                    }
+                    let value = items.get(index + 1).ok_or_else(|| {
+                        TemplateValueError::InsertAtMissingValue {
+                            constructor: constructor.clone(),
+                            role,
+                            target: payload.target().encoded_id().clone(),
+                        }
+                    })?;
+                    requirements.push(TemplateFutureRequirement {
+                        future: item_future(item),
+                        output: output_from_template_shape(element),
+                    });
+                    validate_term(value, element, constructor, role, language, requirements)?;
+                    index += 2;
+                    continue;
+                }
                 if let TemplateTerm::Future(future) = item
                     && item_futures.contains(&future.kind())
                 {
@@ -853,9 +1015,11 @@ fn validate_term<Root: Clone + Ord>(
                         future: future.clone(),
                         output: output_from_template_shape(shape),
                     });
+                    index += 1;
                     continue;
                 }
                 validate_term(item, element, constructor, role, language, requirements)?;
+                index += 1;
             }
             Ok(())
         }
@@ -869,6 +1033,13 @@ fn validate_term<Root: Clone + Ord>(
             role,
         }),
     }
+}
+
+fn item_future<Root>(term: &TemplateTerm<Root>) -> TemplateFuture {
+    let TemplateTerm::Future(future) = term else {
+        unreachable!("called only for a future term")
+    };
+    future.clone()
 }
 
 fn output_from_template_shape<Root: Clone>(
@@ -983,6 +1154,26 @@ pub enum TemplateValueError<Root> {
         minimum: u64,
         maximum: Option<u64>,
         found: u64,
+    },
+    #[error("InsertAt target {target:?} has no preceding Splice in {constructor:?}/{role:?}")]
+    InsertAtTargetMissing {
+        constructor: EncodedConstructorId<Root>,
+        role: StableRoleId,
+        target: signal_sema_translator::VocabularyEncodedId,
+    },
+    #[error(
+        "InsertAt target {target:?} has multiple preceding Splices in {constructor:?}/{role:?}"
+    )]
+    InsertAtTargetAmbiguous {
+        constructor: EncodedConstructorId<Root>,
+        role: StableRoleId,
+        target: signal_sema_translator::VocabularyEncodedId,
+    },
+    #[error("InsertAt target {target:?} has no following value in {constructor:?}/{role:?}")]
+    InsertAtMissingValue {
+        constructor: EncodedConstructorId<Root>,
+        role: StableRoleId,
+        target: signal_sema_translator::VocabularyEncodedId,
     },
 }
 

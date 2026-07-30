@@ -436,7 +436,7 @@ fn reachable_identities(transformers: &AuthoredTransformerSet) -> BTreeSet<Vocab
             insert_identity(&mut reachable, parameter.binding().encoded_id());
         }
         collect_value(&mut reachable, declaration.result());
-        for requirement in declaration.invoke_requirements() {
+        for requirement in declaration.future_requirements() {
             collect_future(&mut reachable, requirement.future());
         }
     }
@@ -498,6 +498,15 @@ fn collect_future(reachable: &mut BTreeSet<VocabularyEncodedId>, future: &Templa
         TemplateFuture::Invoke(transformer) => {
             insert_identity(reachable, transformer.encoded_id());
         }
+        TemplateFuture::RecursiveInvoke { payload } => {
+            insert_identity(reachable, payload.target().encoded_id());
+            insert_identity(reachable, payload.subject_binding().encoded_id());
+            insert_identity(reachable, payload.constructor_binding().encoded_id());
+            insert_identity(reachable, payload.children_binding().encoded_id());
+        }
+        TemplateFuture::InsertAt { payload } => {
+            insert_identity(reachable, payload.target().encoded_id());
+        }
     }
 }
 
@@ -512,7 +521,7 @@ fn validate_encoded_chains(transformers: &AuthoredTransformerSet) -> Result<(), 
         }
         validate_value(declaration.result())?;
         validate_output(declaration.output())?;
-        for requirement in declaration.invoke_requirements() {
+        for requirement in declaration.future_requirements() {
             validate_future(requirement.future())?;
             validate_output(requirement.output())?;
         }
@@ -567,6 +576,25 @@ fn validate_future(future: &TemplateFuture) -> Result<(), NomosSealError> {
         }
         TemplateFuture::Invoke(transformer) => {
             validate_identity(transformer.encoded_id(), "Invoke target")
+        }
+        TemplateFuture::RecursiveInvoke { payload } => {
+            validate_identity(payload.target().encoded_id(), "Invoke target")?;
+            validate_identity(
+                payload.subject_binding().encoded_id(),
+                "recursive subject binding",
+            )?;
+            validate_identity(
+                payload.constructor_binding().encoded_id(),
+                "recursive constructor binding",
+            )?;
+            validate_identity(
+                payload.children_binding().encoded_id(),
+                "recursive child binding",
+            )?;
+            validate_output(payload.landing())
+        }
+        TemplateFuture::InsertAt { payload } => {
+            validate_identity(payload.target().encoded_id(), "InsertAt target binding")
         }
     }
 }

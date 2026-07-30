@@ -73,6 +73,53 @@ Public Invoke.EnumerationAttributes Realize.name () [Splice.variants]
 {}
 {}"#;
 
+const RECURSIVE_SOURCE: &str = r#"{1}
+[]
+[]
+{
+WireAttributes.Named {
+()
+[
+rustfmt.skip
+(|nota-text|).[nota.NotaDecode nota.NotaDecodeTraced nota.NotaEncode]
+[rkyv.Archive rkyv.Serialize rkyv.Deserialize Clone Debug PartialEq Eq]
+]
+}
+EnumerationAttributes.Named {
+()
+[
+rustfmt.skip
+(|nota-text|).[nota.NotaDecode nota.NotaDecodeTraced nota.NotaEncode]
+[rkyv.Archive rkyv.Serialize rkyv.Deserialize Clone Copy Debug PartialEq Eq]
+]
+}
+WireNewtype.Structural.Newtype {
+(name.Name type.Type)
+Public Invoke.WireAttributes Realize.name Private Realize.type
+}
+ParticularStruct.Structural.Struct {
+(name.Name fields.Fields)
+Public Invoke.WireAttributes Realize.name () [Splice.fields]
+}
+ScopeOfStep.Recursive.Enumeration {
+(variant.Name source.Variants children.Variants)
+[
+Invoke.ScopeOfStep
+Splice.children
+InsertAt.children 0 rustfmt.skip
+[Clone]
+]
+}
+Enumeration.Structural.Enumeration {
+(name.Name variants.Variants)
+Public Invoke.ScopeOfStep Realize.name () [Splice.variants]
+}
+}
+{}
+{}"#;
+
+const RECURSIVE_CANONICAL: &str = "{1} [] [] {WireAttributes.Named {() [rustfmt.skip (|nota-text|).[nota.NotaDecode nota.NotaDecodeTraced nota.NotaEncode] [rkyv.Archive rkyv.Serialize rkyv.Deserialize Clone Debug PartialEq Eq]]} EnumerationAttributes.Named {() [rustfmt.skip (|nota-text|).[nota.NotaDecode nota.NotaDecodeTraced nota.NotaEncode] [rkyv.Archive rkyv.Serialize rkyv.Deserialize Clone Copy Debug PartialEq Eq]]} WireNewtype.Structural.Newtype {(name.Name type.Type) Public Invoke.WireAttributes Realize.name Private Realize.type} ParticularStruct.Structural.Struct {(name.Name fields.Fields) Public Invoke.WireAttributes Realize.name () [Splice.fields]} ScopeOfStep.Recursive.Enumeration {(variant.Name source.Variants children.Variants) [Invoke.ScopeOfStep Splice.children InsertAt.children 0 rustfmt.skip [Clone]]} Enumeration.Structural.Enumeration {(name.Name variants.Variants) Public Invoke.ScopeOfStep Realize.name () [Splice.variants]}} {} {}";
+
 fn encoded(chain: &[u16]) -> VocabularyEncodedId {
     encoded_at(VocabularyRoot::Universal, chain)
 }
@@ -224,6 +271,7 @@ fn transformer_chain(spelling: &str) -> Option<&'static [u16]> {
         "WireNewtype" => Some(&[110, 3]),
         "ParticularStruct" => Some(&[110, 4]),
         "Enumeration" => Some(&[110, 5]),
+        "ScopeOfStep" => Some(&[110, 6]),
         _ => None,
     }
 }
@@ -236,8 +284,16 @@ fn binding_chain(transformer: &str, spelling: &str) -> Option<&'static [u16]> {
         ("ParticularStruct", "fields") => Some(&[110, 4, 2]),
         ("Enumeration", "name") => Some(&[110, 5, 1]),
         ("Enumeration", "variants") => Some(&[110, 5, 2]),
+        ("ScopeOfStep", "variant") => Some(&[110, 6, 1]),
+        ("ScopeOfStep", "source") => Some(&[110, 6, 2]),
+        ("ScopeOfStep", "children") => Some(&[110, 6, 3]),
         _ => None,
     }
+}
+
+struct RecursiveBindingFixture {
+    spelling: &'static str,
+    reference_count: usize,
 }
 
 fn logos() -> LogosLanguage {
@@ -331,12 +387,14 @@ fn textual(logos: &LogosLanguage) -> TextualNomos {
         TextualNomosWords {
             named: encoded(&[101, 1]),
             structural: encoded(&[101, 2]),
+            recursive: encoded(&[101, 9]),
             newtype: encoded(&[101, 3]),
             structure: encoded(&[101, 8]),
             enumeration: encoded(&[101, 4]),
             realize: encoded(&[101, 5]),
             splice: encoded(&[101, 6]),
             invoke: encoded(&[101, 7]),
+            insert_at: encoded(&[101, 10]),
         },
         vec![
             TextualNomosMetaType {
@@ -537,6 +595,8 @@ fn bindings(source: &str) -> Bindings {
         (encoded(&[101, 5]), "Realize"),
         (encoded(&[101, 6]), "Splice"),
         (encoded(&[101, 7]), "Invoke"),
+        (encoded(&[101, 9]), "Recursive"),
+        (encoded(&[101, 10]), "InsertAt"),
         (encoded(&[102, 1]), "Name"),
         (encoded(&[102, 2]), "Type"),
         (encoded(&[102, 3]), "Variants"),
@@ -551,14 +611,23 @@ fn bindings(source: &str) -> Bindings {
         "WireNewtype",
         "ParticularStruct",
         "Enumeration",
+        "ScopeOfStep",
     ] {
+        if token_occurrences(source, spelling).is_empty() {
+            continue;
+        }
         let identity = encoded(transformer_chain(spelling).expect("fixture transformer crosswalk"));
-        bindings.declaration(source, spelling, 0, identity.clone());
-        for (occurrence, (start, _)) in token_occurrences(source, spelling)
-            .into_iter()
-            .enumerate()
-            .skip(1)
-        {
+        let occurrences = token_occurrences(source, spelling);
+        let declaration = occurrences
+            .iter()
+            .position(|(_, end)| {
+                [".Named", ".Structural", ".Recursive"]
+                    .iter()
+                    .any(|suffix| source[*end..].starts_with(suffix))
+            })
+            .expect("transformer declaration occurrence");
+        bindings.declaration(source, spelling, declaration, identity.clone());
+        for (occurrence, (start, _)) in occurrences.into_iter().enumerate() {
             if source[..start].ends_with("Invoke.") {
                 bindings.reference(source, spelling, occurrence, identity.clone());
             }
@@ -577,6 +646,30 @@ fn bindings(source: &str) -> Bindings {
             encoded(binding_chain(transformer, spelling).expect("fixture binding crosswalk"));
         bindings.declaration(source, spelling, declaration, identity.clone());
         bindings.reference(source, spelling, reference, identity);
+    }
+
+    if !token_occurrences(source, "ScopeOfStep").is_empty() {
+        for fixture in [
+            RecursiveBindingFixture {
+                spelling: "variant",
+                reference_count: 0,
+            },
+            RecursiveBindingFixture {
+                spelling: "source",
+                reference_count: 0,
+            },
+            RecursiveBindingFixture {
+                spelling: "children",
+                reference_count: 2,
+            },
+        ] {
+            let identity =
+                encoded(binding_chain("ScopeOfStep", fixture.spelling).expect("recursive binding"));
+            bindings.declaration(source, fixture.spelling, 0, identity.clone());
+            for occurrence in 1..=fixture.reference_count {
+                bindings.reference(source, fixture.spelling, occurrence, identity.clone());
+            }
+        }
     }
 
     for (index, spelling) in [
@@ -753,6 +846,12 @@ impl<'fixture> FixtureAdapter<'fixture> {
             MacroKind::Structural(SectionDefault::Newtype) => &self.newtype,
             MacroKind::Structural(SectionDefault::Struct) => &self.structure,
             MacroKind::Structural(SectionDefault::Enumeration) => &self.enumeration,
+            MacroKind::Recursive {
+                section: SectionDefault::Enumeration,
+            } => &self.attributes,
+            MacroKind::Recursive { section } => {
+                panic!("unsupported recursive fixture section {section:?}")
+            }
         }
     }
 
@@ -1559,13 +1658,13 @@ fn compare_sets(
         path.push("result".to_owned());
         compare_value(transformer, &path, expected.result(), found.result())?;
         path.pop();
-        if expected.invoke_requirements() != found.invoke_requirements() {
+        if expected.future_requirements() != found.future_requirements() {
             return Err(mismatch(
                 transformer,
                 "invoke-requirements",
                 &path,
-                expected.invoke_requirements(),
-                found.invoke_requirements(),
+                expected.future_requirements(),
+                found.future_requirements(),
             ));
         }
     }
@@ -1905,6 +2004,276 @@ fn standard_text_is_structurally_equivalent_to_all_five_legacy_transformers() {
         .expect("canonical view decodes");
     assert_eq!(restored.revision(), decoded.revision());
     assert_eq!(restored.transformers(), decoded.transformers());
+}
+
+#[test]
+fn recursive_text_round_trips_and_evaluates_children_before_the_parent() {
+    let logos = logos();
+    let textual = textual(&logos);
+    let assigned = bindings(RECURSIVE_SOURCE);
+    let decoded = textual
+        .decode(RECURSIVE_SOURCE, &assigned)
+        .expect("recursive and InsertAt syntax decode");
+    assert_eq!(decoded.transformers().declarations().len(), 6);
+    let recursive = decoded
+        .transformers()
+        .declarations()
+        .iter()
+        .find(|declaration| declaration.name().encoded_id() == &encoded(&[110, 6]))
+        .expect("recursive declaration");
+    assert_eq!(
+        recursive.kind(),
+        MacroKind::Recursive {
+            section: SectionDefault::Enumeration
+        }
+    );
+
+    let viewed = textual
+        .view(&decoded, &assigned)
+        .expect("canonical recursive view");
+    assert_eq!(viewed, RECURSIVE_CANONICAL);
+    let restored = textual
+        .decode(&viewed, &bindings(&viewed))
+        .expect("canonical recursive view decodes");
+    assert_eq!(restored.transformers(), decoded.transformers());
+
+    let grandchild = WholeEthosEnumeration::new(
+        encoded(&[310, 3]),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        vec![WholeEthosVariant::new(
+            encoded(&[310, 3, 1]),
+            WholeEthosAttributes::empty(),
+            WholeEthosVariantPayload::Unit,
+        )],
+    );
+    let child = WholeEthosEnumeration::new(
+        encoded(&[310, 2]),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        vec![
+            WholeEthosVariant::new(
+                encoded(&[310, 2, 1]),
+                WholeEthosAttributes::empty(),
+                WholeEthosVariantPayload::Unit,
+            ),
+            WholeEthosVariant::new(
+                encoded(&[310, 2, 2]),
+                WholeEthosAttributes::empty(),
+                WholeEthosVariantPayload::Tuple(
+                    WholeEthosTupleFields::new(vec![WholeEthosTypeReference::Identity(
+                        grandchild.name().clone(),
+                    )])
+                    .expect("one grandchild edge"),
+                ),
+            ),
+        ],
+    );
+    let leaf_newtype = WholeEthosNewtype::new(
+        encoded(&[310, 4]),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        WholeEthosWrappedField::new(
+            WholeEthosVisibility::Private,
+            WholeEthosTypeReference::Identity(encoded(&[399, 2])),
+        ),
+    );
+    let root = WholeEthosEnumeration::new(
+        encoded(&[310, 1]),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        vec![
+            WholeEthosVariant::new(
+                encoded(&[310, 1, 1]),
+                WholeEthosAttributes::empty(),
+                WholeEthosVariantPayload::Tuple(
+                    WholeEthosTupleFields::new(vec![
+                        WholeEthosTypeReference::Identity(child.name().clone()),
+                        WholeEthosTypeReference::Identity(leaf_newtype.name().clone()),
+                        WholeEthosTypeReference::Identity(encoded(&[399, 1])),
+                    ])
+                    .expect("child edge, newtype leaf, and absent leaf"),
+                ),
+            ),
+            WholeEthosVariant::new(
+                encoded(&[310, 1, 2]),
+                WholeEthosAttributes::empty(),
+                WholeEthosVariantPayload::Unit,
+            ),
+        ],
+    );
+    let input = EncodedPopulation::new(
+        WholeEthos::new(vec![
+            WholeEthosItem::Enumeration(root),
+            WholeEthosItem::Enumeration(child),
+            WholeEthosItem::Enumeration(grandchild),
+            WholeEthosItem::Newtype(leaf_newtype),
+        ]),
+        FixtureCompleteNameTree,
+    );
+    let evaluator = NativeAuthoredEvaluator::try_new(
+        decoded.transformers(),
+        NativeReferenceUniverse::identity(),
+    )
+    .expect("recursive package admission");
+    let transformed = evaluator.transform(&input).expect("recursive transform");
+    let NativeEvaluatedTerm::Sequence(attributes) =
+        transformed.population().encoded_form().values()[0].fields()[1].term()
+    else {
+        panic!("enumeration attributes are a sequence")
+    };
+    let constructors = attributes
+        .iter()
+        .map(|attribute| {
+            let NativeEvaluatedTerm::Nested(attribute) = attribute else {
+                panic!("recursive attributes contain only attribute values")
+            };
+            attribute.constructor().local()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(constructors, vec![3, 3, 1, 3, 3, 1, 1, 1, 3, 1]);
+
+    let empty_root = EncodedPopulation::new(
+        WholeEthos::new(vec![WholeEthosItem::Enumeration(
+            WholeEthosEnumeration::new(
+                encoded(&[310, 5]),
+                WholeEthosVisibility::Private,
+                WholeEthosAttributes::empty(),
+                Vec::new(),
+            ),
+        )]),
+        FixtureCompleteNameTree,
+    );
+    let empty = evaluator
+        .transform(&empty_root)
+        .expect("zero-variant recursive root");
+    assert!(matches!(
+        empty.population().encoded_form().values()[0].fields()[1].term(),
+        NativeEvaluatedTerm::Sequence(items) if items.is_empty()
+    ));
+}
+
+#[test]
+fn recursive_preflight_refuses_applications_sharing_and_cycles() {
+    let logos = logos();
+    let textual = textual(&logos);
+    let assigned = bindings(RECURSIVE_SOURCE);
+    let decoded = textual
+        .decode(RECURSIVE_SOURCE, &assigned)
+        .expect("recursive package");
+    let evaluator = NativeAuthoredEvaluator::try_new(
+        decoded.transformers(),
+        NativeReferenceUniverse::identity(),
+    )
+    .expect("recursive package admission");
+
+    let application_source = EncodedPopulation::new(
+        WholeEthos::new(vec![WholeEthosItem::Enumeration(
+            WholeEthosEnumeration::new(
+                encoded(&[320, 1]),
+                WholeEthosVisibility::Private,
+                WholeEthosAttributes::empty(),
+                vec![WholeEthosVariant::new(
+                    encoded(&[320, 1, 1]),
+                    WholeEthosAttributes::empty(),
+                    WholeEthosVariantPayload::Tuple(
+                        WholeEthosTupleFields::new(vec![WholeEthosTypeReference::Application(
+                            WholeEthosTypeApplication::new(
+                                encoded(&[399, 10]),
+                                WholeEthosTypeReference::Identity(encoded(&[399, 11])),
+                            ),
+                        )])
+                        .expect("one application edge"),
+                    ),
+                )],
+            ),
+        )]),
+        FixtureCompleteNameTree,
+    );
+    assert!(matches!(
+        evaluator.transform(&application_source),
+        Err(core_nomos::NativeEvaluationError::RecursiveSourceApplication { .. })
+    ));
+
+    let shared_child = WholeEthosEnumeration::new(
+        encoded(&[321, 2]),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        vec![WholeEthosVariant::new(
+            encoded(&[321, 2, 1]),
+            WholeEthosAttributes::empty(),
+            WholeEthosVariantPayload::Unit,
+        )],
+    );
+    let shared_parent = WholeEthosEnumeration::new(
+        encoded(&[321, 1]),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        vec![WholeEthosVariant::new(
+            encoded(&[321, 1, 1]),
+            WholeEthosAttributes::empty(),
+            WholeEthosVariantPayload::Tuple(
+                WholeEthosTupleFields::new(vec![
+                    WholeEthosTypeReference::Identity(shared_child.name().clone()),
+                    WholeEthosTypeReference::Identity(shared_child.name().clone()),
+                ])
+                .expect("two edges to the same child"),
+            ),
+        )],
+    );
+    let sharing_source = EncodedPopulation::new(
+        WholeEthos::new(vec![
+            WholeEthosItem::Enumeration(shared_parent),
+            WholeEthosItem::Enumeration(shared_child),
+        ]),
+        FixtureCompleteNameTree,
+    );
+    assert!(matches!(
+        evaluator.transform(&sharing_source),
+        Err(core_nomos::NativeEvaluationError::RecursiveSourceSharing { .. })
+    ));
+
+    let first_identity = encoded(&[322, 1]);
+    let second_identity = encoded(&[322, 2]);
+    let first = WholeEthosEnumeration::new(
+        first_identity.clone(),
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        vec![WholeEthosVariant::new(
+            encoded(&[322, 1, 1]),
+            WholeEthosAttributes::empty(),
+            WholeEthosVariantPayload::Tuple(
+                WholeEthosTupleFields::new(vec![WholeEthosTypeReference::Identity(
+                    second_identity.clone(),
+                )])
+                .expect("first cycle edge"),
+            ),
+        )],
+    );
+    let second = WholeEthosEnumeration::new(
+        second_identity,
+        WholeEthosVisibility::Private,
+        WholeEthosAttributes::empty(),
+        vec![WholeEthosVariant::new(
+            encoded(&[322, 2, 1]),
+            WholeEthosAttributes::empty(),
+            WholeEthosVariantPayload::Tuple(
+                WholeEthosTupleFields::new(vec![WholeEthosTypeReference::Identity(first_identity)])
+                    .expect("second cycle edge"),
+            ),
+        )],
+    );
+    let cycle_source = EncodedPopulation::new(
+        WholeEthos::new(vec![
+            WholeEthosItem::Enumeration(first),
+            WholeEthosItem::Enumeration(second),
+        ]),
+        FixtureCompleteNameTree,
+    );
+    assert!(matches!(
+        evaluator.transform(&cycle_source),
+        Err(core_nomos::NativeEvaluationError::RecursiveSourceCycle { .. })
+    ));
 }
 
 #[test]
@@ -2651,6 +3020,48 @@ fn malformed_unknown_and_wrong_position_future_forms_refuse() {
             "invalid reserved application must refuse: {invalid}"
         );
     }
+}
+
+#[test]
+fn malformed_insert_at_forms_refuse_before_authored_evaluation() {
+    let logos = logos();
+    let textual = textual(&logos);
+
+    let missing_boundary = RECURSIVE_SOURCE.replacen("InsertAt.children 0", "InsertAt.children", 1);
+    assert!(
+        textual
+            .decode(&missing_boundary, &bindings(&missing_boundary))
+            .is_err(),
+        "InsertAt without its integer boundary must refuse"
+    );
+
+    let noninteger_boundary =
+        RECURSIVE_SOURCE.replacen("InsertAt.children 0", "InsertAt.children rustfmt.skip", 1);
+    assert!(
+        textual
+            .decode(&noninteger_boundary, &bindings(&noninteger_boundary))
+            .is_err(),
+        "InsertAt with a noninteger boundary must refuse"
+    );
+
+    let missing_value = RECURSIVE_SOURCE.replacen(
+        "[\nInvoke.ScopeOfStep\nSplice.children\nInsertAt.children 0 rustfmt.skip\n[Clone]\n]",
+        "[\nInvoke.ScopeOfStep\nSplice.children\n[Clone]\nInsertAt.children 0\n]",
+        1,
+    );
+    assert!(matches!(
+        textual.decode(&missing_value, &bindings(&missing_value)),
+        Err(core_nomos::TextualNomosError::InsertAtMissingValue)
+    ));
+
+    let wrong_position =
+        RECURSIVE_SOURCE.replacen("Public Invoke.ScopeOfStep", "InsertAt.variants 0", 1);
+    assert!(
+        textual
+            .decode(&wrong_position, &bindings(&wrong_position))
+            .is_err(),
+        "InsertAt outside a repeated sequence must refuse"
+    );
 }
 
 #[test]

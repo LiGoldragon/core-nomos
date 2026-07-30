@@ -118,12 +118,14 @@ fn textual(logos: &LogosLanguage) -> TextualNomos {
         TextualNomosWords {
             named: encoded(&[101, 1]),
             structural: encoded(&[101, 2]),
+            recursive: encoded(&[101, 9]),
             newtype: encoded(&[101, 3]),
             structure: encoded(&[101, 8]),
             enumeration: encoded(&[101, 4]),
             realize: encoded(&[101, 5]),
             splice: encoded(&[101, 6]),
             invoke: encoded(&[101, 7]),
+            insert_at: encoded(&[101, 10]),
         },
         vec![
             TextualNomosMetaType {
@@ -156,6 +158,8 @@ impl FixedNames {
                 (encoded(&[101, 5]), "Realize"),
                 (encoded(&[101, 6]), "Splice"),
                 (encoded(&[101, 7]), "Invoke"),
+                (encoded(&[101, 9]), "Recursive"),
+                (encoded(&[101, 10]), "InsertAt"),
                 (encoded(&[102, 1]), "Name"),
                 (encoded(&[102, 2]), "Type"),
             ]

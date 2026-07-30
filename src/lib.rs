@@ -17,13 +17,18 @@
 //! from the Logos declarations; no transformer-specific or Logos-type-specific
 //! authored twin exists.
 //!
-//! ## The two legacy execution kinds
+//! ## Transformer kinds
 //!
 //! - **Named** ([`MacroKind::Named`]) — dispatched by minted [`MacroIdentity`]; an
 //!   unknown named invocation is an error. `WireAttributes` is named.
 //! - **Structural** ([`MacroKind::Structural`]) — a per-section default selected by
 //!   an Ethos declaration's kind; `WireNewtype` and the particular-struct transformer are
 //!   structural.
+//! - **Recursive** ([`MacroKind::Recursive`]) — entered from one structural
+//!   section and evaluates a finite, singly owned source-enumeration tree.
+//!
+//! The retained legacy `MacroPackage` fixture authors only Named and Structural
+//! declarations.
 //!
 //! ## Production seal
 //!
@@ -36,12 +41,14 @@
 //! [`MacroPackage`], [`MacroIdentity`], and [`PackageRevision`] are retained
 //! only as the legacy execution fixture for equivalence work.
 //!
-//! ## The closed escape algebra
+//! ## The authored future algebra
 //!
-//! A result template is logos-encoded-form data whose non-literal positions are the
-//! closed set [`Escape`] = **Realize** / **Invoke** / **Splice**. A [`NameTransform`]
-//! is typed intent carried by `Realize`, not a fourth escape; `NameTableBoundary`
-//! performs the derived-name work at the NameTable/emission boundary.
+//! A production result template is Logos encoded-form data whose authored
+//! operations are [`TemplateFuture`] **Realize** / **Invoke** / **Splice** /
+//! **InsertAt**. Recursive spelling remains `Invoke`; compilation replaces its
+//! lexical self-call with an internal judgment that has no authored spelling.
+//! The legacy [`Escape`] algebra remains the three-operation `MacroPackage`
+//! evidence surface.
 //!
 //! ## The engine
 //!
@@ -109,7 +116,7 @@ pub use template::{
     Splice, SpliceElement, StructTemplate,
 };
 pub use template_language::{
-    LogosTemplateLanguage, TemplateConstructorDeclaration, TemplateFieldDeclaration,
+    InsertAt, LogosTemplateLanguage, TemplateConstructorDeclaration, TemplateFieldDeclaration,
     TemplateFieldValue, TemplateFormDeclaration, TemplateFuture, TemplateFutureKind,
     TemplateFutureOutput, TemplateFutureRequirement, TemplateLandingField, TemplateLandingShape,
     TemplateLanguage, TemplateLanguageError, TemplateRootOutput, TemplateRootOutputSelector,

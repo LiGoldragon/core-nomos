@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.26.0"
+version      = "0.27.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -18,12 +18,12 @@ capsule-content-identity = { package = "content-identity", git = "https://github
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
 encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "c85cec6117bfd4c423d952fd54e0c0bb11562f89" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "47c866f101c0e830ecff70451e92f7bdc0ade4e7" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "141abe23273273d2e4470ce15b42ccf9bc5c8764" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "736460fdafbd65d6500fe15e6ae8844b42a39e7c" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "9a61e2ac1bf8a8c1163794d695902115a05a4007" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "7290f65bbb5e7825ab2ca58340631d154d69d110" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "51c02c4a7b6f67d9dad095f11986085d7d65785b" }
-textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "96eda934a8f3203295f0a08869199441f109c369" }
-structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "1485c1f8edcb9c988492c6eb0378c10a3599d665" }
+textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "f46167cbb35d25d86ddbc197653c6560ded8e077" }
+structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "f47fac132722916912b7071556f69cbbf4026f7f" }
 rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror                = "2"
 

@@ -34,7 +34,8 @@ whole carriers and the retained flat execution data. There are no slice aliases
 or parallel structural-codec type universes. The former structural-codec 0.6
 `EncodedConversion` implementation over the flat records was removed rather
 than adapted: the legacy engine retains its inherent `apply` methods, while
-0.8 conversion contracts are reserved for canonical `EncodedForm` carriers.
+the current structural-codec 0.19 contracts are reserved for canonical
+`EncodedForm` carriers.
 
 The typed legacy macro/package model in `definition.rs`, `identity.rs`,
 `meta.rs`, `package.rs`, and `template.rs` remains as a regression oracle.
@@ -87,12 +88,19 @@ unsupported invocation inputs, and invocation cycles before input execution.
 `transform` consumes `EncodedPopulation<WholeEthos, NameTree>` and returns a
 checked `NativeLogosPopulation` plus the current bounded `WholeLogos`
 compatibility projection. Invoke and Splice substitute their actual typed
-landing values; no operational future marker survives.
+landing values, while InsertAt inserts its following element at an original
+Splice-span boundary. Recursive authored Invoke compiles to one internal
+judgment whose marker and child Splice emit no marker data; no operational
+future marker survives.
 
-The NameTree boundary authenticates and plans before the evaluator visits the
-first item. Derived-name realization and the complete output tree are pure plan
-operations; the daemon commits planned names and output storage atomically only
-after successful evaluation. This two-phase boundary is
+When a recursive declaration exists, whole-universe source-graph preflight
+rejects application edges, enumeration sharing, and cycles before NameTree
+authentication or output. Identity references to enumerations traverse;
+identity references to newtypes, builtins, absent declarations, and external
+declarations are leaves. The NameTree boundary then authenticates and plans
+before item evaluation. Derived-name realization and the complete output tree
+are pure plan operations; the daemon commits planned names and output storage
+atomically only after successful evaluation. This two-phase boundary is
 `[to-be-reviewed-by-psyche]`.
 
 `NativeReferenceUniverse` maps exact complete Universal reference identities
@@ -112,11 +120,13 @@ rendering, projection materialization, or ordinal-word machinery.
 
 ## Typed transformation data
 
-Transformers are data. The current closed template escape algebra —
-`Realize`, `Invoke`, and `Splice` — is a live typed mechanism, but its present
-execution path is not evidence that eager `NameTransform` materialization is
-correct. Any surviving transform intent must remain typed data until
-TextualForm evaluation.
+Transformers are data. The current authored `TemplateFuture` algebra is
+`Realize`, `Invoke`, `Splice`, and `InsertAt`. Recursive source syntax remains
+an ordinary self-`Invoke`; compilation alone replaces it with
+`TemplateFuture::RecursiveInvoke { payload: Box<RecursiveCallJudgment> }`,
+which has no authored spelling. The retained three-operation `Escape` enum is
+legacy `MacroPackage` evidence only. Any surviving name-transform intent must
+remain typed data until TextualForm evaluation.
 
 Encoded names are durable encodedID chains from nested module-owned nametables.
 They are not namespace-tagged flat identifiers composed into a global spelling
@@ -133,7 +143,14 @@ specific textual form.
 TextualNomos decoding. Its name and every input binding are typed wrappers over
 complete translator-issued `VocabularyRoot::Universal` encodedID chains. Its
 typed Logos skeleton stores every literal identity as a complete chain, and
-`AuthoredEscape::Invoke` stores the invoked transformer's durable chain.
+`TemplateFuture::Invoke` stores the invoked transformer's durable chain.
+Declarations are `Named`, per-section `Structural`, or finite-owned-tree
+`Recursive`.
+
+`[delegated-assent]` The designated Claude advisor accepted the po2.19 authored
+algebra, recursive compilation equations, whole-source preflight, and evaluator
+semantics. This is delegated design-review traceability, not a statement of
+psyche conviction or intent.
 
 `AuthoredTransformerSet` is itself the immutable sealed execution content.
 Every declaration retains a typed `TemplateRootOutputSelector` identifying
