@@ -77,14 +77,7 @@ impl MacroPackage {
     /// `Evaluator::short_header_module`), so the selection carries no transcribed data —
     /// every class is a plain marker.
     pub fn enriched_fixture() -> Result<Self, NomosError> {
-        Ok(Self::wire_fixture()?.with_selection(vec![
-            GenerationClass::NewtypeErgonomics,
-            GenerationClass::InterfaceErgonomics,
-            GenerationClass::WireContract,
-            GenerationClass::WireExchangeCodec,
-            GenerationClass::WireExchangeEnvelope,
-            GenerationClass::TraceSupport,
-        ]))
+        Ok(Self::wire_fixture()?.with_selection(GenerationClass::ENRICHED_ORDER.to_vec()))
     }
 
     fn fixture(kind: AttributePreamble) -> Result<Self, NomosError> {

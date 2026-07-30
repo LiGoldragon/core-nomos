@@ -241,7 +241,12 @@ pub struct EnumerationTemplate {
 /// [`WireExchangeCodec`]: GenerationClass::WireExchangeCodec
 /// [`WireExchangeEnvelope`]: GenerationClass::WireExchangeEnvelope
 /// [`TraceSupport`]: GenerationClass::TraceSupport
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// po2.6 temporarily archives an ordered selection of these values as
+/// separately typed per-slot deployment metadata
+/// `[to-be-reviewed-by-psyche]`; po2.8 owns retiring that external selection
+/// into authored Nomos.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum GenerationClass {
     /// Class A — per data-type newtype declaration: the `impl { new / payload /
     /// into_payload }` inherent block and the `From<Inner>` conversion.
@@ -278,4 +283,19 @@ pub enum GenerationClass {
     /// Class D — trace support: the `SignalObjectName` / `ObjectName` enums with
     /// their nested-match `name()` bodies and the `TraceEvent` impl.
     TraceSupport,
+}
+
+impl GenerationClass {
+    /// The exact temporary enriched selection in document order.
+    ///
+    /// po2.6 reuses this single typed definition for per-slot deployment
+    /// metadata `[to-be-reviewed-by-psyche]`; po2.8 owns retiring it.
+    pub const ENRICHED_ORDER: [Self; 6] = [
+        Self::NewtypeErgonomics,
+        Self::InterfaceErgonomics,
+        Self::WireContract,
+        Self::WireExchangeCodec,
+        Self::WireExchangeEnvelope,
+        Self::TraceSupport,
+    ];
 }
