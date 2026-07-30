@@ -1,6 +1,6 @@
 use core_nomos::{
-    AuthenticatedNameTreeProjection, SealedNomosCapsule, SealedNomosPopulation, TemplateFuture,
-    TemplateFutureKind,
+    AuthenticatedNameTreeProjection, MacroKind, SealedNomosCapsule, SealedNomosPopulation,
+    TemplateFuture, TemplateFutureKind,
 };
 use rkyv::Archive;
 
@@ -35,6 +35,8 @@ fn d47_capsule_and_projection_restore_and_reserialize_byte_exact() {
 
 #[test]
 fn appended_future_tags_must_not_grow_the_d47_archive_layout() {
+    assert_eq!(std::mem::size_of::<<MacroKind as Archive>::Archived>(), 2);
+    assert_eq!(std::mem::align_of::<<MacroKind as Archive>::Archived>(), 1);
     assert_eq!(
         std::mem::size_of::<<TemplateFutureKind as Archive>::Archived>(),
         1
