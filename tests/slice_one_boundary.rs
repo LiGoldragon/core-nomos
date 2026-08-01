@@ -53,7 +53,7 @@ fn slice_dependencies_are_exact_published_producer_revisions() {
     assert!(MANIFEST.contains(
         "core-ethos               = { git = \
          \"https://github.com/LiGoldragon/core-ethos.git\", rev = \
-         \"736460fdafbd65d6500fe15e6ae8844b42a39e7c\" }"
+         \"78c9530782652af40493b1a0ca22397782560bf7\" }"
     ));
     assert!(MANIFEST.contains(
         "core-logos               = { git = \
