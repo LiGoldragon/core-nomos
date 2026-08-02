@@ -14,8 +14,9 @@
 //! invocation targets before atomic sealing. [`TextualNomos`] uses the
 //! plain Standard raw-discovery profile and the shared structural evaluator.
 //! Its Logos-shaped result grammar and landing carrier are computed together
-//! from the Logos declarations; no transformer-specific or Logos-type-specific
-//! authored twin exists.
+//! from the Logos declarations. The isolated ScopeOf bootstrap uses the
+//! separately sanctioned handwritten mirror until Nomos can emit both sides of
+//! the pair itself.
 //!
 //! ## Transformer kinds
 //!
@@ -72,6 +73,7 @@ mod name_boundary;
 pub mod native;
 pub mod package;
 pub mod prelude;
+pub mod scope_of;
 pub mod sealed;
 pub mod slice_one;
 pub mod template;
@@ -103,6 +105,12 @@ pub use native::{
 };
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
+pub use scope_of::{
+    ScopeOfConfiguredIdentityPosition, ScopeOfDeclaration, ScopeOfDeclarationContract,
+    ScopeOfDeclarationRecognition, ScopeOfGate, ScopeOfGateObservations, ScopeOfLogosRealization,
+    ScopeOfNomosEnumeration, ScopeOfNomosPlanning, ScopeOfNomosVariant, ScopeOfNomosVariantPayload,
+    ScopeOfRefusal, ScopeOfSourceResolution, ScopeOfTransformer, ScopeOfVariantNamePromise,
+};
 pub use sealed::{
     AuthenticatedNameTreeProjection, NameTreeProjectionEntry, NameTreeProjectionVersion,
     NomosSealError, SealedNomosCapsule, SealedNomosPopulation,
