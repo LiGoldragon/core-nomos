@@ -664,6 +664,190 @@ pub enum NomosSealError {
 mod tests {
     use super::*;
 
+    #[derive(
+        rkyv::Archive,
+        rkyv::Serialize,
+        rkyv::Deserialize,
+        Clone,
+        Debug,
+        Eq,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub struct NamedNameTreeProjectionEntry {
+        encoded_id: VocabularyEncodedId,
+        spelling: Name,
+    }
+
+    #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq)]
+    struct NamedSealedNomosCapsuleArchive {
+        identity: CapsuleIdentity,
+        transformers: AuthoredTransformerSet,
+    }
+
+    #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
+    struct NamedNameTreeProjectionPayload {
+        version: NameTreeProjectionVersion,
+        identity: CapsuleIdentity,
+        entries: Vec<NameTreeProjectionEntry>,
+    }
+
+    #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone)]
+    struct NamedNameTreeProjectionArchive {
+        payload: NameTreeProjectionPayload,
+        integrity: IntegrityDigest<NameTreeProjectionIntegrityDomain>,
+    }
+
+    macro_rules! assert_archive_compatible {
+        (
+            $production_type:ty,
+            $named_type:ty,
+            $production:expr,
+            $named:expr,
+            $production_equal:expr,
+            $named_equal:expr
+        ) => {{
+            let production = $production;
+            let named = $named;
+            let production_bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&production)
+                .expect("archive production carrier");
+            let named_bytes =
+                rkyv::to_bytes::<rkyv::rancor::Error>(&named).expect("archive named-field mirror");
+
+            assert_eq!(
+                production_bytes.as_slice(),
+                named_bytes.as_slice(),
+                "tuple and named-field carriers must emit identical bytes",
+            );
+            assert_eq!(
+                std::mem::size_of::<rkyv::Archived<$production_type>>(),
+                std::mem::size_of::<rkyv::Archived<$named_type>>(),
+                "archived sizes must match",
+            );
+            assert_eq!(
+                std::mem::align_of::<rkyv::Archived<$production_type>>(),
+                std::mem::align_of::<rkyv::Archived<$named_type>>(),
+                "archived alignments must match",
+            );
+
+            let _: &rkyv::Archived<$production_type> =
+                rkyv::access::<rkyv::Archived<$production_type>, rkyv::rancor::Error>(&named_bytes)
+                    .expect("access named bytes through production archived layout");
+            let _: &rkyv::Archived<$named_type> =
+                rkyv::access::<rkyv::Archived<$named_type>, rkyv::rancor::Error>(&production_bytes)
+                    .expect("access production bytes through named archived layout");
+
+            let production_from_named =
+                rkyv::from_bytes::<$production_type, rkyv::rancor::Error>(&named_bytes)
+                    .expect("restore production carrier from named bytes");
+            let named_from_production =
+                rkyv::from_bytes::<$named_type, rkyv::rancor::Error>(&production_bytes)
+                    .expect("restore named carrier from production bytes");
+            assert!(($production_equal)(&production_from_named, &production));
+            assert!(($named_equal)(&named_from_production, &named));
+
+            assert_eq!(
+                rkyv::to_bytes::<rkyv::rancor::Error>(&production_from_named)
+                    .expect("reserialize production carrier restored from named bytes")
+                    .as_slice(),
+                named_bytes.as_slice(),
+            );
+            assert_eq!(
+                rkyv::to_bytes::<rkyv::rancor::Error>(&named_from_production)
+                    .expect("reserialize named carrier restored from production bytes")
+                    .as_slice(),
+                production_bytes.as_slice(),
+            );
+        }};
+    }
+
+    // Trait exception — the proper trait cannot be determined: this function is
+    // an entry point whose contract is supplied by Rust's test harness.
+    #[test]
+    fn named_fields_preserve_private_sealed_archive_carriers() {
+        let encoded_id = |chain: &[u16]| {
+            VocabularyEncodedId::new(
+                VocabularyRoot::Universal,
+                chain
+                    .iter()
+                    .copied()
+                    .map(encoded_name_table::LocalEncodedId::new)
+                    .collect(),
+            )
+            .expect("fixture identity is nonempty")
+        };
+        let transformers = crate::authored::native_restore_validation_package_for_test();
+        assert!(!transformers.declarations().is_empty());
+        let capsule =
+            SealedNomosCapsule::seal(transformers.clone()).expect("seal populated fixture");
+        let identity = capsule.content_identity();
+        let entries = vec![
+            NameTreeProjectionEntry(encoded_id(&[71, 2]), Name::new("module")),
+            NameTreeProjectionEntry(encoded_id(&[71, 2, 3]), Name::new("transformer")),
+            NameTreeProjectionEntry(encoded_id(&[73, 5, 7]), Name::new("binding")),
+        ];
+
+        let entry = entries[1].clone();
+        assert_archive_compatible!(
+            NameTreeProjectionEntry,
+            NamedNameTreeProjectionEntry,
+            entry.clone(),
+            NamedNameTreeProjectionEntry {
+                encoded_id: entry.0.clone(),
+                spelling: entry.1.clone(),
+            },
+            |left: &NameTreeProjectionEntry, right: &NameTreeProjectionEntry| left == right,
+            |left: &NamedNameTreeProjectionEntry, right: &NamedNameTreeProjectionEntry| left
+                == right
+        );
+
+        let capsule_archive = SealedNomosCapsuleArchive(identity, transformers.clone());
+        assert_archive_compatible!(
+            SealedNomosCapsuleArchive,
+            NamedSealedNomosCapsuleArchive,
+            capsule_archive,
+            NamedSealedNomosCapsuleArchive {
+                identity,
+                transformers,
+            },
+            |left: &SealedNomosCapsuleArchive, right: &SealedNomosCapsuleArchive| left == right,
+            |left: &NamedSealedNomosCapsuleArchive, right: &NamedSealedNomosCapsuleArchive| left
+                == right
+        );
+
+        let payload =
+            NameTreeProjectionPayload(NameTreeProjectionVersion::new(11), identity, entries);
+        assert_archive_compatible!(
+            NameTreeProjectionPayload,
+            NamedNameTreeProjectionPayload,
+            payload.clone(),
+            NamedNameTreeProjectionPayload {
+                version: payload.0,
+                identity: payload.1,
+                entries: payload.2.clone(),
+            },
+            |left: &NameTreeProjectionPayload, right: &NameTreeProjectionPayload| left == right,
+            |left: &NamedNameTreeProjectionPayload, right: &NamedNameTreeProjectionPayload| left
+                == right
+        );
+
+        let integrity = IntegrityDigest::of_core(&payload).expect("projection integrity");
+        let archive = NameTreeProjectionArchive(payload.clone(), integrity);
+        assert_archive_compatible!(
+            NameTreeProjectionArchive,
+            NamedNameTreeProjectionArchive,
+            archive,
+            NamedNameTreeProjectionArchive { payload, integrity },
+            |left: &NameTreeProjectionArchive, right: &NameTreeProjectionArchive| {
+                left.0 == right.0 && left.1 == right.1
+            },
+            |left: &NamedNameTreeProjectionArchive, right: &NamedNameTreeProjectionArchive| {
+                left.payload == right.payload && left.integrity == right.integrity
+            }
+        );
+    }
+
     #[test]
     fn empty_content_ignores_unreachable_projection_names() {
         let transformers = AuthoredTransformerSet::try_new(Vec::new()).expect("empty set");
