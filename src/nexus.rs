@@ -1,10 +1,12 @@
-//! Allocation-free structural lowering for Nexus Ethos documents.
+//! Allocation-free structural lowering for Nexus and Interface type documents.
 //!
 //! Nexus traits are emitted before their operand types, following the trait-first
 //! ontology discipline. Declarations retain their translator-issued identities;
 //! only exact caller-supplied reference mappings may cross into Rust vocabulary.
-//! This transformer never invokes `WireAttributes`: Interface declarations keep
-//! that existing named Nomos transformer, while Nexus declarations are plain.
+//! Nexus declarations remain plain. The narrow Interface surface lowers only its
+//! shared `types` position and selects the canonical `WireAttributes` emission
+//! policy; Input/Output/Refusal membership and refusal behavior remain outside
+//! this slice.
 
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
@@ -15,7 +17,8 @@ use nexus_core_ethos::{
 use nexus_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosStruct,
     WholeLogosTraitDef, WholeLogosTraitMethod, WholeLogosTupleFields, WholeLogosTypeApplication,
-    WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
+    WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload,
+    WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -23,6 +26,16 @@ use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 pub trait NexusStructuralTransformation {
     /// Lower one typed Nexus document without allocating or deriving identities.
     fn lower(&self, ethos: &WholeEthos) -> Result<WholeLogos, NexusTransformationError>;
+}
+
+/// The deliberately narrow Interface shared-type structural contract.
+pub trait InterfaceTypeStructuralTransformation {
+    /// Lower only `Interface.types` with canonical wire emission attributes.
+    /// Input, Output, and Refusal positions are not projected by this slice.
+    fn lower_interface_types(
+        &self,
+        ethos: &WholeEthos,
+    ) -> Result<WholeLogos, NexusTransformationError>;
 }
 
 /// Exact, allocation-free Nexus lowering data.
@@ -64,16 +77,18 @@ impl NexusTransformation {
     fn lower_item(
         &self,
         item: &WholeEthosItem,
+        attributes: WholeLogosTypeAttributes,
     ) -> Result<WholeLogosItem, NexusTransformationError> {
         match item {
-            WholeEthosItem::Newtype(newtype) => {
-                Ok(WholeLogosItem::Newtype(self.lower_newtype(newtype)))
-            }
-            WholeEthosItem::Struct(structure) => {
-                Ok(WholeLogosItem::Struct(self.lower_struct(structure)))
-            }
+            WholeEthosItem::Newtype(newtype) => Ok(WholeLogosItem::Newtype(
+                self.lower_newtype(newtype).with_attributes(attributes),
+            )),
+            WholeEthosItem::Struct(structure) => Ok(WholeLogosItem::Struct(
+                self.lower_struct(structure).with_attributes(attributes),
+            )),
             WholeEthosItem::Enumeration(enumeration) => Ok(WholeLogosItem::Enumeration(
-                self.lower_enumeration(enumeration),
+                self.lower_enumeration(enumeration)?
+                    .with_attributes(attributes),
             )),
             WholeEthosItem::OperatorApplication(application) => {
                 Err(Self::unsupported_application(application))
@@ -103,20 +118,26 @@ impl NexusTransformation {
         )
     }
 
-    fn lower_enumeration(&self, enumeration: &WholeEthosEnumeration) -> WholeLogosEnumeration {
+    fn lower_enumeration(
+        &self,
+        enumeration: &WholeEthosEnumeration,
+    ) -> Result<WholeLogosEnumeration, NexusTransformationError> {
         let WholeEthosAttributes = *enumeration.attributes();
-        WholeLogosEnumeration::new(
+        Ok(WholeLogosEnumeration::new(
             Self::lower_visibility(*enumeration.visibility()),
             enumeration.name().clone(),
             enumeration
                 .variants()
                 .iter()
                 .map(|variant| self.lower_variant(variant))
-                .collect(),
-        )
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
     }
 
-    fn lower_variant(&self, variant: &WholeEthosVariant) -> WholeLogosVariant {
+    fn lower_variant(
+        &self,
+        variant: &WholeEthosVariant,
+    ) -> Result<WholeLogosVariant, NexusTransformationError> {
         let WholeEthosAttributes = *variant.attributes();
         let payload = match variant.payload() {
             WholeEthosVariantPayload::Unit => WholeLogosVariantPayload::Unit,
@@ -127,12 +148,16 @@ impl NexusTransformation {
                         .iter()
                         .map(|field| self.lower_reference(field))
                         .collect(),
-                );
-                let Ok(fields) = fields else { unreachable!() };
+                )
+                .map_err(|error| {
+                    NexusTransformationError::UnsupportedVariantTupleArity {
+                        found: error.found(),
+                    }
+                })?;
                 WholeLogosVariantPayload::Tuple(fields)
             }
         };
-        WholeLogosVariant::new(variant.name().clone(), payload)
+        Ok(WholeLogosVariant::new(variant.name().clone(), payload))
     }
 
     fn lower_trait(&self, trait_definition: &WholeEthosTrait) -> WholeLogosTraitDef {
@@ -207,6 +232,7 @@ impl NexusStructuralTransformation for NexusTransformation {
     fn lower(&self, ethos: &WholeEthos) -> Result<WholeLogos, NexusTransformationError> {
         let WholeEthosBody::Nexus(body) = ethos.body() else {
             return Err(NexusTransformationError::UnsupportedFileKind {
+                expected: WholeEthosFileKind::Nexus,
                 found: ethos.header().kind(),
             });
         };
@@ -217,8 +243,28 @@ impl NexusStructuralTransformation for NexusTransformation {
             }),
         );
         for item in body.types() {
-            items.push(self.lower_item(item)?);
+            items.push(self.lower_item(item, WholeLogosTypeAttributes::Plain)?);
         }
+        Ok(WholeLogos::new(items))
+    }
+}
+
+impl InterfaceTypeStructuralTransformation for NexusTransformation {
+    fn lower_interface_types(
+        &self,
+        ethos: &WholeEthos,
+    ) -> Result<WholeLogos, NexusTransformationError> {
+        let WholeEthosBody::Interface(body) = ethos.body() else {
+            return Err(NexusTransformationError::UnsupportedFileKind {
+                expected: WholeEthosFileKind::Interface,
+                found: ethos.header().kind(),
+            });
+        };
+        let items = body
+            .types()
+            .iter()
+            .map(|item| self.lower_item(item, WholeLogosTypeAttributes::Wire))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(WholeLogos::new(items))
     }
 }
@@ -266,8 +312,10 @@ impl NexusVocabularyReferenceMapping {
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum NexusTransformationError {
     /// The typed document selected another file kind.
-    #[error("Nexus transformation received {found:?} Ethos")]
+    #[error("{expected:?} transformation received {found:?} Ethos")]
     UnsupportedFileKind {
+        /// Required file kind for the selected transformation.
+        expected: WholeEthosFileKind,
         /// Actual header/body kind.
         found: WholeEthosFileKind,
     },
@@ -276,6 +324,12 @@ pub enum NexusTransformationError {
     UnsupportedOperatorApplication {
         /// Authored operator identity.
         operator: VocabularyEncodedId,
+    },
+    /// A tuple variant carried anything other than one payload field.
+    #[error("tuple variant payload requires exactly one field, found {found}")]
+    UnsupportedVariantTupleArity {
+        /// Refused positional-field count.
+        found: usize,
     },
     /// A mapping source was not Universal vocabulary.
     #[error("Nexus mapping source must be Universal, found {found:?}")]

@@ -1,17 +1,20 @@
 //! Focused witnesses for the Nexus structural transformation.
 
 use core_nomos::{
-    NexusStructuralTransformation, NexusTransformation, NexusTransformationError,
-    NexusVocabularyReferenceMapping,
+    InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
+    NexusTransformationError, NexusVocabularyReferenceMapping,
 };
 use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
-    WholeEthosHeader, WholeEthosItem, WholeEthosMethod, WholeEthosNexusBody, WholeEthosStruct,
-    WholeEthosTrait, WholeEthosTupleFields, WholeEthosTypeReference, WholeEthosVariant,
-    WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosMethod, WholeEthosNewtype,
+    WholeEthosNexusBody, WholeEthosStruct, WholeEthosTrait, WholeEthosTupleFields,
+    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosWrappedField,
 };
-use nexus_core_logos::{WholeLogosItem, WholeLogosTypeReference, WholeLogosVariantPayload};
+use nexus_core_logos::{
+    WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariantPayload,
+};
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
 fn identity(root: VocabularyRoot, local: u16) -> VocabularyEncodedId {
@@ -93,6 +96,8 @@ fn nexus_traits_lower_first_and_types_remain_plain_without_identity_allocation()
     else {
         panic!("traits precede Nexus operand types")
     };
+    assert_eq!(decision.attributes(), WholeLogosTypeAttributes::Plain);
+    assert_eq!(context.attributes(), WholeLogosTypeAttributes::Plain);
     assert_eq!(context.fields().len(), 2);
     let WholeLogosVariantPayload::Tuple(rejected) = decision.variants()[1].payload() else {
         panic!("Rejected carries one reason")
@@ -127,7 +132,92 @@ fn non_nexus_documents_refuse_at_the_typed_boundary() {
     assert_eq!(
         NexusTransformation::new().lower(&interface),
         Err(NexusTransformationError::UnsupportedFileKind {
+            expected: WholeEthosFileKind::Nexus,
             found: WholeEthosFileKind::Interface,
         })
+    );
+}
+
+#[test]
+fn interface_shared_types_lower_with_wire_attributes_without_membership_projection() {
+    let interface = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Interface, 1).expect("Interface header"),
+        WholeEthosBody::Interface(WholeEthosInterfaceBody::new(
+            vec![WholeEthosNewtype::new(
+                universal(30),
+                WholeEthosVisibility::Public,
+                WholeEthosAttributes,
+                WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(31)),
+            )],
+            Vec::new(),
+            Vec::new(),
+            vec![
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(universal(32), vec![reference(31)])
+                        .expect("wire struct field"),
+                ),
+                WholeEthosItem::Enumeration(
+                    WholeEthosEnumeration::new(
+                        universal(33),
+                        WholeEthosVisibility::Public,
+                        WholeEthosAttributes,
+                        vec![WholeEthosVariant::new(
+                            universal(34),
+                            WholeEthosAttributes,
+                            WholeEthosVariantPayload::Tuple(
+                                WholeEthosTupleFields::new(vec![reference(31)])
+                                    .expect("single wire payload"),
+                            ),
+                        )],
+                    )
+                    .expect("wire enumeration variant"),
+                ),
+            ],
+        )),
+    )
+    .expect("typed Interface document");
+
+    let logos = NexusTransformation::new()
+        .lower_interface_types(&interface)
+        .expect("lower only Interface shared types");
+    let [
+        WholeLogosItem::Struct(structure),
+        WholeLogosItem::Enumeration(enumeration),
+    ] = logos.items()
+    else {
+        panic!("only Interface.types is projected in this slice")
+    };
+    assert_eq!(structure.attributes(), WholeLogosTypeAttributes::Wire);
+    assert_eq!(enumeration.attributes(), WholeLogosTypeAttributes::Wire);
+}
+
+#[test]
+fn nexus_lowering_refuses_multi_field_tuple_payload_without_rewriting() {
+    let enumeration = WholeEthosEnumeration::new(
+        universal(40),
+        WholeEthosVisibility::Public,
+        WholeEthosAttributes,
+        vec![WholeEthosVariant::new(
+            universal(41),
+            WholeEthosAttributes,
+            WholeEthosVariantPayload::Tuple(
+                WholeEthosTupleFields::new(vec![reference(42), reference(43)])
+                    .expect("Ethos carrier still represents authored arity"),
+            ),
+        )],
+    )
+    .expect("typed enumeration");
+    let nexus = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Nexus, 1).expect("Nexus header"),
+        WholeEthosBody::Nexus(WholeEthosNexusBody::new(
+            vec![WholeEthosItem::Enumeration(enumeration)],
+            Vec::new(),
+        )),
+    )
+    .expect("typed Nexus document");
+
+    assert_eq!(
+        NexusTransformation::new().lower(&nexus),
+        Err(NexusTransformationError::UnsupportedVariantTupleArity { found: 2 })
     );
 }
