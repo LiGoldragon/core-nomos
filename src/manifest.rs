@@ -7,7 +7,7 @@
 //! plan is merged into one atomic naming-authority request.
 //!
 //! `[not-understood-by-psyche, Entry 7, NomosTrainAddendum-2026-07-30]`
-//! New carrier shapes here are positional. All files resolved by one manifest
+//! New carrier shapes here use named fields. All files resolved by one manifest
 //! populate one self-contained v1 package namespace; no cross-package Invoke
 //! lookup or fallback exists.
 
@@ -56,29 +56,32 @@ impl NomosSourcePath {
 
 /// One file-to-namespace association and its explicit file dependencies.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NomosManifestFile(
-    pub NomosSourcePath,
-    pub NomosModulePath,
-    pub Vec<NomosSourcePath>,
-);
+pub struct NomosManifestFile {
+    pub source: NomosSourcePath,
+    pub module: NomosModulePath,
+    pub dependencies: Vec<NomosSourcePath>,
+}
 
 /// One entry point and the typed file associations available to its graph.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NomosFileManifest(pub NomosSourcePath, pub Vec<NomosManifestFile>);
+pub struct NomosFileManifest {
+    pub entry_point: NomosSourcePath,
+    pub files: Vec<NomosManifestFile>,
+}
 
 /// The complete file-population plan awaiting one durable authority receipt.
-pub struct PlannedNomosPopulation(
-    Vec<PlannedNomosLoad>,
-    SealUniversal,
-    Vec<PlannedNamePath>,
-    Vec<PlannedNamePath>,
-    BTreeMap<VocabularyEncodedId, Name>,
-);
+pub struct PlannedNomosPopulation {
+    plans: Vec<PlannedNomosLoad>,
+    request: SealUniversal,
+    declaration_paths: Vec<PlannedNamePath>,
+    reference_paths: Vec<PlannedNamePath>,
+    fixed_names: BTreeMap<VocabularyEncodedId, Name>,
+}
 
 impl PlannedNomosPopulation {
     /// The one canonical request for the entire reachable file graph.
     pub const fn request(&self) -> &SealUniversal {
-        &self.1
+        &self.request
     }
 }
 
@@ -130,7 +133,7 @@ impl TextualNomos {
         Resolver: EncodedNameResolver<VocabularyRoot> + ?Sized,
     {
         let associations = manifest_associations(manifest)?;
-        let mut source_order = resolve_reachable(&manifest.0, &associations)?;
+        let mut source_order = resolve_reachable(&manifest.entry_point, &associations)?;
         source_order.sort();
 
         let source_root = fs::canonicalize(source_root).map_err(|error| {
@@ -149,7 +152,7 @@ impl TextualNomos {
             }
             let source = fs::read_to_string(&resolved)
                 .map_err(|error| NomosManifestLoadError::SourceRead(source_path.clone(), error))?;
-            sources.push((association.1.clone(), source));
+            sources.push((association.module.clone(), source));
         }
 
         let mut plans = Vec::with_capacity(sources.len());
@@ -213,13 +216,13 @@ impl TextualNomos {
             declarations: modules.into_declarations(),
             references,
         };
-        Ok(PlannedNomosPopulation(
+        Ok(PlannedNomosPopulation {
             plans,
             request,
             declaration_paths,
             reference_paths,
             fixed_names,
-        ))
+        })
     }
 
     /// Verify the one receipt, decode every file, and expose source-neutral data.
@@ -233,15 +236,15 @@ impl TextualNomos {
         Resolver: EncodedNameResolver<VocabularyRoot> + ?Sized,
     {
         let (names, resolved_paths) = validate_authority_reply(
-            &planned.1,
-            &planned.2,
-            &planned.3,
-            &planned.4,
+            &planned.request,
+            &planned.declaration_paths,
+            &planned.reference_paths,
+            &planned.fixed_names,
             authoritative_reply,
             resolver,
         )?;
         let mut declarations = Vec::new();
-        for source in &planned.0 {
+        for source in &planned.plans {
             let (_, source_declarations, _) =
                 self.decode_planned_parts(source, &names, &resolved_paths)?;
             declarations.extend(source_declarations);
@@ -262,19 +265,19 @@ fn manifest_associations(
     manifest: &NomosFileManifest,
 ) -> Result<BTreeMap<NomosSourcePath, &NomosManifestFile>, NomosManifestLoadError> {
     let mut associations = BTreeMap::new();
-    for association in &manifest.1 {
+    for association in &manifest.files {
         if associations
-            .insert(association.0.clone(), association)
+            .insert(association.source.clone(), association)
             .is_some()
         {
             return Err(NomosManifestLoadError::DuplicateSource(
-                association.0.clone(),
+                association.source.clone(),
             ));
         }
     }
-    if !associations.contains_key(&manifest.0) {
+    if !associations.contains_key(&manifest.entry_point) {
         return Err(NomosManifestLoadError::MissingEntryPoint(
-            manifest.0.clone(),
+            manifest.entry_point.clone(),
         ));
     }
     Ok(associations)
@@ -326,7 +329,7 @@ fn visit(
         .expect("entry and recursive dependencies are checked before visiting");
     states.insert(source.clone(), VisitState::Visiting);
     stack.push(source.clone());
-    let mut dependencies = association.2.clone();
+    let mut dependencies = association.dependencies.clone();
     dependencies.sort();
     for dependency in dependencies {
         if !associations.contains_key(&dependency) {
@@ -344,30 +347,31 @@ fn visit(
 }
 
 #[derive(Default)]
-struct ModulePlan(Vec<DeclarationNode>, BTreeMap<Name, ModulePlan>);
+struct ModulePlan {
+    declarations: Vec<DeclarationNode>,
+    children: BTreeMap<Name, ModulePlan>,
+}
 
 impl ModulePlan {
     fn insert(&mut self, modules: &[Name], declarations: &[DeclarationNode]) {
         let Some((head, tail)) = modules.split_first() else {
-            self.0.extend_from_slice(declarations);
+            self.declarations.extend_from_slice(declarations);
             return;
         };
-        self.1
+        self.children
             .entry(head.clone())
             .or_default()
             .insert(tail, declarations);
     }
 
     fn into_declarations(self) -> Vec<DeclarationNode> {
-        let mut declarations = self.0;
-        declarations.extend(
-            self.1
-                .into_iter()
-                .map(|(spelling, child)| DeclarationNode::Module {
-                    spelling,
-                    declarations: child.into_declarations(),
-                }),
-        );
+        let mut declarations = self.declarations;
+        declarations.extend(self.children.into_iter().map(|(spelling, child)| {
+            DeclarationNode::Module {
+                spelling,
+                declarations: child.into_declarations(),
+            }
+        }));
         declarations.sort();
         declarations
     }

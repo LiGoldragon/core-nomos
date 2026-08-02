@@ -10,11 +10,11 @@
 //! formatter of the item bodies. The marker comment sits outside every item, so it
 //! is prepended raw — the one raw-text seam, recorded as a lean.
 
-use core_logos::{
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
+use textual_core_logos::{
     Alias, Attribute, ConfigurationPredicate, EncodedItem, Generics, PathNode, TypeReference, Use,
     Visibility,
 };
-use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 use textual_rust::RustSource;
 
 use crate::error::NomosError;

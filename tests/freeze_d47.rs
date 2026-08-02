@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
     AuthoredBindingIdentity, AuthoredInputSignature, AuthoredTransformerDeclaration,
     AuthoredTransformerIdentity, MacroKind, NameTransform, SectionDefault, TemplateFieldValue,
@@ -9,6 +8,7 @@ use core_nomos::{
 };
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
+use textual_core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 
 fn golden_root() -> PathBuf {
     PathBuf::from(

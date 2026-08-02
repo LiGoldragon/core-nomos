@@ -18,14 +18,14 @@ use core_ethos::{
     WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
     WholeEthosVariantPayload,
 };
-use core_logos::{
+use protos::EncodedPopulation;
+use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
+use structural_codec::{EncodedConstructorId, ScalarValue, StableRoleId};
+use textual_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosTupleFields,
     WholeLogosTypeApplication, WholeLogosTypeReference, WholeLogosVariant,
     WholeLogosVariantPayload, WholeLogosVisibility,
 };
-use protos::EncodedPopulation;
-use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
-use structural_codec::{EncodedConstructorId, ScalarValue, StableRoleId};
 use thiserror::Error;
 
 use crate::template_language::RecursiveCallJudgment;

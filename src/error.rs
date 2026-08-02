@@ -1,8 +1,8 @@
 //! The crate-boundary error type.
 
 use content_identity::ArchiveError;
-use core_logos::Visibility;
 use name_table::{Identifier, NameTableError};
+use textual_core_logos::Visibility;
 use thiserror::Error;
 
 use crate::identity::{MacroIdentity, SectionDefault};

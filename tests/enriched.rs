@@ -148,7 +148,7 @@ fn vector(argument: EncodedReference) -> EncodedReference {
 }
 
 /// Project one item to Rust text with its trailing newline trimmed.
-fn project(item: &core_logos::EncodedItem, names: &NameTable) -> String {
+fn project(item: &textual_core_logos::EncodedItem, names: &NameTable) -> String {
     RustSource::project_item(item, names)
         .expect("project item")
         .as_str()

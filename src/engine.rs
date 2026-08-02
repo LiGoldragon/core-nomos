@@ -9,12 +9,12 @@
 //! table into Logos.
 
 use core_ethos::{EncodedDeclaration, EncodedEthos, EncodedType};
-use core_logos::{
+use name_table::{Identifier, NameTable};
+use textual_core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, EncodedItem,
     Enumeration, Field, HelperDerive, ImplTraitType, Newtype, PathNode, ReferenceType, SliceType,
     Struct, TupleType, TypeApplication, TypeReference, Variant, VariantPayload, Visibility,
 };
-use name_table::{Identifier, NameTable};
 
 use crate::error::NomosError;
 use crate::identity::{MacroIdentity, SectionDefault};

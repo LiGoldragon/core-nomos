@@ -1,6 +1,5 @@
 //! Template(Logos) is computed from one grammar/declaration pair for all roots.
 
-use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
     TemplateFieldValue, TemplateFutureOutput, TemplateLandingShape, TemplateLanguage, TemplateTerm,
     TemplateValue, TemplateValueError,
@@ -8,6 +7,7 @@ use core_nomos::{
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use structural_codec::{EncodedConstructorId, LandingShape, ScalarValue};
+use textual_core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 
 fn encoded(chain: &[u16]) -> VocabularyEncodedId {
     VocabularyEncodedId::new(

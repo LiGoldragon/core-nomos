@@ -1,6 +1,5 @@
 use std::mem::{align_of, size_of};
 
-use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
     AuthoredBindingIdentity, AuthoredInputParameter, AuthoredInputSignature,
     AuthoredTransformerDeclaration, AuthoredTransformerIdentity, MacroKind, MetaType,
@@ -10,6 +9,7 @@ use core_nomos::{
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use structural_codec::LandingShape;
+use textual_core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 
 const NAMED_INVOKE_DECLARATION: &[u8] = include_bytes!("goldens/d47_named_invoke_declaration.bin");
 

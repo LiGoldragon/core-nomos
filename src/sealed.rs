@@ -67,22 +67,28 @@ impl NameTreeProjectionVersion {
 #[derive(
     rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, Ord, PartialEq, PartialOrd,
 )]
-pub struct NameTreeProjectionEntry(VocabularyEncodedId, Name);
+pub struct NameTreeProjectionEntry {
+    encoded_id: VocabularyEncodedId,
+    spelling: Name,
+}
 
 impl NameTreeProjectionEntry {
     /// The complete root-fronted identity chain.
     pub const fn encoded_id(&self) -> &VocabularyEncodedId {
-        &self.0
+        &self.encoded_id
     }
 
     /// The exact spelling of the chain's final segment.
     pub fn spelling(&self) -> &str {
-        self.1.as_str()
+        self.spelling.as_str()
     }
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq)]
-struct SealedNomosCapsuleArchive(CapsuleIdentity, AuthoredTransformerSet);
+struct SealedNomosCapsuleArchive {
+    identity: CapsuleIdentity,
+    transformers: AuthoredTransformerSet,
+}
 
 /// Immutable, content-identified authored Nomos.
 ///
@@ -127,14 +133,19 @@ impl SealedNomosCapsule {
 
     /// Canonical immutable Capsule bytes.
     pub fn to_archive_bytes(&self) -> Result<Vec<u8>, NomosSealError> {
-        let archive = SealedNomosCapsuleArchive(self.identity, self.transformers.clone());
+        let archive = SealedNomosCapsuleArchive {
+            identity: self.identity,
+            transformers: self.transformers.clone(),
+        };
         Ok(archive.to_archive_bytes()?.as_ref().to_vec())
     }
 
     /// Restore and fully validate immutable Capsule bytes.
     pub fn from_archive_bytes(bytes: &[u8]) -> Result<Self, NomosSealError> {
-        let SealedNomosCapsuleArchive(identity, transformers) =
-            SealedNomosCapsuleArchive::from_archive_bytes(bytes)?;
+        let SealedNomosCapsuleArchive {
+            identity,
+            transformers,
+        } = SealedNomosCapsuleArchive::from_archive_bytes(bytes)?;
         if !matches!(identity, CapsuleIdentity::Nomos(_)) {
             return Err(NomosSealError::WrongCapsuleKind);
         }
@@ -167,17 +178,17 @@ impl HashDomain for NameTreeProjectionIntegrityDomain {
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
-struct NameTreeProjectionPayload(
-    NameTreeProjectionVersion,
-    CapsuleIdentity,
-    Vec<NameTreeProjectionEntry>,
-);
+struct NameTreeProjectionPayload {
+    version: NameTreeProjectionVersion,
+    content_identity: CapsuleIdentity,
+    entries: Vec<NameTreeProjectionEntry>,
+}
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone)]
-struct NameTreeProjectionArchive(
-    NameTreeProjectionPayload,
-    IntegrityDigest<NameTreeProjectionIntegrityDomain>,
-);
+struct NameTreeProjectionArchive {
+    payload: NameTreeProjectionPayload,
+    integrity: IntegrityDigest<NameTreeProjectionIntegrityDomain>,
+}
 
 /// A versioned, authenticated spelling projection for one immutable Capsule.
 #[derive(Clone)]
@@ -220,29 +231,33 @@ impl AuthenticatedNameTreeProjection {
                     encoded_id: encoded_id.clone(),
                 }
             })?;
-            entries.push(NameTreeProjectionEntry(
+            entries.push(NameTreeProjectionEntry {
                 encoded_id,
-                Name::new(spelling.to_owned()),
-            ));
+                spelling: Name::new(spelling.to_owned()),
+            });
         }
-        let payload = NameTreeProjectionPayload(version, capsule.content_identity(), entries);
+        let payload = NameTreeProjectionPayload {
+            version,
+            content_identity: capsule.content_identity(),
+            entries,
+        };
         let integrity = IntegrityDigest::of_core(&payload)?;
         Ok(Self { payload, integrity })
     }
 
     /// The stored projection version.
     pub const fn version(&self) -> NameTreeProjectionVersion {
-        self.payload.0
+        self.payload.version
     }
 
     /// The immutable Capsule identity this projection renders.
     pub const fn content_identity(&self) -> CapsuleIdentity {
-        self.payload.1
+        self.payload.content_identity
     }
 
     /// Canonically ordered reachable full-chain spellings.
     pub fn entries(&self) -> &[NameTreeProjectionEntry] {
-        &self.payload.2
+        &self.payload.entries
     }
 
     /// The projection integrity digest bytes.
@@ -287,24 +302,27 @@ impl AuthenticatedNameTreeProjection {
         NomosNameTable::from_map(
             self.entries()
                 .iter()
-                .map(|entry| (entry.encoded_id().clone(), entry.1.clone()))
+                .map(|entry| (entry.encoded_id().clone(), entry.spelling.clone()))
                 .collect(),
         )
     }
 
     /// Canonical separately stored projection bytes.
     pub fn to_archive_bytes(&self) -> Result<Vec<u8>, NomosSealError> {
-        let archive = NameTreeProjectionArchive(self.payload.clone(), self.integrity);
+        let archive = NameTreeProjectionArchive {
+            payload: self.payload.clone(),
+            integrity: self.integrity,
+        };
         Ok(archive.to_archive_bytes()?.as_ref().to_vec())
     }
 
     /// Restore a projection, refusing archive corruption, noncanonical ordering,
     /// and integrity mismatch.
     pub fn from_archive_bytes(bytes: &[u8]) -> Result<Self, NomosSealError> {
-        let NameTreeProjectionArchive(payload, integrity) =
+        let NameTreeProjectionArchive { payload, integrity } =
             NameTreeProjectionArchive::from_archive_bytes(bytes)?;
         if payload
-            .2
+            .entries
             .iter()
             .any(|entry| entry.encoded_id().chain().is_empty())
         {
@@ -313,7 +331,7 @@ impl AuthenticatedNameTreeProjection {
             });
         }
         if payload
-            .2
+            .entries
             .windows(2)
             .any(|pair| pair[0].encoded_id() >= pair[1].encoded_id())
         {
@@ -689,7 +707,7 @@ mod tests {
     #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
     struct NamedNameTreeProjectionPayload {
         version: NameTreeProjectionVersion,
-        identity: CapsuleIdentity,
+        content_identity: CapsuleIdentity,
         entries: Vec<NameTreeProjectionEntry>,
     }
 
@@ -783,9 +801,18 @@ mod tests {
             SealedNomosCapsule::seal(transformers.clone()).expect("seal populated fixture");
         let identity = capsule.content_identity();
         let entries = vec![
-            NameTreeProjectionEntry(encoded_id(&[71, 2]), Name::new("module")),
-            NameTreeProjectionEntry(encoded_id(&[71, 2, 3]), Name::new("transformer")),
-            NameTreeProjectionEntry(encoded_id(&[73, 5, 7]), Name::new("binding")),
+            NameTreeProjectionEntry {
+                encoded_id: encoded_id(&[71, 2]),
+                spelling: Name::new("module"),
+            },
+            NameTreeProjectionEntry {
+                encoded_id: encoded_id(&[71, 2, 3]),
+                spelling: Name::new("transformer"),
+            },
+            NameTreeProjectionEntry {
+                encoded_id: encoded_id(&[73, 5, 7]),
+                spelling: Name::new("binding"),
+            },
         ];
 
         let entry = entries[1].clone();
@@ -794,15 +821,18 @@ mod tests {
             NamedNameTreeProjectionEntry,
             entry.clone(),
             NamedNameTreeProjectionEntry {
-                encoded_id: entry.0.clone(),
-                spelling: entry.1.clone(),
+                encoded_id: entry.encoded_id.clone(),
+                spelling: entry.spelling.clone(),
             },
             |left: &NameTreeProjectionEntry, right: &NameTreeProjectionEntry| left == right,
             |left: &NamedNameTreeProjectionEntry, right: &NamedNameTreeProjectionEntry| left
                 == right
         );
 
-        let capsule_archive = SealedNomosCapsuleArchive(identity, transformers.clone());
+        let capsule_archive = SealedNomosCapsuleArchive {
+            identity,
+            transformers: transformers.clone(),
+        };
         assert_archive_compatible!(
             SealedNomosCapsuleArchive,
             NamedSealedNomosCapsuleArchive,
@@ -816,16 +846,19 @@ mod tests {
                 == right
         );
 
-        let payload =
-            NameTreeProjectionPayload(NameTreeProjectionVersion::new(11), identity, entries);
+        let payload = NameTreeProjectionPayload {
+            version: NameTreeProjectionVersion::new(11),
+            content_identity: identity,
+            entries,
+        };
         assert_archive_compatible!(
             NameTreeProjectionPayload,
             NamedNameTreeProjectionPayload,
             payload.clone(),
             NamedNameTreeProjectionPayload {
-                version: payload.0,
-                identity: payload.1,
-                entries: payload.2.clone(),
+                version: payload.version,
+                content_identity: payload.content_identity,
+                entries: payload.entries.clone(),
             },
             |left: &NameTreeProjectionPayload, right: &NameTreeProjectionPayload| left == right,
             |left: &NamedNameTreeProjectionPayload, right: &NamedNameTreeProjectionPayload| left
@@ -833,14 +866,17 @@ mod tests {
         );
 
         let integrity = IntegrityDigest::of_core(&payload).expect("projection integrity");
-        let archive = NameTreeProjectionArchive(payload.clone(), integrity);
+        let archive = NameTreeProjectionArchive {
+            payload: payload.clone(),
+            integrity,
+        };
         assert_archive_compatible!(
             NameTreeProjectionArchive,
             NamedNameTreeProjectionArchive,
             archive,
             NamedNameTreeProjectionArchive { payload, integrity },
             |left: &NameTreeProjectionArchive, right: &NameTreeProjectionArchive| {
-                left.0 == right.0 && left.1 == right.1
+                left.payload == right.payload && left.integrity == right.integrity
             },
             |left: &NamedNameTreeProjectionArchive, right: &NamedNameTreeProjectionArchive| {
                 left.payload == right.payload && left.integrity == right.integrity
@@ -886,10 +922,13 @@ mod tests {
         .seal(NameTreeProjectionVersion::initial())
         .expect("seal empty content");
         let mut payload = sealed.projection().payload.clone();
-        payload.0 = NameTreeProjectionVersion::new(1);
-        let tampered = NameTreeProjectionArchive(payload, sealed.projection().integrity)
-            .to_archive_bytes()
-            .expect("archive tampered projection");
+        payload.version = NameTreeProjectionVersion::new(1);
+        let tampered = NameTreeProjectionArchive {
+            payload,
+            integrity: sealed.projection().integrity,
+        }
+        .to_archive_bytes()
+        .expect("archive tampered projection");
 
         assert!(matches!(
             AuthenticatedNameTreeProjection::from_archive_bytes(tampered.as_ref()),
@@ -910,18 +949,30 @@ mod tests {
             )
             .expect("fixture identity")
         };
-        let payload = NameTreeProjectionPayload(
-            NameTreeProjectionVersion::initial(),
-            CapsuleIdentity::nomos(
+        let payload = NameTreeProjectionPayload {
+            version: NameTreeProjectionVersion::initial(),
+            content_identity: CapsuleIdentity::nomos(
                 CapsuleIdentityPreimage::new([1]).derive_content_addressed_hash(),
             ),
-            vec![
-                NameTreeProjectionEntry(id(&[1]), Name::new("first")),
-                NameTreeProjectionEntry(id(&[1, 7]), Name::new("same")),
-                NameTreeProjectionEntry(id(&[2]), Name::new("second")),
-                NameTreeProjectionEntry(id(&[2, 7]), Name::new("same")),
+            entries: vec![
+                NameTreeProjectionEntry {
+                    encoded_id: id(&[1]),
+                    spelling: Name::new("first"),
+                },
+                NameTreeProjectionEntry {
+                    encoded_id: id(&[1, 7]),
+                    spelling: Name::new("same"),
+                },
+                NameTreeProjectionEntry {
+                    encoded_id: id(&[2]),
+                    spelling: Name::new("second"),
+                },
+                NameTreeProjectionEntry {
+                    encoded_id: id(&[2, 7]),
+                    spelling: Name::new("same"),
+                },
             ],
-        );
+        };
         let projection = AuthenticatedNameTreeProjection {
             integrity: IntegrityDigest::of_core(&payload).expect("projection integrity"),
             payload,
@@ -946,7 +997,8 @@ mod tests {
         .seal(NameTreeProjectionVersion::initial())
         .expect("seal empty content");
         let mut payload = sealed.projection().payload.clone();
-        payload.1 = CapsuleIdentity::ethos(sealed.capsule().content_addressed_hash());
+        payload.content_identity =
+            CapsuleIdentity::ethos(sealed.capsule().content_addressed_hash());
         let projection = AuthenticatedNameTreeProjection {
             integrity: IntegrityDigest::of_core(&payload).expect("projection integrity"),
             payload,

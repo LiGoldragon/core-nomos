@@ -186,11 +186,11 @@ fn require_universal(
 /// The output is supplied by the resolved input type declaration. No Logos type
 /// or binding spelling is switched on here.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct AuthoredInputParameter(
-    AuthoredBindingIdentity,
-    MetaType,
-    TemplateFutureOutput<VocabularyRoot>,
-);
+pub struct AuthoredInputParameter {
+    binding: AuthoredBindingIdentity,
+    meta: MetaType,
+    output: TemplateFutureOutput<VocabularyRoot>,
+}
 
 impl AuthoredInputParameter {
     pub fn new(
@@ -198,19 +198,23 @@ impl AuthoredInputParameter {
         meta: MetaType,
         output: TemplateFutureOutput<VocabularyRoot>,
     ) -> Self {
-        Self(binding, meta, output)
+        Self {
+            binding,
+            meta,
+            output,
+        }
     }
 
     pub fn binding(&self) -> &AuthoredBindingIdentity {
-        &self.0
+        &self.binding
     }
 
     pub const fn meta(&self) -> MetaType {
-        self.1
+        self.meta
     }
 
     pub const fn output(&self) -> &TemplateFutureOutput<VocabularyRoot> {
-        &self.2
+        &self.output
     }
 }
 
@@ -249,14 +253,14 @@ impl AuthoredInputSignature {
 
 /// One authored transformer declaration in durable pre-seal form.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq)]
-pub struct AuthoredTransformerDeclaration(
-    AuthoredTransformerIdentity,
-    MacroKind,
-    AuthoredInputSignature,
-    TemplateValue<VocabularyRoot>,
-    TemplateRootOutput<VocabularyRoot>,
-    Vec<TemplateFutureRequirement<VocabularyRoot>>,
-);
+pub struct AuthoredTransformerDeclaration {
+    name: AuthoredTransformerIdentity,
+    kind: MacroKind,
+    input: AuthoredInputSignature,
+    result: TemplateValue<VocabularyRoot>,
+    output: TemplateRootOutput<VocabularyRoot>,
+    future_requirements: Vec<TemplateFutureRequirement<VocabularyRoot>>,
+}
 
 impl AuthoredTransformerDeclaration {
     /// Validate the generic result against its computed Template(X) declaration.
@@ -291,7 +295,14 @@ impl AuthoredTransformerDeclaration {
             }
         };
         let persisted_requirements = resolve_binding_outputs(&input, &requirements)?;
-        let declaration = Self(name, kind, input, result, output, persisted_requirements);
+        let declaration = Self {
+            name,
+            kind,
+            input,
+            result,
+            output,
+            future_requirements: persisted_requirements,
+        };
         validate_requirement_mirror(&declaration)?;
         validate_insertions(&declaration)?;
         validate_recursive_sequence(&declaration)?;
@@ -299,31 +310,31 @@ impl AuthoredTransformerDeclaration {
     }
 
     pub fn name(&self) -> &AuthoredTransformerIdentity {
-        &self.0
+        &self.name
     }
 
     pub const fn kind(&self) -> MacroKind {
-        self.1
+        self.kind
     }
 
     pub fn input(&self) -> &AuthoredInputSignature {
-        &self.2
+        &self.input
     }
 
     pub fn result(&self) -> &TemplateValue<VocabularyRoot> {
-        &self.3
+        &self.result
     }
 
     pub const fn output(&self) -> &TemplateFutureOutput<VocabularyRoot> {
-        self.4.output()
+        self.output.output()
     }
 
     pub const fn root_output(&self) -> &TemplateRootOutput<VocabularyRoot> {
-        &self.4
+        &self.output
     }
 
     pub fn future_requirements(&self) -> &[TemplateFutureRequirement<VocabularyRoot>] {
-        &self.5
+        &self.future_requirements
     }
 }
 
@@ -1203,14 +1214,14 @@ pub(crate) fn native_text_admission_package_for_test() -> AuthoredTransformerSet
         TemplateRootOutputSelector::WholeValue,
         TemplateFutureOutput::new(LandingShape::Type(value.constructor().type_id().clone())),
     );
-    AuthoredTransformerSet(vec![AuthoredTransformerDeclaration(
-        AuthoredTransformerIdentity(name),
-        MacroKind::Named,
-        AuthoredInputSignature::unit(),
-        value,
+    AuthoredTransformerSet(vec![AuthoredTransformerDeclaration {
+        name: AuthoredTransformerIdentity(name),
+        kind: MacroKind::Named,
+        input: AuthoredInputSignature::unit(),
+        result: value,
         output,
-        Vec::new(),
-    )])
+        future_requirements: Vec::new(),
+    }])
 }
 
 #[cfg(test)]
@@ -1233,14 +1244,14 @@ pub(crate) fn native_restore_validation_package_for_test() -> AuthoredTransforme
         TemplateRootOutputSelector::WholeValue,
         TemplateFutureOutput::new(LandingShape::Type(value.constructor().type_id().clone())),
     );
-    AuthoredTransformerSet(vec![AuthoredTransformerDeclaration(
-        AuthoredTransformerIdentity(name),
-        MacroKind::Structural(SectionDefault::Newtype),
-        AuthoredInputSignature::unit(),
-        value,
+    AuthoredTransformerSet(vec![AuthoredTransformerDeclaration {
+        name: AuthoredTransformerIdentity(name),
+        kind: MacroKind::Structural(SectionDefault::Newtype),
+        input: AuthoredInputSignature::unit(),
+        result: value,
         output,
-        Vec::new(),
-    )])
+        future_requirements: Vec::new(),
+    }])
 }
 
 #[cfg(test)]
@@ -1372,16 +1383,16 @@ mod restore_mutation_tests {
                 output(integer_landing()),
             ),
         ];
-        let declaration = AuthoredTransformerDeclaration(
-            transformer.clone(),
-            MacroKind::Recursive {
+        let declaration = AuthoredTransformerDeclaration {
+            name: transformer.clone(),
+            kind: MacroKind::Recursive {
                 section: SectionDefault::Enumeration,
             },
             input,
             result,
-            root_output,
-            requirements,
-        );
+            output: root_output,
+            future_requirements: requirements,
+        };
         let set =
             AuthoredTransformerSet::try_new(vec![declaration]).expect("valid recursive fixture");
         RecursiveRestoreFixture {
@@ -1396,7 +1407,7 @@ mod restore_mutation_tests {
 
     fn replace_judgment(set: &mut AuthoredTransformerSet, judgment: RecursiveCallJudgment) {
         let declaration = &mut set.0[0];
-        let mut fields = declaration.3.fields().to_vec();
+        let mut fields = declaration.result.fields().to_vec();
         let TemplateTerm::Sequence(mut items) = fields[0].term().clone() else {
             panic!("recursive fixture result is a sequence")
         };
@@ -1404,8 +1415,9 @@ mod restore_mutation_tests {
             payload: Box::new(judgment),
         });
         fields[0] = TemplateFieldValue::new(fields[0].role(), TemplateTerm::Sequence(items));
-        declaration.3 = TemplateValue::try_new(declaration.3.constructor().clone(), fields)
-            .expect("role-preserving judgment mutation");
+        declaration.result =
+            TemplateValue::try_new(declaration.result.constructor().clone(), fields)
+                .expect("role-preserving judgment mutation");
     }
 
     fn restore_and_validate(
@@ -1436,7 +1448,7 @@ mod restore_mutation_tests {
                 fixture.landing.clone(),
             ),
         );
-        target.0[0].5[0] = TemplateFutureRequirement::for_restore_mutation_test(
+        target.0[0].future_requirements[0] = TemplateFutureRequirement::for_restore_mutation_test(
             TemplateFuture::Invoke(other_target),
             fixture.landing.clone(),
         );
@@ -1505,7 +1517,7 @@ mod restore_mutation_tests {
                 changed_landing.clone(),
             ),
         );
-        landing.0[0].5[0] = TemplateFutureRequirement::for_restore_mutation_test(
+        landing.0[0].future_requirements[0] = TemplateFutureRequirement::for_restore_mutation_test(
             TemplateFuture::Invoke(fixture.transformer.clone()),
             changed_landing,
         );
@@ -1532,18 +1544,19 @@ mod restore_mutation_tests {
         let fixture = fixture();
 
         let mut reordered = fixture.set.clone();
-        reordered.0[0].5.swap(0, 1);
+        reordered.0[0].future_requirements.swap(0, 1);
         assert!(matches!(
             restore_and_validate(&reordered),
             Err(AuthoredNomosError::InsertionRequirementDrift { .. })
         ));
 
         let mut wrong_shape = fixture.set.clone();
-        let insertion = wrong_shape.0[0].5[1].future().clone();
-        wrong_shape.0[0].5[1] = TemplateFutureRequirement::for_restore_mutation_test(
-            insertion,
-            output(LandingShape::Scalar(LeafCodec::Boolean)),
-        );
+        let insertion = wrong_shape.0[0].future_requirements[1].future().clone();
+        wrong_shape.0[0].future_requirements[1] =
+            TemplateFutureRequirement::for_restore_mutation_test(
+                insertion,
+                output(LandingShape::Scalar(LeafCodec::Boolean)),
+            );
         assert!(matches!(
             restore_and_validate(&wrong_shape),
             Err(AuthoredNomosError::FutureOutputMismatch {
@@ -1554,16 +1567,19 @@ mod restore_mutation_tests {
 
         let mut nested_marker = fixture.set.clone();
         let declaration = &mut nested_marker.0[0];
-        let mut fields = declaration.3.fields().to_vec();
+        let mut fields = declaration.result.fields().to_vec();
         let TemplateTerm::Sequence(mut items) = fields[0].term().clone() else {
             panic!("recursive fixture result is a sequence")
         };
         let insertion = items[2].clone();
         items.insert(3, insertion);
         fields[0] = TemplateFieldValue::new(fields[0].role(), TemplateTerm::Sequence(items));
-        declaration.3 = TemplateValue::try_new(declaration.3.constructor().clone(), fields)
-            .expect("role-preserving nested marker mutation");
-        declaration.5.push(declaration.5[1].clone());
+        declaration.result =
+            TemplateValue::try_new(declaration.result.constructor().clone(), fields)
+                .expect("role-preserving nested marker mutation");
+        declaration
+            .future_requirements
+            .push(declaration.future_requirements[1].clone());
         assert!(matches!(
             restore_and_validate(&nested_marker),
             Err(AuthoredNomosError::InsertionRequirementDrift { .. })

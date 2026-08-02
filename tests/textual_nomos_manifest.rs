@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::sync::Arc;
 
-use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
     AuthoredTransformerSet, LoadedNomosPopulation, MetaType, NameTreeProjectionVersion,
     NomosFileManifest, NomosManifestFile, NomosManifestLoadError, NomosModulePath, NomosSourcePath,
@@ -17,6 +16,7 @@ use signal_sema_translator::{
     ReadOperation, SealCommitReceipt, VocabularyEncodedId, VocabularyRoot, WritePrecondition,
 };
 use structural_codec::{EncodedNameResolver, LandingShape};
+use textual_core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 
 const PRINCIPAL: PrincipalId = PrincipalId::new([24; 32]);
 const ATTRIBUTES: &str = r#"{1}
@@ -192,18 +192,25 @@ fn module() -> NomosModulePath {
 }
 
 fn manifest(reverse: bool) -> NomosFileManifest {
-    let attributes = NomosManifestFile(source_path("attributes.nomos"), module(), vec![]);
-    let entry = NomosManifestFile(
-        source_path("entry.nomos"),
-        module(),
-        vec![source_path("attributes.nomos")],
-    );
+    let attributes = NomosManifestFile {
+        source: source_path("attributes.nomos"),
+        module: module(),
+        dependencies: vec![],
+    };
+    let entry = NomosManifestFile {
+        source: source_path("entry.nomos"),
+        module: module(),
+        dependencies: vec![source_path("attributes.nomos")],
+    };
     let files = if reverse {
         vec![entry, attributes]
     } else {
         vec![attributes, entry]
     };
-    NomosFileManifest(source_path("entry.nomos"), files)
+    NomosFileManifest {
+        entry_point: source_path("entry.nomos"),
+        files,
+    }
 }
 
 fn write_sources(directory: &tempfile::TempDir) {
@@ -303,14 +310,14 @@ async fn invoke_target_from_prior_manifest_refuses_before_any_new_authority_writ
     let textual = textual(&logos);
     let fixed = FixedNames::new();
 
-    let seed_manifest = NomosFileManifest(
-        source_path("attributes.nomos"),
-        vec![NomosManifestFile(
-            source_path("attributes.nomos"),
-            module(),
-            vec![],
-        )],
-    );
+    let seed_manifest = NomosFileManifest {
+        entry_point: source_path("attributes.nomos"),
+        files: vec![NomosManifestFile {
+            source: source_path("attributes.nomos"),
+            module: module(),
+            dependencies: vec![],
+        }],
+    };
     let seed = textual
         .plan_file_population(
             source_directory.path(),
@@ -328,14 +335,14 @@ async fn invoke_target_from_prior_manifest_refuses_before_any_new_authority_writ
     seal_receipt(&committed);
 
     let before = current(&runtime).await;
-    let external_invoke_manifest = NomosFileManifest(
-        source_path("entry.nomos"),
-        vec![NomosManifestFile(
-            source_path("entry.nomos"),
-            module(),
-            vec![],
-        )],
-    );
+    let external_invoke_manifest = NomosFileManifest {
+        entry_point: source_path("entry.nomos"),
+        files: vec![NomosManifestFile {
+            source: source_path("entry.nomos"),
+            module: module(),
+            dependencies: vec![],
+        }],
+    };
     assert!(matches!(
         textual.plan_file_population(
             source_directory.path(),
@@ -493,14 +500,14 @@ async fn missing_and_cyclic_graphs_refuse_before_any_authority_write() {
     let fixed = FixedNames::new();
     let before = current(&runtime).await;
 
-    let missing = NomosFileManifest(
-        source_path("entry.nomos"),
-        vec![NomosManifestFile(
-            source_path("entry.nomos"),
-            module(),
-            vec![source_path("missing.nomos")],
-        )],
-    );
+    let missing = NomosFileManifest {
+        entry_point: source_path("entry.nomos"),
+        files: vec![NomosManifestFile {
+            source: source_path("entry.nomos"),
+            module: module(),
+            dependencies: vec![source_path("missing.nomos")],
+        }],
+    };
     assert!(matches!(
         textual.plan_file_population(
             source_directory.path(),
@@ -513,21 +520,21 @@ async fn missing_and_cyclic_graphs_refuse_before_any_authority_write() {
     ));
     assert_eq!(current(&runtime).await, before);
 
-    let cyclic = NomosFileManifest(
-        source_path("entry.nomos"),
-        vec![
-            NomosManifestFile(
-                source_path("entry.nomos"),
-                module(),
-                vec![source_path("attributes.nomos")],
-            ),
-            NomosManifestFile(
-                source_path("attributes.nomos"),
-                module(),
-                vec![source_path("entry.nomos")],
-            ),
+    let cyclic = NomosFileManifest {
+        entry_point: source_path("entry.nomos"),
+        files: vec![
+            NomosManifestFile {
+                source: source_path("entry.nomos"),
+                module: module(),
+                dependencies: vec![source_path("attributes.nomos")],
+            },
+            NomosManifestFile {
+                source: source_path("attributes.nomos"),
+                module: module(),
+                dependencies: vec![source_path("entry.nomos")],
+            },
         ],
-    );
+    };
     assert!(matches!(
         textual.plan_file_population(
             source_directory.path(),
@@ -566,14 +573,14 @@ fn lexical_traversal_and_symlink_escape_refuse_before_a_plan_exists() {
     let logos = logos();
     let textual = textual(&logos);
     let fixed = FixedNames::new();
-    let manifest = NomosFileManifest(
-        source_path("entry.nomos"),
-        vec![NomosManifestFile(
-            source_path("entry.nomos"),
-            module(),
-            vec![],
-        )],
-    );
+    let manifest = NomosFileManifest {
+        entry_point: source_path("entry.nomos"),
+        files: vec![NomosManifestFile {
+            source: source_path("entry.nomos"),
+            module: module(),
+            dependencies: vec![],
+        }],
+    };
     assert!(matches!(
         textual.plan_file_population(
             source_directory.path(),
@@ -594,17 +601,21 @@ async fn duplicate_spelling_across_files_is_a_distinct_atomic_redefinition() {
         .expect("first duplicate writes");
     fs::write(source_directory.path().join("second.nomos"), ATTRIBUTES)
         .expect("second duplicate writes");
-    let manifest = NomosFileManifest(
-        source_path("second.nomos"),
-        vec![
-            NomosManifestFile(source_path("first.nomos"), module(), vec![]),
-            NomosManifestFile(
-                source_path("second.nomos"),
-                module(),
-                vec![source_path("first.nomos")],
-            ),
+    let manifest = NomosFileManifest {
+        entry_point: source_path("second.nomos"),
+        files: vec![
+            NomosManifestFile {
+                source: source_path("first.nomos"),
+                module: module(),
+                dependencies: vec![],
+            },
+            NomosManifestFile {
+                source: source_path("second.nomos"),
+                module: module(),
+                dependencies: vec![source_path("first.nomos")],
+            },
         ],
-    );
+    };
     let authority_directory = tempfile::tempdir().expect("authority directory");
     let runtime = open_runtime(&authority_directory).await;
     let logos = logos();

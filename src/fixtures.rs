@@ -4,7 +4,7 @@
 //! `MacroPackage` constructors — the macros exist only as authored data, never as
 //! code — and are the packages the capstone applies to real ethos.
 
-use core_logos::{
+use textual_core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, Generics, PathNode,
     Visibility,
 };

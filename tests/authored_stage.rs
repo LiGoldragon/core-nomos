@@ -1,6 +1,5 @@
 //! Durable witnesses for Nomos-owned authored state over generic Template(X).
 
-use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
     AuthoredBindingIdentity, AuthoredIdentityPosition, AuthoredInputParameter,
     AuthoredInputSignature, AuthoredNomosError, AuthoredTransformerDeclaration,
@@ -10,6 +9,7 @@ use core_nomos::{
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use structural_codec::LandingShape;
+use textual_core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 
 fn encoded(root: VocabularyRoot, chain: &[u16]) -> VocabularyEncodedId {
     VocabularyEncodedId::new(

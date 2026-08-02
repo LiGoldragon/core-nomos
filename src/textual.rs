@@ -10,7 +10,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use core_logos::{LogosLanguage, LogosRule};
 use encoded_name_table::{Name, OperationKey};
 use raw_discovery::{
     BlockTreeDiscoveryConfiguration, BoundaryDiscoveryConfiguration, BoundaryDiscoveryContext,
@@ -33,6 +32,7 @@ use structural_codec::{
     StructuralVocabularyIdentity, StructureRecord, TableIdentityPayload, TargetLayoutIdentity,
     TextualRenderingPolicy, UnaryRule,
 };
+use textual_core_logos::{LogosLanguage, LogosRule};
 
 use crate::{
     AuthoredBindingIdentity, AuthoredInputParameter, AuthoredInputSignature, AuthoredNomosError,
@@ -361,35 +361,44 @@ impl LoadedNomosDocument {
 
     /// Project the single-file result into the source-neutral population shape.
     pub fn population(&self) -> LoadedNomosPopulation {
-        LoadedNomosPopulation(self.transformers().clone(), self.names.clone())
+        LoadedNomosPopulation {
+            transformers: self.transformers().clone(),
+            names: self.names.clone(),
+        }
     }
 }
 
 /// Authored Nomos data after any population mechanism has disappeared.
 ///
 /// `[not-understood-by-psyche, Entry 7, NomosTrainAddendum-2026-07-30]`
-/// This new carrier is positional. Its transformer set is self-contained in
+/// This named-field carrier's transformer set is self-contained in
 /// v1; file loading and future direct daemon population produce this same type.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LoadedNomosPopulation(AuthoredTransformerSet, NomosNameTable);
+pub struct LoadedNomosPopulation {
+    transformers: AuthoredTransformerSet,
+    names: NomosNameTable,
+}
 
 impl LoadedNomosPopulation {
     /// Admit an already typed transformer set and its authority-issued names.
     pub const fn from_typed(transformers: AuthoredTransformerSet, names: NomosNameTable) -> Self {
-        Self(transformers, names)
+        Self {
+            transformers,
+            names,
+        }
     }
 
     pub const fn transformers(&self) -> &AuthoredTransformerSet {
-        &self.0
+        &self.transformers
     }
 
     pub const fn names(&self) -> &NomosNameTable {
-        &self.1
+        &self.names
     }
 
     /// Apply one committed identity-preserving rename to the spelling sibling.
     pub fn apply_rename(&mut self, receipt: &RenameCommitReceipt) -> Result<(), NomosLoadError> {
-        self.1.apply_rename(receipt)
+        self.names.apply_rename(receipt)
     }
 }
 

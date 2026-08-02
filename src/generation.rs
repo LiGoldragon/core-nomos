@@ -18,7 +18,9 @@
 //! resolve in the identifier space the declarations already populated.
 
 use core_ethos::{EncodedDeclaration, EncodedEthos, EncodedReference, EncodedType, EncodedVariant};
-use core_logos::{
+use name_table::{Identifier, Name};
+use std::collections::BTreeMap;
+use textual_core_logos::{
     Alias, ArrayExpression, AssociatedType, Attribute, Block, Call, Callee, ClosureExpression,
     ConfigurationAttribute, ConfigurationPredicate, Const, DeriveGroup, EncodedItem, Enumeration,
     Expression, FieldInitializer, Function, Generics, ImplBlock, ImplItem, ImplTraitType,
@@ -29,8 +31,6 @@ use core_logos::{
     TupleFieldAccess, TupleType, TupleVariantPattern, TypeApplication, TypeReference, Variant,
     VariantPayload, Visibility,
 };
-use name_table::{Identifier, Name};
-use std::collections::BTreeMap;
 
 /// The little-endian short-header width the codec bodies emit as
 /// `SIGNAL_SHORT_HEADER_BYTE_COUNT`, mirroring the hand-written contracts'

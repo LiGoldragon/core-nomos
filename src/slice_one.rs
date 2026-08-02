@@ -1,6 +1,6 @@
 //! The direct typed transformation used by the first vertical slice.
 //!
-//! This path consumes and produces positional carriers. It preserves complete
+//! This path consumes and produces typed carriers. It preserves complete
 //! encoded-ID chains and has no access to any legacy or identity-allocation
 //! facility.
 
@@ -157,7 +157,10 @@ impl SliceOneTransformation {
 
 /// One exact Universal-to-Rust reference relationship.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SliceOneVocabularyReferenceMapping(VocabularyEncodedId, VocabularyEncodedId);
+pub struct SliceOneVocabularyReferenceMapping {
+    source: VocabularyEncodedId,
+    target: VocabularyEncodedId,
+}
 
 impl SliceOneVocabularyReferenceMapping {
     /// Construct one mapping, refusing roots outside its typed boundary.
@@ -175,17 +178,17 @@ impl SliceOneVocabularyReferenceMapping {
                 found: *target.root_variant(),
             });
         }
-        Ok(Self(source, target))
+        Ok(Self { source, target })
     }
 
     /// The exact Universal reference identity.
     pub const fn source(&self) -> &VocabularyEncodedId {
-        &self.0
+        &self.source
     }
 
     /// The exact Rust vocabulary identity used by Logos.
     pub const fn target(&self) -> &VocabularyEncodedId {
-        &self.1
+        &self.target
     }
 }
 
