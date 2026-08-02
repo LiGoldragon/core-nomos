@@ -8,8 +8,8 @@
 //! This module is retained for `MacroPackage` equivalence evidence. Production
 //! TextualNomos uses the declaration-indexed `TemplateFuture` algebra.
 
+use core_logos::{Attribute, Field, Generics, TypeReference, Variant, Visibility};
 use name_table::Identifier;
-use textual_core_logos::{Attribute, Field, Generics, TypeReference, Variant, Visibility};
 
 use crate::identity::MacroIdentity;
 

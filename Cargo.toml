@@ -19,8 +19,7 @@ name-table               = { git = "https://github.com/LiGoldragon/name-table.gi
 encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "c85cec6117bfd4c423d952fd54e0c0bb11562f89" }
 core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "17143fb8a237868394f8a1894e329831bfc0d973" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "1bb284325d3026a695130967215373fa266629d5" }
-textual-core-logos       = { package = "core-logos", git = "https://github.com/LiGoldragon/core-logos.git", rev = "9a61e2ac1bf8a8c1163794d695902115a05a4007" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "9a61e2ac1bf8a8c1163794d695902115a05a4007" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "7290f65bbb5e7825ab2ca58340631d154d69d110" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "51c02c4a7b6f67d9dad095f11986085d7d65785b" }
 textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "f46167cbb35d25d86ddbc197653c6560ded8e077" }

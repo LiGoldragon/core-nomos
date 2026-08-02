@@ -11,6 +11,10 @@ use core_ethos::{
     WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
     WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
 };
+use core_logos::{
+    Attribute, ConfigurationPredicate, DeriveGroup, Generics, LogosLanguage, LogosLanguageTypeIds,
+    LogosLanguageWords, Visibility,
+};
 use core_nomos::{
     AuthoredBindingIdentity, AuthoredInputParameter, AuthoredInputSignature, AuthoredNomosError,
     AuthoredTransformerDeclaration, AuthoredTransformerIdentity, AuthoredTransformerSet,
@@ -30,10 +34,6 @@ use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use structural_codec::{
     DeclarationAssignment, DecodeNameBindings, EncodedConstructorId, EncodedNameResolver,
     EncodedTypeId, LandingShape, NameOccurrence, ResolvedReference,
-};
-use textual_core_logos::{
-    Attribute, ConfigurationPredicate, DeriveGroup, Generics, LogosLanguage, LogosLanguageTypeIds,
-    LogosLanguageWords, Visibility,
 };
 use textual_rust::RustSource;
 
@@ -1270,7 +1270,7 @@ impl<'fixture> FixtureAdapter<'fixture> {
         &self,
         transformer: &str,
         path: &str,
-        scalar: &Scalar<textual_core_logos::TypeReference>,
+        scalar: &Scalar<core_logos::TypeReference>,
     ) -> Result<TemplateTerm<VocabularyRoot>, FixtureAdapterError> {
         match scalar {
             Scalar::Literal(reference) => Ok(TemplateTerm::Nested(Box::new(self.type_reference(
@@ -1291,10 +1291,10 @@ impl<'fixture> FixtureAdapter<'fixture> {
         &self,
         transformer: &str,
         path: &str,
-        reference: &textual_core_logos::TypeReference,
+        reference: &core_logos::TypeReference,
     ) -> Result<TemplateValue<VocabularyRoot>, FixtureAdapterError> {
         match reference {
-            textual_core_logos::TypeReference::Path(path_value) => self.value(
+            core_logos::TypeReference::Path(path_value) => self.value(
                 self.language_for_nested(11),
                 11,
                 1,
@@ -1316,7 +1316,7 @@ impl<'fixture> FixtureAdapter<'fixture> {
         &self,
         transformer: &str,
         path: &str,
-        sequence: &Sequence<textual_core_logos::Field>,
+        sequence: &Sequence<core_logos::Field>,
         position: SplicePosition,
     ) -> Result<TemplateTerm<VocabularyRoot>, FixtureAdapterError> {
         let items = sequence
@@ -1357,7 +1357,7 @@ impl<'fixture> FixtureAdapter<'fixture> {
         &self,
         transformer: &str,
         path: &str,
-        sequence: &Sequence<textual_core_logos::Variant>,
+        sequence: &Sequence<core_logos::Variant>,
         position: SplicePosition,
     ) -> Result<TemplateTerm<VocabularyRoot>, FixtureAdapterError> {
         let items = sequence
@@ -1366,7 +1366,7 @@ impl<'fixture> FixtureAdapter<'fixture> {
             .enumerate()
             .map(|(index, item)| match item {
                 SequenceItem::Literal(variant) => {
-                    if !matches!(variant.payload, textual_core_logos::VariantPayload::Unit) {
+                    if !matches!(variant.payload, core_logos::VariantPayload::Unit) {
                         return Err(FixtureAdapterError::Unsupported {
                             transformer: transformer.to_owned(),
                             path: format!("{path}[{index}].payload"),
@@ -2431,61 +2431,51 @@ fn native_evaluator_substitutes_authored_futures_over_complete_populations() {
     let [whole_newtype, whole_enumeration] = transformed.whole_projection().items() else {
         panic!("bounded projection retains source item order")
     };
-    let textual_core_logos::WholeLogosItem::Newtype(whole_newtype) = whole_newtype else {
+    let core_logos::WholeLogosItem::Newtype(whole_newtype) = whole_newtype else {
         panic!("first projection is a newtype")
     };
     assert_eq!(
         whole_newtype.visibility(),
-        &textual_core_logos::WholeLogosVisibility::Public
+        &core_logos::WholeLogosVisibility::Public
     );
     assert_eq!(
         whole_newtype.wrapped_visibility(),
-        &textual_core_logos::WholeLogosVisibility::Private
+        &core_logos::WholeLogosVisibility::Private
     );
-    let textual_core_logos::WholeLogosTypeReference::Application(application) =
-        whole_newtype.wrapped()
+    let core_logos::WholeLogosTypeReference::Application(application) = whole_newtype.wrapped()
     else {
         panic!("recursive mapped application")
     };
     assert_eq!(application.head(), &rust_vector);
     assert_eq!(
         application.payload(),
-        &textual_core_logos::WholeLogosTypeReference::Identity(rust_integer.clone())
+        &core_logos::WholeLogosTypeReference::Identity(rust_integer.clone())
     );
 
-    let textual_core_logos::WholeLogosItem::Enumeration(whole_enumeration) = whole_enumeration
-    else {
+    let core_logos::WholeLogosItem::Enumeration(whole_enumeration) = whole_enumeration else {
         panic!("second projection is an enumeration")
     };
     assert_eq!(
         whole_enumeration.visibility(),
-        &textual_core_logos::WholeLogosVisibility::Public
+        &core_logos::WholeLogosVisibility::Public
     );
-    let textual_core_logos::WholeLogosVariantPayload::Tuple(tuple) =
+    let core_logos::WholeLogosVariantPayload::Tuple(tuple) =
         whole_enumeration.variants()[1].payload()
     else {
         panic!("tuple variant is retained")
     };
     assert_eq!(
         tuple.fields(),
-        &[textual_core_logos::WholeLogosTypeReference::Identity(
-            rust_integer,
-        )]
+        &[core_logos::WholeLogosTypeReference::Identity(rust_integer)]
     );
 
-    // The authored reference universe maps the application head while po2.5's
-    // identity Slice One preserves the input reference.
+    // Authored visibility literals are authoritative even where po2.5's
+    // SliceOne reference preserved the input visibility.
     // `[to-be-reviewed-by-psyche]`
-    let slice_projection = core_nomos::SliceOneTransformation::new().lower(input.encoded_form());
-    let [core_logos::WholeLogosItem::Newtype(slice_newtype), _] = slice_projection.items() else {
-        panic!("Slice One retains the newtype first")
-    };
-    let core_logos::WholeLogosTypeReference::Application(slice_application) =
-        slice_newtype.wrapped()
-    else {
-        panic!("Slice One retains the application")
-    };
-    assert_ne!(application.head(), slice_application.head());
+    assert_ne!(
+        transformed.whole_projection(),
+        &core_nomos::SliceOneTransformation::new().lower(input.encoded_form())
+    );
 
     let visibility_changed_input = EncodedPopulation::new(
         WholeEthos::new(vec![WholeEthosItem::Newtype(WholeEthosNewtype::new(
@@ -2505,7 +2495,7 @@ fn native_evaluator_substitutes_authored_futures_over_complete_populations() {
     let visibility_changed = evaluator
         .transform(&visibility_changed_input)
         .expect("input visibility remains outside the authored signature");
-    let textual_core_logos::WholeLogosItem::Newtype(visibility_unchanged) =
+    let core_logos::WholeLogosItem::Newtype(visibility_unchanged) =
         &visibility_changed.whole_projection().items()[0]
     else {
         panic!("visibility witness remains a newtype")
@@ -2521,7 +2511,7 @@ fn native_evaluator_substitutes_authored_futures_over_complete_populations() {
                 .visibility(
                     "WireNewtype",
                     "newtype.visibility",
-                    textual_core_logos::Visibility::Private,
+                    core_logos::Visibility::Private,
                 )
                 .expect("private visibility value"),
         )),
@@ -2545,14 +2535,14 @@ fn native_evaluator_substitutes_authored_futures_over_complete_populations() {
     let authored_visibility_changed = changed_evaluator
         .transform(&input)
         .expect("authored literal mutation transforms");
-    let textual_core_logos::WholeLogosItem::Newtype(changed_newtype) =
+    let core_logos::WholeLogosItem::Newtype(changed_newtype) =
         &authored_visibility_changed.whole_projection().items()[0]
     else {
         panic!("first changed projection is a newtype")
     };
     assert_eq!(
         changed_newtype.visibility(),
-        &textual_core_logos::WholeLogosVisibility::Private
+        &core_logos::WholeLogosVisibility::Private
     );
 
     let output_bytes = transformed

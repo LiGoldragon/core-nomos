@@ -58,7 +58,7 @@ fn slice_dependencies_are_exact_published_producer_revisions() {
     assert!(MANIFEST.contains(
         "core-logos               = { git = \
          \"https://github.com/LiGoldragon/core-logos.git\", rev = \
-         \"1bb284325d3026a695130967215373fa266629d5\" }"
+         \"9a61e2ac1bf8a8c1163794d695902115a05a4007\" }"
     ));
     assert!(MANIFEST.contains(
         "textual-rust             = { package = \"rust-logos\", git = \

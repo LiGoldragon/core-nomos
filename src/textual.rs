@@ -10,6 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use core_logos::{LogosLanguage, LogosRule};
 use encoded_name_table::{Name, OperationKey};
 use raw_discovery::{
     BlockTreeDiscoveryConfiguration, BoundaryDiscoveryConfiguration, BoundaryDiscoveryContext,
@@ -32,7 +33,6 @@ use structural_codec::{
     StructuralVocabularyIdentity, StructureRecord, TableIdentityPayload, TargetLayoutIdentity,
     TextualRenderingPolicy, UnaryRule,
 };
-use textual_core_logos::{LogosLanguage, LogosRule};
 
 use crate::{
     AuthoredBindingIdentity, AuthoredInputParameter, AuthoredInputSignature, AuthoredNomosError,

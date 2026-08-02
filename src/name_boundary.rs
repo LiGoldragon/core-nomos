@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 
 use core_ethos::{EncodedField, EncodedReference};
+use core_logos::{Attribute, PathNode, TypeApplication, TypeReference};
 use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
-use textual_core_logos::{Attribute, PathNode, TypeApplication, TypeReference};
 
 use crate::error::NomosError;
 use crate::template::{FieldNameRule, NameTransform};
@@ -400,8 +400,8 @@ impl SameTypeOrdinal {
 
 #[cfg(test)]
 mod tests {
+    use core_logos::{Attribute, DeriveGroup, PathNode};
     use name_table::{IdentifierNamespace, NameTable};
-    use textual_core_logos::{Attribute, DeriveGroup, PathNode};
 
     use super::NameTableBoundary;
     use crate::error::NomosError;

@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::sync::Arc;
 
+use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
     AuthoredTransformerSet, LoadedNomosPopulation, MetaType, NameTreeProjectionVersion,
     NomosFileManifest, NomosManifestFile, NomosManifestLoadError, NomosModulePath, NomosSourcePath,
@@ -16,7 +17,6 @@ use signal_sema_translator::{
     ReadOperation, SealCommitReceipt, VocabularyEncodedId, VocabularyRoot, WritePrecondition,
 };
 use structural_codec::{EncodedNameResolver, LandingShape};
-use textual_core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 
 const PRINCIPAL: PrincipalId = PrincipalId::new([24; 32]);
 const ATTRIBUTES: &str = r#"{1}

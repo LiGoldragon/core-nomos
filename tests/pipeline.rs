@@ -9,12 +9,12 @@ use core_ethos::{
     EncodedDeclaration, EncodedEnum, EncodedEthos, EncodedField, EncodedNewtype, EncodedReference,
     EncodedStruct, EncodedType, EncodedVariant,
 };
-use core_nomos::MacroPackage;
-use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
-use textual_core_logos::{
+use core_logos::{
     Attribute, ConfigurationAttribute, ConfigurationPredicate, DeriveGroup, EncodedItem, Field,
     Generics, PathNode, Struct, TypeReference, Visibility,
 };
+use core_nomos::MacroPackage;
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 use textual_rust::RustSource;
 
 // ---- helpers (test-only) ----

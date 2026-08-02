@@ -1,5 +1,6 @@
 //! Typed future-output compatibility is proved before evaluator entry.
 
+use core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 use core_nomos::{
     AuthoredBindingIdentity, AuthoredInputParameter, AuthoredInputSignature, AuthoredNomosError,
     AuthoredTransformerDeclaration, AuthoredTransformerIdentity, AuthoredTransformerSet,
@@ -10,7 +11,6 @@ use core_nomos::{
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 use structural_codec::{LandingShape, ScalarValue, StableRoleId};
-use textual_core_logos::{LogosLanguage, LogosLanguageTypeIds, LogosLanguageWords};
 
 const ATTRIBUTES_FIELD: usize = 1;
 const NAME_FIELD: usize = 2;
