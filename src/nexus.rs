@@ -1,12 +1,12 @@
-//! Allocation-free structural lowering for Nexus and Interface type documents.
+//! Identity-preserving structural lowering for Nexus and Interface documents.
 //!
 //! Nexus traits are emitted before their operand types, following the trait-first
 //! ontology discipline. Declarations retain their translator-issued identities;
 //! only exact caller-supplied reference mappings may cross into Rust vocabulary.
-//! Nexus declarations remain plain. The narrow Interface surface lowers only its
-//! shared `types` position and selects the canonical `WireAttributes` emission
-//! policy; Input/Output/Refusal membership and refusal behavior remain outside
-//! this slice.
+//! Nexus declarations remain plain. Interface declarations use the canonical
+//! `WireAttributes` policy and acquire universal Input, Output, or Refusal
+//! membership from their body position. Object-first operator applications are
+//! retained as typed deferrals until their operator Nomos exists.
 
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
@@ -16,9 +16,9 @@ use nexus_core_ethos::{
 };
 use nexus_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosStruct,
-    WholeLogosTraitDef, WholeLogosTraitMethod, WholeLogosTupleFields, WholeLogosTypeApplication,
-    WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload,
-    WholeLogosVisibility,
+    WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTraitMethod, WholeLogosTupleFields,
+    WholeLogosTypeApplication, WholeLogosTypeAttributes, WholeLogosTypeReference,
+    WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -36,6 +36,112 @@ pub trait InterfaceTypeStructuralTransformation {
         &self,
         ethos: &WholeEthos,
     ) -> Result<WholeLogos, NexusTransformationError>;
+}
+
+/// The complete presently structural Interface document-to-Logos contract.
+pub trait InterfaceStructuralTransformation {
+    /// Lower positional declarations and their universal role memberships while
+    /// preserving operator applications as explicit typed deferrals.
+    fn lower_interface(
+        &self,
+        ethos: &WholeEthos,
+        roles: &InterfaceRoleIdentities,
+    ) -> Result<InterfaceTransformationOutcome, NexusTransformationError>;
+}
+
+/// The three universal marker-trait identities assigned by Interface position.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InterfaceRoleIdentities {
+    input: VocabularyEncodedId,
+    output: VocabularyEncodedId,
+    refusal: VocabularyEncodedId,
+}
+
+// Trait exception — too trivial: validated construction and read-only access
+// for one role-identity configuration record.
+impl InterfaceRoleIdentities {
+    /// Validate distinct universal identities for the three positional roles.
+    pub fn new(
+        input: VocabularyEncodedId,
+        output: VocabularyEncodedId,
+        refusal: VocabularyEncodedId,
+    ) -> Result<Self, NexusTransformationError> {
+        Self::validate_role("Input", &input)?;
+        Self::validate_role("Output", &output)?;
+        Self::validate_role("Refusal", &refusal)?;
+        Self::validate_distinct("Input", &input, "Output", &output)?;
+        Self::validate_distinct("Input", &input, "Refusal", &refusal)?;
+        Self::validate_distinct("Output", &output, "Refusal", &refusal)?;
+        Ok(Self {
+            input,
+            output,
+            refusal,
+        })
+    }
+
+    /// Universal Input trait identity.
+    pub const fn input(&self) -> &VocabularyEncodedId {
+        &self.input
+    }
+
+    /// Universal Output trait identity.
+    pub const fn output(&self) -> &VocabularyEncodedId {
+        &self.output
+    }
+
+    /// Universal Refusal trait identity.
+    pub const fn refusal(&self) -> &VocabularyEncodedId {
+        &self.refusal
+    }
+
+    fn validate_role(
+        role: &'static str,
+        identity: &VocabularyEncodedId,
+    ) -> Result<(), NexusTransformationError> {
+        if identity.root_variant() != &VocabularyRoot::Universal {
+            return Err(NexusTransformationError::InterfaceRoleRoot {
+                role,
+                found: *identity.root_variant(),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_distinct(
+        first_role: &'static str,
+        first: &VocabularyEncodedId,
+        second_role: &'static str,
+        second: &VocabularyEncodedId,
+    ) -> Result<(), NexusTransformationError> {
+        if first == second {
+            return Err(NexusTransformationError::DuplicateInterfaceRoleIdentity {
+                first_role,
+                second_role,
+                identity: first.clone(),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Interface Logos plus operator applications whose semantics are not yet live.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InterfaceTransformationOutcome {
+    logos: WholeLogos,
+    deferred_operator_applications: Vec<WholeEthosOperatorApplication>,
+}
+
+// Trait exception — too trivial: read-only outcome ergonomics.
+impl InterfaceTransformationOutcome {
+    /// Structurally projected Interface Logos.
+    pub const fn logos(&self) -> &WholeLogos {
+        &self.logos
+    }
+
+    /// Operator applications deliberately left for their named Nomos.
+    pub fn deferred_operator_applications(&self) -> &[WholeEthosOperatorApplication] {
+        &self.deferred_operator_applications
+    }
 }
 
 /// File-kind-neutral projection of currently supported type declarations.
@@ -294,6 +400,77 @@ impl InterfaceTypeStructuralTransformation for NexusTransformation {
     }
 }
 
+impl InterfaceStructuralTransformation for NexusTransformation {
+    fn lower_interface(
+        &self,
+        ethos: &WholeEthos,
+        roles: &InterfaceRoleIdentities,
+    ) -> Result<InterfaceTransformationOutcome, NexusTransformationError> {
+        let WholeEthosBody::Interface(body) = ethos.body() else {
+            return Err(NexusTransformationError::UnsupportedFileKind {
+                expected: WholeEthosFileKind::Interface,
+                found: ethos.header().kind(),
+            });
+        };
+
+        let mut items = Vec::with_capacity(
+            (body.inputs().len() + body.outputs().len() + body.refusals().len()) * 2
+                + body.types().len(),
+        );
+        for input in body.inputs() {
+            items.push(WholeLogosItem::Newtype(
+                self.lower_newtype(input)
+                    .with_attributes(WholeLogosTypeAttributes::Wire),
+            ));
+            items.push(Self::role_membership(roles.input(), input.name()));
+        }
+        for output in body.outputs() {
+            items.push(WholeLogosItem::Newtype(
+                self.lower_newtype(output)
+                    .with_attributes(WholeLogosTypeAttributes::Wire),
+            ));
+            items.push(Self::role_membership(roles.output(), output.name()));
+        }
+        for refusal in body.refusals() {
+            items.push(WholeLogosItem::Struct(
+                self.lower_struct(refusal)
+                    .with_attributes(WholeLogosTypeAttributes::Wire),
+            ));
+            items.push(Self::role_membership(roles.refusal(), refusal.name()));
+        }
+
+        let mut deferred_operator_applications = Vec::new();
+        for item in body.types() {
+            match item {
+                WholeEthosItem::OperatorApplication(application) => {
+                    deferred_operator_applications.push(application.clone());
+                }
+                declaration => {
+                    items.push(self.lower_item(declaration, WholeLogosTypeAttributes::Wire)?);
+                }
+            }
+        }
+
+        Ok(InterfaceTransformationOutcome {
+            logos: WholeLogos::new(items),
+            deferred_operator_applications,
+        })
+    }
+}
+
+impl NexusTransformation {
+    fn role_membership(
+        role: &VocabularyEncodedId,
+        declaration: &VocabularyEncodedId,
+    ) -> WholeLogosItem {
+        WholeLogosItem::TraitImpl(WholeLogosTraitImpl::new(
+            WholeLogosTypeReference::Identity(role.clone()),
+            WholeLogosTypeReference::Identity(declaration.clone()),
+            Vec::new(),
+        ))
+    }
+}
+
 /// One exact Universal-to-Rust reference relationship.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NexusVocabularyReferenceMapping {
@@ -372,6 +549,24 @@ pub enum NexusTransformationError {
     #[error("Nexus mapping source {identity:?} is duplicated")]
     DuplicateMappingSource {
         /// Repeated source identity.
+        identity: VocabularyEncodedId,
+    },
+    /// A configured positional role identity was outside Universal vocabulary.
+    #[error("Interface {role} role must be Universal, found {found:?}")]
+    InterfaceRoleRoot {
+        /// Positional role name.
+        role: &'static str,
+        /// Actual identity root.
+        found: VocabularyRoot,
+    },
+    /// Two positional roles were assigned the same trait identity.
+    #[error("Interface roles {first_role} and {second_role} share identity {identity:?}")]
+    DuplicateInterfaceRoleIdentity {
+        /// First positional role.
+        first_role: &'static str,
+        /// Second positional role.
+        second_role: &'static str,
+        /// Reused universal trait identity.
         identity: VocabularyEncodedId,
     },
 }

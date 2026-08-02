@@ -1,17 +1,17 @@
 //! Focused witnesses for the Nexus structural transformation.
 
 use core_nomos::{
-    InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
-    NexusTransformationError, NexusVocabularyReferenceMapping,
+    InterfaceRoleIdentities, InterfaceStructuralTransformation, NexusStructuralTransformation,
+    NexusTransformation, NexusTransformationError, NexusVocabularyReferenceMapping,
     TypeDeclarationStructuralTransformation,
 };
 use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosMethod, WholeEthosNewtype,
-    WholeEthosNexusBody, WholeEthosStruct, WholeEthosTrait, WholeEthosTupleFields,
-    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
-    WholeEthosWrappedField,
+    WholeEthosNexusBody, WholeEthosOperatorApplication, WholeEthosStruct, WholeEthosTrait,
+    WholeEthosTupleFields, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
+    WholeEthosVisibility, WholeEthosWrappedField,
 };
 use nexus_core_logos::{
     WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariantPayload,
@@ -140,7 +140,7 @@ fn non_nexus_documents_refuse_at_the_typed_boundary() {
 }
 
 #[test]
-fn interface_shared_types_lower_with_wire_attributes_without_membership_projection() {
+fn interface_positions_lower_to_wire_types_memberships_and_typed_operator_deferrals() {
     let interface = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Interface, 1).expect("Interface header"),
         WholeEthosBody::Interface(WholeEthosInterfaceBody::new(
@@ -150,8 +150,13 @@ fn interface_shared_types_lower_with_wire_attributes_without_membership_projecti
                 WholeEthosAttributes,
                 WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(31)),
             )],
-            Vec::new(),
-            Vec::new(),
+            vec![WholeEthosNewtype::new(
+                universal(36),
+                WholeEthosVisibility::Public,
+                WholeEthosAttributes,
+                WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(31)),
+            )],
+            vec![WholeEthosStruct::new(universal(38), vec![reference(31)]).expect("refusal field")],
             vec![
                 WholeEthosItem::Struct(
                     WholeEthosStruct::new(universal(32), vec![reference(31)])
@@ -173,32 +178,110 @@ fn interface_shared_types_lower_with_wire_attributes_without_membership_projecti
                     )
                     .expect("wire enumeration variant"),
                 ),
+                WholeEthosItem::OperatorApplication(
+                    WholeEthosOperatorApplication::new(
+                        universal(70),
+                        universal(40),
+                        vec![reference(32)],
+                    )
+                    .expect("Stream-like application payload"),
+                ),
             ],
         )),
     )
     .expect("typed Interface document");
 
-    let logos = NexusTransformation::new()
-        .lower_interface_types(&interface)
-        .expect("lower only Interface shared types");
+    let roles = InterfaceRoleIdentities::new(universal(60), universal(61), universal(62))
+        .expect("distinct Universal roles");
+    let outcome = NexusTransformation::new()
+        .lower_interface(&interface, &roles)
+        .expect("lower structural Interface surface");
     let [
+        WholeLogosItem::Newtype(input),
+        WholeLogosItem::TraitImpl(input_membership),
+        WholeLogosItem::Newtype(output),
+        WholeLogosItem::TraitImpl(output_membership),
+        WholeLogosItem::Struct(refusal),
+        WholeLogosItem::TraitImpl(refusal_membership),
         WholeLogosItem::Struct(structure),
         WholeLogosItem::Enumeration(enumeration),
-    ] = logos.items()
+    ] = outcome.logos().items()
     else {
-        panic!("only Interface.types is projected in this slice")
+        panic!("Interface declaration and membership order")
     };
+    for attributes in [
+        input.attributes(),
+        output.attributes(),
+        refusal.attributes(),
+        structure.attributes(),
+        enumeration.attributes(),
+    ] {
+        assert_eq!(attributes, WholeLogosTypeAttributes::Wire);
+    }
+    assert_eq!(
+        input_membership.implemented_trait(),
+        &WholeLogosTypeReference::Identity(universal(60))
+    );
+    assert_eq!(
+        input_membership.implementing_type(),
+        &WholeLogosTypeReference::Identity(universal(30))
+    );
+    assert_eq!(
+        output_membership.implemented_trait(),
+        &WholeLogosTypeReference::Identity(universal(61))
+    );
+    assert_eq!(
+        output_membership.implementing_type(),
+        &WholeLogosTypeReference::Identity(universal(36))
+    );
+    assert_eq!(
+        refusal_membership.implemented_trait(),
+        &WholeLogosTypeReference::Identity(universal(62))
+    );
+    assert_eq!(
+        refusal_membership.implementing_type(),
+        &WholeLogosTypeReference::Identity(universal(38))
+    );
+    assert!(input_membership.associated_type_bindings().is_empty());
+    assert!(output_membership.associated_type_bindings().is_empty());
+    assert!(refusal_membership.associated_type_bindings().is_empty());
     assert_eq!(structure.attributes(), WholeLogosTypeAttributes::Wire);
     assert_eq!(enumeration.attributes(), WholeLogosTypeAttributes::Wire);
+    assert_eq!(outcome.deferred_operator_applications().len(), 1);
+    assert_eq!(
+        outcome.deferred_operator_applications()[0].operator(),
+        &universal(70)
+    );
 
     let nexus_core_ethos::WholeEthosBody::Interface(body) = interface.body() else {
         panic!("Interface body")
     };
+    let shared_types = NexusTransformation::new()
+        .lower_type_declarations(&body.types()[..2], WholeLogosTypeAttributes::Wire)
+        .expect("project declaration-only shared type slice");
+    assert_eq!(shared_types.items(), &outcome.logos().items()[6..],);
+}
+
+#[test]
+fn interface_role_configuration_refuses_non_universal_and_duplicate_identities() {
     assert_eq!(
-        NexusTransformation::new()
-            .lower_type_declarations(body.types(), WholeLogosTypeAttributes::Wire)
-            .expect("project the explicit declaration slice"),
-        logos,
+        InterfaceRoleIdentities::new(
+            identity(VocabularyRoot::Rust, 60),
+            universal(61),
+            universal(62),
+        ),
+        Err(NexusTransformationError::InterfaceRoleRoot {
+            role: "Input",
+            found: VocabularyRoot::Rust,
+        })
+    );
+    assert_eq!(
+        InterfaceRoleIdentities::new(universal(60), universal(60), universal(62)),
+        Err(NexusTransformationError::DuplicateInterfaceRoleIdentity {
+            first_role: "Input",
+            second_role: "Output",
+            identity: universal(60),
+        })
     );
 }
 

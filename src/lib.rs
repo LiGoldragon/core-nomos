@@ -105,6 +105,7 @@ pub use native::{
     NativeTransformation,
 };
 pub use nexus::{
+    InterfaceRoleIdentities, InterfaceStructuralTransformation, InterfaceTransformationOutcome,
     InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
     NexusTransformationError, NexusVocabularyReferenceMapping,
     TypeDeclarationStructuralTransformation,
