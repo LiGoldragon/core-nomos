@@ -107,6 +107,7 @@ pub use native::{
 pub use nexus::{
     InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
     NexusTransformationError, NexusVocabularyReferenceMapping,
+    TypeDeclarationStructuralTransformation,
 };
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};

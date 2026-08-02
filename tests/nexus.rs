@@ -3,6 +3,7 @@
 use core_nomos::{
     InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
     NexusTransformationError, NexusVocabularyReferenceMapping,
+    TypeDeclarationStructuralTransformation,
 };
 use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
@@ -189,6 +190,16 @@ fn interface_shared_types_lower_with_wire_attributes_without_membership_projecti
     };
     assert_eq!(structure.attributes(), WholeLogosTypeAttributes::Wire);
     assert_eq!(enumeration.attributes(), WholeLogosTypeAttributes::Wire);
+
+    let nexus_core_ethos::WholeEthosBody::Interface(body) = interface.body() else {
+        panic!("Interface body")
+    };
+    assert_eq!(
+        NexusTransformation::new()
+            .lower_type_declarations(body.types(), WholeLogosTypeAttributes::Wire)
+            .expect("project the explicit declaration slice"),
+        logos,
+    );
 }
 
 #[test]

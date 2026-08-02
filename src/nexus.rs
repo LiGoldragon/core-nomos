@@ -38,6 +38,20 @@ pub trait InterfaceTypeStructuralTransformation {
     ) -> Result<WholeLogos, NexusTransformationError>;
 }
 
+/// File-kind-neutral projection of currently supported type declarations.
+///
+/// The caller owns section meaning and must account separately for any
+/// constructs it does not pass through this boundary.
+pub trait TypeDeclarationStructuralTransformation {
+    /// Lower ordinary newtype, struct, and enumeration declarations with one
+    /// explicit canonical emission policy.
+    fn lower_type_declarations(
+        &self,
+        items: &[WholeEthosItem],
+        attributes: WholeLogosTypeAttributes,
+    ) -> Result<WholeLogos, NexusTransformationError>;
+}
+
 /// Exact, allocation-free Nexus lowering data.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct NexusTransformation {
@@ -242,10 +256,26 @@ impl NexusStructuralTransformation for NexusTransformation {
                 WholeLogosItem::TraitDef(self.lower_trait(trait_definition))
             }),
         );
-        for item in body.types() {
-            items.push(self.lower_item(item, WholeLogosTypeAttributes::Plain)?);
-        }
+        items.extend(
+            self.lower_type_declarations(body.types(), WholeLogosTypeAttributes::Plain)?
+                .into_items(),
+        );
         Ok(WholeLogos::new(items))
+    }
+}
+
+impl TypeDeclarationStructuralTransformation for NexusTransformation {
+    fn lower_type_declarations(
+        &self,
+        items: &[WholeEthosItem],
+        attributes: WholeLogosTypeAttributes,
+    ) -> Result<WholeLogos, NexusTransformationError> {
+        Ok(WholeLogos::new(
+            items
+                .iter()
+                .map(|item| self.lower_item(item, attributes))
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
     }
 }
 
@@ -260,12 +290,7 @@ impl InterfaceTypeStructuralTransformation for NexusTransformation {
                 found: ethos.header().kind(),
             });
         };
-        let items = body
-            .types()
-            .iter()
-            .map(|item| self.lower_item(item, WholeLogosTypeAttributes::Wire))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(WholeLogos::new(items))
+        self.lower_type_declarations(body.types(), WholeLogosTypeAttributes::Wire)
     }
 }
 

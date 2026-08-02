@@ -198,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "core-nomos"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.5.0",
