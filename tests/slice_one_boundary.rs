@@ -53,17 +53,17 @@ fn slice_dependencies_are_exact_published_producer_revisions() {
     assert!(MANIFEST.contains(
         "core-ethos               = { git = \
          \"https://github.com/LiGoldragon/core-ethos.git\", rev = \
-         \"17143fb8a237868394f8a1894e329831bfc0d973\" }"
+         \"7bb9c5a0a31851641998b26f14326515ca64a7e8\" }"
     ));
     assert!(MANIFEST.contains(
         "core-logos               = { git = \
          \"https://github.com/LiGoldragon/core-logos.git\", rev = \
-         \"9a61e2ac1bf8a8c1163794d695902115a05a4007\" }"
+         \"1bb284325d3026a695130967215373fa266629d5\" }"
     ));
     assert!(MANIFEST.contains(
         "textual-rust             = { package = \"rust-logos\", git = \
          \"https://github.com/LiGoldragon/rust-logos.git\", rev = \
-         \"f46167cbb35d25d86ddbc197653c6560ded8e077\" }"
+         \"aa75cf6afdd457bb256ceb955ca78cca54d0e484\" }"
     ));
     assert!(MANIFEST.contains(
         "structural-codec         = { git = \
