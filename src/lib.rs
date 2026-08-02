@@ -71,6 +71,7 @@ pub mod manifest;
 pub mod meta;
 mod name_boundary;
 pub mod native;
+pub mod nexus;
 pub mod package;
 pub mod prelude;
 pub mod scope_of;
@@ -102,6 +103,10 @@ pub use native::{
     NativeLogosPopulation, NativeNameTreeBoundary, NativeNameTreePlan, NativeNameTreeRefusal,
     NativePopulationArchiveError, NativeReferenceMapping, NativeReferenceUniverse,
     NativeTransformation,
+};
+pub use nexus::{
+    NexusStructuralTransformation, NexusTransformation, NexusTransformationError,
+    NexusVocabularyReferenceMapping,
 };
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};
