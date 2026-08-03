@@ -11,14 +11,14 @@
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosItem, WholeEthosMethod, WholeEthosNewtype, WholeEthosOperatorApplication,
-    WholeEthosStruct, WholeEthosTrait, WholeEthosTypeApplication, WholeEthosTypeReference,
-    WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTypeApplication,
+    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
 };
 use nexus_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosStruct,
-    WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTraitMethod, WholeLogosTupleFields,
-    WholeLogosTypeApplication, WholeLogosTypeAttributes, WholeLogosTypeReference,
-    WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
+    WholeLogosTable, WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTraitMethod,
+    WholeLogosTupleFields, WholeLogosTypeApplication, WholeLogosTypeAttributes,
+    WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -47,6 +47,17 @@ pub trait InterfaceStructuralTransformation {
         ethos: &WholeEthos,
         roles: &InterfaceRoleIdentities,
     ) -> Result<InterfaceTransformationOutcome, NexusTransformationError>;
+}
+
+/// The Sema record/table document-to-Logos structural contract.
+pub trait SemaStructuralTransformation {
+    /// Lower stored record declarations and every table whose record type is
+    /// declared by this document. Valid imported-record tables remain explicit
+    /// typed deferrals; malformed record/key shapes refuse the whole projection.
+    fn lower_sema(
+        &self,
+        ethos: &WholeEthos,
+    ) -> Result<SemaTransformationOutcome, NexusTransformationError>;
 }
 
 /// The three universal marker-trait identities assigned by Interface position.
@@ -141,6 +152,27 @@ impl InterfaceTransformationOutcome {
     /// Operator applications deliberately left for their named Nomos.
     pub fn deferred_operator_applications(&self) -> &[WholeEthosOperatorApplication] {
         &self.deferred_operator_applications
+    }
+}
+
+/// Sema Logos plus valid tables whose imported record shape is not generated
+/// by this document.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SemaTransformationOutcome {
+    logos: WholeLogos,
+    deferred_tables: Vec<WholeEthosTable>,
+}
+
+// Trait exception — too trivial: read-only outcome ergonomics.
+impl SemaTransformationOutcome {
+    /// Stored record declarations followed by structurally supported tables.
+    pub const fn logos(&self) -> &WholeLogos {
+        &self.logos
+    }
+
+    /// Valid imported-record tables retained for a later producer.
+    pub fn deferred_tables(&self) -> &[WholeEthosTable] {
+        &self.deferred_tables
     }
 }
 
@@ -458,6 +490,88 @@ impl InterfaceStructuralTransformation for NexusTransformation {
     }
 }
 
+impl SemaStructuralTransformation for NexusTransformation {
+    fn lower_sema(
+        &self,
+        ethos: &WholeEthos,
+    ) -> Result<SemaTransformationOutcome, NexusTransformationError> {
+        let WholeEthosBody::Sema(body) = ethos.body() else {
+            return Err(NexusTransformationError::UnsupportedFileKind {
+                expected: WholeEthosFileKind::Sema,
+                found: ethos.header().kind(),
+            });
+        };
+
+        let mut declared_records = Vec::with_capacity(body.record_types().len());
+        for item in body.record_types() {
+            let name = match item {
+                WholeEthosItem::Newtype(newtype) => newtype.name(),
+                WholeEthosItem::Struct(structure) => structure.name(),
+                WholeEthosItem::Enumeration(enumeration) => enumeration.name(),
+                WholeEthosItem::OperatorApplication(application) => {
+                    return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
+                        identity: application.name().clone(),
+                    });
+                }
+            };
+            declared_records.push(name.clone());
+        }
+        declared_records.sort();
+        for adjacent in declared_records.windows(2) {
+            if adjacent[0] == adjacent[1] {
+                return Err(NexusTransformationError::DuplicateSemaRecordIdentity {
+                    identity: adjacent[0].clone(),
+                });
+            }
+        }
+
+        let mut table_names = body
+            .tables()
+            .iter()
+            .map(|table| table.name().clone())
+            .collect::<Vec<_>>();
+        table_names.sort();
+        for adjacent in table_names.windows(2) {
+            if adjacent[0] == adjacent[1] {
+                return Err(NexusTransformationError::DuplicateSemaTableIdentity {
+                    identity: adjacent[0].clone(),
+                });
+            }
+        }
+
+        let mut items = self
+            .lower_type_declarations(body.record_types(), WholeLogosTypeAttributes::Stored)?
+            .into_items();
+        let mut deferred_tables = Vec::new();
+        for table in body.tables() {
+            let WholeEthosTypeReference::Identity(record) = table.record() else {
+                return Err(NexusTransformationError::InvalidSemaTableRecordShape {
+                    table: table.name().clone(),
+                });
+            };
+            let WholeEthosTypeReference::Identity(key) = table.key() else {
+                return Err(NexusTransformationError::InvalidSemaTableKeyShape {
+                    table: table.name().clone(),
+                });
+            };
+            if declared_records.binary_search(record).is_err() {
+                deferred_tables.push(table.clone());
+                continue;
+            }
+            items.push(WholeLogosItem::Table(WholeLogosTable::new(
+                table.name().clone(),
+                WholeLogosTypeReference::Identity(self.map_reference(record)),
+                WholeLogosTypeReference::Identity(self.map_reference(key)),
+            )));
+        }
+
+        Ok(SemaTransformationOutcome {
+            logos: WholeLogos::new(items),
+            deferred_tables,
+        })
+    }
+}
+
 impl NexusTransformation {
     fn role_membership(
         role: &VocabularyEncodedId,
@@ -569,4 +683,21 @@ pub enum NexusTransformationError {
         /// Reused universal trait identity.
         identity: VocabularyEncodedId,
     },
+    /// A Sema record-types position contained an operator application rather
+    /// than a stored value declaration.
+    #[error("Sema record declaration {identity:?} is not a stored value shape")]
+    InvalidSemaRecordDeclaration { identity: VocabularyEncodedId },
+    /// Two Sema record declarations reused one identity.
+    #[error("Sema record identity {identity:?} is declared more than once")]
+    DuplicateSemaRecordIdentity { identity: VocabularyEncodedId },
+    /// Two Sema tables reused one stable identity.
+    #[error("Sema table identity {identity:?} is declared more than once")]
+    DuplicateSemaTableIdentity { identity: VocabularyEncodedId },
+    /// A Sema table attempted to store an applied type instead of one record.
+    #[error("Sema table {table:?} has an unsupported record type application")]
+    InvalidSemaTableRecordShape { table: VocabularyEncodedId },
+    /// A Sema table attempted to use an applied key type outside the current
+    /// one-identity key contract.
+    #[error("Sema table {table:?} has an unsupported key type application")]
+    InvalidSemaTableKeyShape { table: VocabularyEncodedId },
 }

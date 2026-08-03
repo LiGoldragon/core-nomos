@@ -3,15 +3,16 @@
 use core_nomos::{
     InterfaceRoleIdentities, InterfaceStructuralTransformation, NexusStructuralTransformation,
     NexusTransformation, NexusTransformationError, NexusVocabularyReferenceMapping,
-    TypeDeclarationStructuralTransformation,
+    SemaStructuralTransformation, TypeDeclarationStructuralTransformation,
 };
 use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosMethod, WholeEthosNewtype,
-    WholeEthosNexusBody, WholeEthosOperatorApplication, WholeEthosStruct, WholeEthosTrait,
-    WholeEthosTupleFields, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
-    WholeEthosVisibility, WholeEthosWrappedField,
+    WholeEthosNexusBody, WholeEthosOperatorApplication, WholeEthosSemaBody, WholeEthosStruct,
+    WholeEthosTable, WholeEthosTrait, WholeEthosTupleFields, WholeEthosTypeApplication,
+    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosWrappedField,
 };
 use nexus_core_logos::{
     WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariantPayload,
@@ -314,4 +315,80 @@ fn nexus_lowering_refuses_multi_field_tuple_payload_without_rewriting() {
         NexusTransformation::new().lower(&nexus),
         Err(NexusTransformationError::UnsupportedVariantTupleArity { found: 2 })
     );
+}
+
+#[test]
+fn sema_record_types_become_stored_values_and_local_tables_become_typed_specifications() {
+    let record = universal(80);
+    let key = universal(81);
+    let table = universal(82);
+    let sema = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+        WholeEthosBody::Sema(WholeEthosSemaBody::new(
+            vec![WholeEthosItem::Struct(
+                WholeEthosStruct::new(record.clone(), vec![reference(83)])
+                    .expect("stored record field"),
+            )],
+            vec![WholeEthosTable::new(
+                table.clone(),
+                WholeEthosTypeReference::Identity(record.clone()),
+                WholeEthosTypeReference::Identity(key.clone()),
+            )],
+        )),
+    )
+    .expect("typed Sema document");
+
+    let outcome = NexusTransformation::new()
+        .lower_sema(&sema)
+        .expect("lower Sema storage declarations");
+    let [
+        WholeLogosItem::Struct(stored),
+        WholeLogosItem::Table(specification),
+    ] = outcome.logos().items()
+    else {
+        panic!("stored record precedes its table specification")
+    };
+    assert_eq!(stored.attributes(), WholeLogosTypeAttributes::Stored);
+    assert_eq!(specification.name(), &table);
+    assert_eq!(
+        specification.record(),
+        &WholeLogosTypeReference::Identity(record),
+    );
+    assert_eq!(specification.key(), &WholeLogosTypeReference::Identity(key),);
+    assert!(outcome.deferred_tables().is_empty());
+}
+
+#[test]
+fn sema_table_refuses_applied_record_and_key_shapes_without_partial_logos() {
+    let record = universal(90);
+    let table = universal(91);
+    let document = |record_reference, key_reference| {
+        WholeEthos::new(
+            WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+            WholeEthosBody::Sema(WholeEthosSemaBody::new(
+                vec![WholeEthosItem::Struct(
+                    WholeEthosStruct::new(record.clone(), vec![reference(92)])
+                        .expect("stored record field"),
+                )],
+                vec![WholeEthosTable::new(
+                    table.clone(),
+                    record_reference,
+                    key_reference,
+                )],
+            )),
+        )
+        .expect("typed Sema document")
+    };
+    let applied = |payload| {
+        WholeEthosTypeReference::Application(WholeEthosTypeApplication::new(universal(93), payload))
+    };
+
+    assert!(matches!(
+        NexusTransformation::new().lower_sema(&document(applied(reference(90)), reference(94))),
+        Err(NexusTransformationError::InvalidSemaTableRecordShape { .. })
+    ));
+    assert!(matches!(
+        NexusTransformation::new().lower_sema(&document(reference(90), applied(reference(94)))),
+        Err(NexusTransformationError::InvalidSemaTableKeyShape { .. })
+    ));
 }
