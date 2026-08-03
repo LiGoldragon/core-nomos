@@ -8,6 +8,9 @@
 //! membership from their body position. Object-first operator applications are
 //! retained as typed deferrals until their operator Nomos exists.
 
+use std::collections::{BTreeMap, BTreeSet};
+
+use capsule_content_identity::IdentityHasher;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosItem, WholeEthosMethod, WholeEthosNewtype, WholeEthosOperatorApplication,
@@ -15,10 +18,11 @@ use nexus_core_ethos::{
     WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
 };
 use nexus_core_logos::{
-    WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosStruct,
-    WholeLogosTable, WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTraitMethod,
-    WholeLogosTupleFields, WholeLogosTypeApplication, WholeLogosTypeAttributes,
-    WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
+    WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
+    WholeLogosStorageFingerprint, WholeLogosStruct, WholeLogosTable, WholeLogosTraitDef,
+    WholeLogosTraitImpl, WholeLogosTraitMethod, WholeLogosTupleFields, WholeLogosTypeApplication,
+    WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload,
+    WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -194,6 +198,7 @@ pub trait TypeDeclarationStructuralTransformation {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct NexusTransformation {
     reference_mappings: Vec<NexusVocabularyReferenceMapping>,
+    storage_fingerprints: Vec<SemaStorageTypeFingerprintMapping>,
 }
 
 // Trait exception — too trivial: constructor and read-only data ergonomics for
@@ -203,6 +208,7 @@ impl NexusTransformation {
     pub const fn new() -> Self {
         Self {
             reference_mappings: Vec::new(),
+            storage_fingerprints: Vec::new(),
         }
     }
 
@@ -218,12 +224,40 @@ impl NexusTransformation {
                 });
             }
         }
-        Ok(Self { reference_mappings })
+        Ok(Self {
+            reference_mappings,
+            storage_fingerprints: Vec::new(),
+        })
     }
 
     /// Canonically ordered exact reference mappings.
     pub fn reference_mappings(&self) -> &[NexusVocabularyReferenceMapping] {
         &self.reference_mappings
+    }
+
+    /// Attach exact storage contracts for non-local types used by Sema table
+    /// record graphs or keys.
+    pub fn with_storage_fingerprints(
+        mut self,
+        mut storage_fingerprints: Vec<SemaStorageTypeFingerprintMapping>,
+    ) -> Result<Self, NexusTransformationError> {
+        storage_fingerprints.sort_by(|left, right| left.source().cmp(right.source()));
+        for adjacent in storage_fingerprints.windows(2) {
+            if adjacent[0].source() == adjacent[1].source() {
+                return Err(
+                    NexusTransformationError::DuplicateSemaStorageFingerprintSource {
+                        identity: adjacent[0].source().clone(),
+                    },
+                );
+            }
+        }
+        self.storage_fingerprints = storage_fingerprints;
+        Ok(self)
+    }
+
+    /// Canonically ordered external storage contracts.
+    pub fn storage_fingerprints(&self) -> &[SemaStorageTypeFingerprintMapping] {
+        &self.storage_fingerprints
     }
 
     fn lower_item(
@@ -362,6 +396,121 @@ impl NexusTransformation {
             .binary_search_by(|mapping| mapping.source().cmp(source))
             .map(|index| self.reference_mappings[index].target().clone())
             .unwrap_or_else(|_| source.clone())
+    }
+
+    fn storage_fingerprint(
+        &self,
+        reference: &WholeEthosTypeReference,
+        declarations: &BTreeMap<VocabularyEncodedId, &WholeEthosItem>,
+        visiting: &mut BTreeSet<VocabularyEncodedId>,
+    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
+        match reference {
+            WholeEthosTypeReference::Identity(identity) => {
+                if let Some(declaration) = declarations.get(identity) {
+                    self.local_storage_fingerprint(identity, declaration, declarations, visiting)
+                } else {
+                    self.external_storage_fingerprint(identity)
+                }
+            }
+            WholeEthosTypeReference::Application(application) => {
+                let head = self.external_storage_fingerprint(application.head())?;
+                let payload =
+                    self.storage_fingerprint(application.payload(), declarations, visiting)?;
+                let mut hasher = storage_shape_hasher(b"application");
+                update_identity(&mut hasher, application.head());
+                update_identity(&mut hasher, &self.map_reference(application.head()));
+                hasher.update_length_prefixed(&head.bytes());
+                hasher.update_length_prefixed(&payload.bytes());
+                Ok(WholeLogosStorageFingerprint::new(hasher.finalize_bytes()))
+            }
+        }
+    }
+
+    fn local_storage_fingerprint(
+        &self,
+        identity: &VocabularyEncodedId,
+        declaration: &WholeEthosItem,
+        declarations: &BTreeMap<VocabularyEncodedId, &WholeEthosItem>,
+        visiting: &mut BTreeSet<VocabularyEncodedId>,
+    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
+        if !visiting.insert(identity.clone()) {
+            return Err(NexusTransformationError::CyclicSemaStorageShape {
+                identity: identity.clone(),
+            });
+        }
+        let result = match declaration {
+            WholeEthosItem::Newtype(newtype) => {
+                let wrapped = self.storage_fingerprint(
+                    newtype.wrapped_field().reference(),
+                    declarations,
+                    visiting,
+                )?;
+                let mut hasher = storage_shape_hasher(b"newtype");
+                update_identity(&mut hasher, identity);
+                hasher.update_length_prefixed(&wrapped.bytes());
+                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
+            }
+            WholeEthosItem::Struct(structure) => {
+                let mut hasher = storage_shape_hasher(b"struct");
+                update_identity(&mut hasher, identity);
+                update_count(&mut hasher, structure.fields().len());
+                for field in structure.fields() {
+                    let field = self.storage_fingerprint(field, declarations, visiting)?;
+                    hasher.update_length_prefixed(&field.bytes());
+                }
+                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
+            }
+            WholeEthosItem::Enumeration(enumeration) => {
+                let mut hasher = storage_shape_hasher(b"enumeration");
+                update_identity(&mut hasher, identity);
+                update_count(&mut hasher, enumeration.variants().len());
+                for variant in enumeration.variants() {
+                    update_identity(&mut hasher, variant.name());
+                    match variant.payload() {
+                        WholeEthosVariantPayload::Unit => {
+                            hasher.update_length_prefixed(b"unit");
+                        }
+                        WholeEthosVariantPayload::Tuple(fields) => {
+                            hasher.update_length_prefixed(b"tuple");
+                            update_count(&mut hasher, fields.fields().len());
+                            for field in fields.fields() {
+                                let field =
+                                    self.storage_fingerprint(field, declarations, visiting)?;
+                                hasher.update_length_prefixed(&field.bytes());
+                            }
+                        }
+                    }
+                }
+                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
+            }
+            WholeEthosItem::OperatorApplication(application) => {
+                return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
+                    identity: application.name().clone(),
+                });
+            }
+        };
+        visiting.remove(identity);
+        Ok(result)
+    }
+
+    fn external_storage_fingerprint(
+        &self,
+        source: &VocabularyEncodedId,
+    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
+        let index = self
+            .storage_fingerprints
+            .binary_search_by(|mapping| mapping.source().cmp(source))
+            .map_err(
+                |_| NexusTransformationError::MissingSemaStorageFingerprint {
+                    identity: source.clone(),
+                },
+            )?;
+        let mapping = &self.storage_fingerprints[index];
+        let mut hasher = storage_shape_hasher(b"external");
+        update_identity(&mut hasher, source);
+        update_identity(&mut hasher, &self.map_reference(source));
+        hasher.update_length_prefixed(&mapping.fingerprint().bytes());
+        Ok(WholeLogosStorageFingerprint::new(hasher.finalize_bytes()))
     }
 
     const fn lower_visibility(visibility: WholeEthosVisibility) -> WholeLogosVisibility {
@@ -503,6 +652,7 @@ impl SemaStructuralTransformation for NexusTransformation {
         };
 
         let mut declared_records = Vec::with_capacity(body.record_types().len());
+        let mut record_declarations = BTreeMap::new();
         for item in body.record_types() {
             let name = match item {
                 WholeEthosItem::Newtype(newtype) => newtype.name(),
@@ -515,6 +665,7 @@ impl SemaStructuralTransformation for NexusTransformation {
                 }
             };
             declared_records.push(name.clone());
+            record_declarations.insert(name.clone(), item);
         }
         declared_records.sort();
         for adjacent in declared_records.windows(2) {
@@ -558,10 +709,19 @@ impl SemaStructuralTransformation for NexusTransformation {
                 deferred_tables.push(table.clone());
                 continue;
             }
+            let record_storage = self.storage_fingerprint(
+                table.record(),
+                &record_declarations,
+                &mut BTreeSet::new(),
+            )?;
+            let key_storage =
+                self.storage_fingerprint(table.key(), &record_declarations, &mut BTreeSet::new())?;
             items.push(WholeLogosItem::Table(WholeLogosTable::new(
                 table.name().clone(),
                 WholeLogosTypeReference::Identity(self.map_reference(record)),
                 WholeLogosTypeReference::Identity(self.map_reference(key)),
+                record_storage,
+                key_storage,
             )));
         }
 
@@ -582,6 +742,66 @@ impl NexusTransformation {
             WholeLogosTypeReference::Identity(declaration.clone()),
             Vec::new(),
         ))
+    }
+}
+
+fn storage_shape_hasher(kind: &[u8]) -> IdentityHasher {
+    let mut hasher = IdentityHasher::unprimed();
+    hasher.update_length_prefixed(b"protos-sema-stored-shape-v1");
+    hasher.update_length_prefixed(kind);
+    hasher
+}
+
+fn update_count(hasher: &mut IdentityHasher, count: usize) {
+    let count = u64::try_from(count).expect("Rust collection length fits the u64 shape format");
+    hasher.update_length_prefixed(&count.to_be_bytes());
+}
+
+fn update_identity(hasher: &mut IdentityHasher, identity: &VocabularyEncodedId) {
+    let root = match identity.root_variant() {
+        VocabularyRoot::Universal => 0_u8,
+        VocabularyRoot::Rust => 1_u8,
+    };
+    hasher.update_length_prefixed(&[root]);
+    update_count(hasher, identity.chain().len());
+    for local in identity.chain() {
+        hasher.update_length_prefixed(&local.value().to_be_bytes());
+    }
+}
+
+/// One caller-supplied content/ABI fingerprint for a non-local storage type.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SemaStorageTypeFingerprintMapping {
+    source: VocabularyEncodedId,
+    fingerprint: WholeLogosStorageFingerprint,
+}
+
+impl SemaStorageTypeFingerprintMapping {
+    /// Bind one Universal type identity to its authoritative external storage
+    /// contract without allocating or deriving another identity.
+    pub fn new(
+        source: VocabularyEncodedId,
+        fingerprint: [u8; 32],
+    ) -> Result<Self, NexusTransformationError> {
+        if source.root_variant() != &VocabularyRoot::Universal {
+            return Err(NexusTransformationError::SemaStorageFingerprintSourceRoot {
+                found: *source.root_variant(),
+            });
+        }
+        Ok(Self {
+            source,
+            fingerprint: WholeLogosStorageFingerprint::new(fingerprint),
+        })
+    }
+
+    /// External Universal type identity.
+    pub const fn source(&self) -> &VocabularyEncodedId {
+        &self.source
+    }
+
+    /// Assembly-supplied storage contract.
+    pub const fn fingerprint(&self) -> WholeLogosStorageFingerprint {
+        self.fingerprint
     }
 }
 
@@ -665,6 +885,20 @@ pub enum NexusTransformationError {
         /// Repeated source identity.
         identity: VocabularyEncodedId,
     },
+    /// A storage contract was assigned to a non-Universal source type.
+    #[error("Sema storage fingerprint source must be Universal, found {found:?}")]
+    SemaStorageFingerprintSourceRoot { found: VocabularyRoot },
+    /// One external storage type received multiple compatibility contracts.
+    #[error("Sema storage fingerprint source {identity:?} is duplicated")]
+    DuplicateSemaStorageFingerprintSource { identity: VocabularyEncodedId },
+    /// A reachable non-local storage type has no authoritative compatibility
+    /// contract supplied by the owning assembly.
+    #[error("Sema storage type {identity:?} has no caller-supplied fingerprint")]
+    MissingSemaStorageFingerprint { identity: VocabularyEncodedId },
+    /// The locally generated stored declaration graph contains a cycle; the
+    /// bounded structural fingerprint deliberately has no fixpoint machinery.
+    #[error("Sema storage shape contains a cycle through {identity:?}")]
+    CyclicSemaStorageShape { identity: VocabularyEncodedId },
     /// A configured positional role identity was outside Universal vocabulary.
     #[error("Interface {role} role must be Universal, found {found:?}")]
     InterfaceRoleRoot {

@@ -107,8 +107,9 @@ pub use native::{
 pub use nexus::{
     InterfaceRoleIdentities, InterfaceStructuralTransformation, InterfaceTransformationOutcome,
     InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
-    NexusTransformationError, NexusVocabularyReferenceMapping, SemaStructuralTransformation,
-    SemaTransformationOutcome, TypeDeclarationStructuralTransformation,
+    NexusTransformationError, NexusVocabularyReferenceMapping, SemaStorageTypeFingerprintMapping,
+    SemaStructuralTransformation, SemaTransformationOutcome,
+    TypeDeclarationStructuralTransformation,
 };
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};

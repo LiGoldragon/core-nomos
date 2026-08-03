@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.36.0"
+version      = "0.37.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -21,7 +21,7 @@ protos                   = { git = "https://github.com/LiGoldragon/protos.git", 
 core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "7bb9c5a0a31851641998b26f14326515ca64a7e8" }
 core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "1bb284325d3026a695130967215373fa266629d5" }
 nexus-core-ethos         = { package = "core-ethos", git = "https://github.com/LiGoldragon/core-ethos.git", rev = "83feebbd34b66d493a0a3c7ffea68dab1dd7873c" }
-nexus-core-logos         = { package = "core-logos", git = "https://github.com/LiGoldragon/core-logos.git", rev = "0881344036fc987d95d0430b0fd152ee7c153b0e" }
+nexus-core-logos         = { package = "core-logos", git = "https://github.com/LiGoldragon/core-logos.git", rev = "f02ce18c93f85ce44e6e2e291a2bd514346eccbe" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "7290f65bbb5e7825ab2ca58340631d154d69d110" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "51c02c4a7b6f67d9dad095f11986085d7d65785b" }
 textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "aa75cf6afdd457bb256ceb955ca78cca54d0e484" }

@@ -3,7 +3,8 @@
 use core_nomos::{
     InterfaceRoleIdentities, InterfaceStructuralTransformation, NexusStructuralTransformation,
     NexusTransformation, NexusTransformationError, NexusVocabularyReferenceMapping,
-    SemaStructuralTransformation, TypeDeclarationStructuralTransformation,
+    SemaStorageTypeFingerprintMapping, SemaStructuralTransformation,
+    TypeDeclarationStructuralTransformation,
 };
 use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
@@ -30,6 +31,20 @@ fn universal(local: u16) -> VocabularyEncodedId {
 
 fn reference(local: u16) -> WholeEthosTypeReference {
     WholeEthosTypeReference::Identity(universal(local))
+}
+
+fn storage_transformation(entries: &[(u16, u8)]) -> NexusTransformation {
+    NexusTransformation::new()
+        .with_storage_fingerprints(
+            entries
+                .iter()
+                .map(|(identity, byte)| {
+                    SemaStorageTypeFingerprintMapping::new(universal(*identity), [*byte; 32])
+                        .expect("Universal storage mapping")
+                })
+                .collect(),
+        )
+        .expect("unique storage fingerprint sources")
 }
 
 fn nexus_document() -> WholeEthos {
@@ -338,7 +353,7 @@ fn sema_record_types_become_stored_values_and_local_tables_become_typed_specific
     )
     .expect("typed Sema document");
 
-    let outcome = NexusTransformation::new()
+    let outcome = storage_transformation(&[(81, 1), (83, 2)])
         .lower_sema(&sema)
         .expect("lower Sema storage declarations");
     let [
@@ -356,6 +371,85 @@ fn sema_record_types_become_stored_values_and_local_tables_become_typed_specific
     );
     assert_eq!(specification.key(), &WholeLogosTypeReference::Identity(key),);
     assert!(outcome.deferred_tables().is_empty());
+}
+
+#[test]
+fn sema_schema_hash_tracks_direct_and_transitive_layout_under_stable_identities() {
+    let record = universal(110);
+    let nested = universal(111);
+    let table = universal(112);
+    let key = universal(113);
+    let document = |nested_item: WholeEthosItem| {
+        WholeEthos::new(
+            WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+            WholeEthosBody::Sema(WholeEthosSemaBody::new(
+                vec![
+                    WholeEthosItem::Struct(
+                        WholeEthosStruct::new(record.clone(), vec![reference(111)])
+                            .expect("record field"),
+                    ),
+                    nested_item,
+                ],
+                vec![WholeEthosTable::new(
+                    table.clone(),
+                    WholeEthosTypeReference::Identity(record.clone()),
+                    WholeEthosTypeReference::Identity(key.clone()),
+                )],
+            )),
+        )
+        .expect("typed Sema document")
+    };
+    let nested_newtype = WholeEthosItem::Newtype(WholeEthosNewtype::new(
+        nested.clone(),
+        WholeEthosVisibility::Public,
+        WholeEthosAttributes,
+        WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(114)),
+    ));
+    let nested_struct = WholeEthosItem::Struct(
+        WholeEthosStruct::new(nested, vec![reference(114), reference(115)])
+            .expect("changed nested fields"),
+    );
+    let transformation = storage_transformation(&[(113, 3), (114, 4), (115, 5)]);
+    let original = transformation
+        .lower_sema(&document(nested_newtype))
+        .expect("original storage graph");
+    let changed = transformation
+        .lower_sema(&document(nested_struct))
+        .expect("changed storage graph");
+    let schema_hash = |outcome: &core_nomos::SemaTransformationOutcome| {
+        let WholeLogosItem::Table(table) = outcome.logos().items().last().expect("table item")
+        else {
+            panic!("table is final")
+        };
+        table.schema_hash().expect("portable table schema")
+    };
+
+    assert_ne!(schema_hash(&original), schema_hash(&changed));
+}
+
+#[test]
+fn sema_reachable_external_storage_shape_requires_an_explicit_fingerprint() {
+    let sema = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+        WholeEthosBody::Sema(WholeEthosSemaBody::new(
+            vec![WholeEthosItem::Struct(
+                WholeEthosStruct::new(universal(120), vec![reference(121)])
+                    .expect("stored record field"),
+            )],
+            vec![WholeEthosTable::new(
+                universal(122),
+                reference(120),
+                reference(123),
+            )],
+        )),
+    )
+    .expect("typed Sema document");
+
+    assert!(matches!(
+        NexusTransformation::new().lower_sema(&sema),
+        Err(NexusTransformationError::MissingSemaStorageFingerprint { identity })
+            if identity == universal(121)
+    ));
 }
 
 #[test]
