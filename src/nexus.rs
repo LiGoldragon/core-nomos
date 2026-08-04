@@ -443,15 +443,19 @@ impl NexusTransformation {
         &self,
         application: &WholeEthosTypeApplication,
     ) -> Result<WholeLogosTypeApplication, NexusTransformationError> {
-        let [argument] = application.arguments() else {
-            return Err(NexusTransformationError::UnsupportedTypeApplicationArity {
-                found: application.arguments().len(),
-            });
-        };
-        Ok(WholeLogosTypeApplication::new(
+        WholeLogosTypeApplication::new(
             self.map_reference(application.head()),
-            self.lower_reference(argument)?,
-        ))
+            application
+                .arguments()
+                .iter()
+                .map(|argument| self.lower_reference(argument))
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+        .map_err(
+            |_| NexusTransformationError::EmptyTypeApplicationArguments {
+                head: application.head().clone(),
+            },
+        )
     }
 
     fn map_reference(&self, source: &VocabularyEncodedId) -> VocabularyEncodedId {
@@ -477,17 +481,15 @@ impl NexusTransformation {
             }
             WholeEthosTypeReference::Application(application) => {
                 let head = self.external_storage_fingerprint(application.head())?;
-                let [argument] = application.arguments() else {
-                    return Err(NexusTransformationError::UnsupportedTypeApplicationArity {
-                        found: application.arguments().len(),
-                    });
-                };
-                let payload = self.storage_fingerprint(argument, declarations, visiting)?;
                 let mut hasher = storage_shape_hasher(b"application");
                 update_identity(&mut hasher, application.head());
                 update_identity(&mut hasher, &self.map_reference(application.head()));
                 hasher.update_length_prefixed(&head.bytes());
-                hasher.update_length_prefixed(&payload.bytes());
+                update_count(&mut hasher, application.arguments().len());
+                for argument in application.arguments() {
+                    let argument = self.storage_fingerprint(argument, declarations, visiting)?;
+                    hasher.update_length_prefixed(&argument.bytes());
+                }
                 Ok(WholeLogosStorageFingerprint::new(hasher.finalize_bytes()))
             }
         }
@@ -945,11 +947,11 @@ pub enum NexusTransformationError {
         /// Authored stream identity.
         stream: VocabularyEncodedId,
     },
-    /// Core Logos currently represents only unary type application.
-    #[error("Nexus cannot lower a type application with {found} arguments into unary Core Logos")]
-    UnsupportedTypeApplicationArity {
-        /// Authored type-argument count.
-        found: usize,
+    /// A malformed Whole-Ethos value bypassed its non-empty application law.
+    #[error("Nexus cannot lower an empty type application headed by {head:?}")]
+    EmptyTypeApplicationArguments {
+        /// Authored application head.
+        head: VocabularyEncodedId,
     },
     /// A tuple variant carried anything other than one payload field.
     #[error("tuple variant payload requires exactly one field, found {found}")]

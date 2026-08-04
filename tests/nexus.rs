@@ -320,7 +320,7 @@ fn interface_role_configuration_refuses_non_universal_and_duplicate_identities()
 }
 
 #[test]
-fn nexus_lowering_refuses_nary_type_applications_without_collapsing_arguments() {
+fn nexus_lowering_retains_nary_type_applications_in_authored_order() {
     let nexus = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Nexus, 1).expect("Nexus header"),
         WholeEthosBody::Nexus(WholeEthosNexusBody::new(
@@ -344,9 +344,22 @@ fn nexus_lowering_refuses_nary_type_applications_without_collapsing_arguments() 
     )
     .expect("typed Nexus document");
 
+    let logos = NexusTransformation::new()
+        .lower(&nexus)
+        .expect("retain both application arguments");
+    let [WholeLogosItem::Newtype(newtype)] = logos.items() else {
+        panic!("n-ary application newtype")
+    };
+    let WholeLogosTypeReference::Application(application) = newtype.wrapped() else {
+        panic!("n-ary application")
+    };
+    assert_eq!(application.head(), &universal(81));
     assert_eq!(
-        NexusTransformation::new().lower(&nexus),
-        Err(NexusTransformationError::UnsupportedTypeApplicationArity { found: 2 })
+        application.arguments(),
+        &[
+            WholeLogosTypeReference::Identity(universal(82)),
+            WholeLogosTypeReference::Identity(universal(83)),
+        ]
     );
 }
 
