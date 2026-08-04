@@ -10,7 +10,7 @@ use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosMethod, WholeEthosNewtype,
-    WholeEthosNexusBody, WholeEthosOperatorApplication, WholeEthosSemaBody, WholeEthosStruct,
+    WholeEthosNexusBody, WholeEthosSemaBody, WholeEthosStreamInitiation, WholeEthosStruct,
     WholeEthosTable, WholeEthosTrait, WholeEthosTupleFields, WholeEthosTypeApplication,
     WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
     WholeEthosWrappedField,
@@ -156,7 +156,7 @@ fn non_nexus_documents_refuse_at_the_typed_boundary() {
 }
 
 #[test]
-fn interface_positions_lower_to_wire_types_memberships_and_typed_operator_deferrals() {
+fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferrals() {
     let interface = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Interface, 1).expect("Interface header"),
         WholeEthosBody::Interface(WholeEthosInterfaceBody::new(
@@ -194,14 +194,12 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_operator_deferr
                     )
                     .expect("wire enumeration variant"),
                 ),
-                WholeEthosItem::OperatorApplication(
-                    WholeEthosOperatorApplication::new(
-                        universal(70),
-                        universal(40),
-                        vec![reference(32)],
-                    )
-                    .expect("Stream-like application payload"),
-                ),
+                WholeEthosItem::StreamInitiation(WholeEthosStreamInitiation {
+                    stream: universal(40),
+                    query: reference(32),
+                    subscription: reference(35),
+                    event: reference(37),
+                }),
             ],
         )),
     )
@@ -263,10 +261,22 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_operator_deferr
     assert!(refusal_membership.associated_type_bindings().is_empty());
     assert_eq!(structure.attributes(), WholeLogosTypeAttributes::Wire);
     assert_eq!(enumeration.attributes(), WholeLogosTypeAttributes::Wire);
-    assert_eq!(outcome.deferred_operator_applications().len(), 1);
+    assert_eq!(outcome.deferred_stream_initiations().len(), 1);
     assert_eq!(
-        outcome.deferred_operator_applications()[0].operator(),
-        &universal(70)
+        outcome.deferred_stream_initiations()[0].stream,
+        universal(40)
+    );
+    assert_eq!(
+        outcome.deferred_stream_initiations()[0].query,
+        reference(32)
+    );
+    assert_eq!(
+        outcome.deferred_stream_initiations()[0].subscription,
+        reference(35)
+    );
+    assert_eq!(
+        outcome.deferred_stream_initiations()[0].event,
+        reference(37)
     );
 
     let nexus_core_ethos::WholeEthosBody::Interface(body) = interface.body() else {
@@ -298,6 +308,37 @@ fn interface_role_configuration_refuses_non_universal_and_duplicate_identities()
             second_role: "Output",
             identity: universal(60),
         })
+    );
+}
+
+#[test]
+fn nexus_lowering_refuses_nary_type_applications_without_collapsing_arguments() {
+    let nexus = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Nexus, 1).expect("Nexus header"),
+        WholeEthosBody::Nexus(WholeEthosNexusBody::new(
+            vec![WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                universal(80),
+                WholeEthosVisibility::Public,
+                WholeEthosAttributes,
+                WholeEthosWrappedField::new(
+                    WholeEthosVisibility::Private,
+                    WholeEthosTypeReference::Application(
+                        WholeEthosTypeApplication::new(
+                            universal(81),
+                            vec![reference(82), reference(83)],
+                        )
+                        .expect("two authored arguments"),
+                    ),
+                ),
+            ))],
+            Vec::new(),
+        )),
+    )
+    .expect("typed Nexus document");
+
+    assert_eq!(
+        NexusTransformation::new().lower(&nexus),
+        Err(NexusTransformationError::UnsupportedTypeApplicationArity { found: 2 })
     );
 }
 
@@ -474,7 +515,10 @@ fn sema_table_refuses_applied_record_and_key_shapes_without_partial_logos() {
         .expect("typed Sema document")
     };
     let applied = |payload| {
-        WholeEthosTypeReference::Application(WholeEthosTypeApplication::new(universal(93), payload))
+        WholeEthosTypeReference::Application(
+            WholeEthosTypeApplication::new(universal(93), vec![payload])
+                .expect("one application argument"),
+        )
     };
 
     assert!(matches!(

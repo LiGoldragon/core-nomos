@@ -108,7 +108,7 @@ pub use nexus::{
     InterfaceRoleIdentities, InterfaceStructuralTransformation, InterfaceTransformationOutcome,
     InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
     NexusTransformationError, NexusVocabularyReferenceMapping, SemaStorageTypeFingerprintMapping,
-    SemaStructuralTransformation, SemaTransformationOutcome,
+    SemaStructuralTransformation, SemaTransformationOutcome, Transformer,
     TypeDeclarationStructuralTransformation,
 };
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};

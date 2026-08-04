@@ -5,15 +5,15 @@
 //! only exact caller-supplied reference mappings may cross into Rust vocabulary.
 //! Nexus declarations remain plain. Interface declarations use the canonical
 //! `WireAttributes` policy and acquire universal Input, Output, or Refusal
-//! membership from their body position. Object-first operator applications are
-//! retained as typed deferrals until their operator Nomos exists.
+//! membership from their body position. Strict stream-initiation transformers
+//! are retained as typed deferrals until their Nomos lifecycle exists.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use capsule_content_identity::IdentityHasher;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
-    WholeEthosItem, WholeEthosMethod, WholeEthosNewtype, WholeEthosOperatorApplication,
+    WholeEthosItem, WholeEthosMethod, WholeEthosNewtype, WholeEthosStreamInitiation,
     WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTypeApplication,
     WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
 };
@@ -45,12 +45,33 @@ pub trait InterfaceTypeStructuralTransformation {
 /// The complete presently structural Interface document-to-Logos contract.
 pub trait InterfaceStructuralTransformation {
     /// Lower positional declarations and their universal role memberships while
-    /// preserving operator applications as explicit typed deferrals.
+    /// preserving stream initiations as explicit typed deferrals.
     fn lower_interface(
         &self,
         ethos: &WholeEthos,
         roles: &InterfaceRoleIdentities,
     ) -> Result<InterfaceTransformationOutcome, NexusTransformationError>;
+}
+
+/// Nomos-owned dispatch boundary for one strict transformer schema.
+///
+/// Stream initiation has no lifecycle semantics in this slice. Its structural
+/// lowering is therefore an exact typed deferral rather than a fabricated
+/// execution result; the later lifecycle slice owns the transition beyond it.
+pub trait Transformer {
+    /// The lossless typed form retained by the selected transformer.
+    type Deferred;
+
+    /// Dispatch the input schema through this Nomos boundary.
+    fn defer(&self) -> Self::Deferred;
+}
+
+impl Transformer for WholeEthosStreamInitiation {
+    type Deferred = WholeEthosStreamInitiation;
+
+    fn defer(&self) -> Self::Deferred {
+        self.clone()
+    }
 }
 
 /// The Sema record/table document-to-Logos structural contract.
@@ -139,11 +160,11 @@ impl InterfaceRoleIdentities {
     }
 }
 
-/// Interface Logos plus operator applications whose semantics are not yet live.
+/// Interface Logos plus stream initiations whose lifecycle is not yet live.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InterfaceTransformationOutcome {
     logos: WholeLogos,
-    deferred_operator_applications: Vec<WholeEthosOperatorApplication>,
+    deferred_stream_initiations: Vec<WholeEthosStreamInitiation>,
 }
 
 // Trait exception — too trivial: read-only outcome ergonomics.
@@ -153,9 +174,9 @@ impl InterfaceTransformationOutcome {
         &self.logos
     }
 
-    /// Operator applications deliberately left for their named Nomos.
-    pub fn deferred_operator_applications(&self) -> &[WholeEthosOperatorApplication] {
-        &self.deferred_operator_applications
+    /// Stream initiations deliberately retained for their lifecycle Nomos.
+    pub fn deferred_stream_initiations(&self) -> &[WholeEthosStreamInitiation] {
+        &self.deferred_stream_initiations
     }
 }
 
@@ -267,41 +288,49 @@ impl NexusTransformation {
     ) -> Result<WholeLogosItem, NexusTransformationError> {
         match item {
             WholeEthosItem::Newtype(newtype) => Ok(WholeLogosItem::Newtype(
-                self.lower_newtype(newtype).with_attributes(attributes),
+                self.lower_newtype(newtype)?.with_attributes(attributes),
             )),
             WholeEthosItem::Struct(structure) => Ok(WholeLogosItem::Struct(
-                self.lower_struct(structure).with_attributes(attributes),
+                self.lower_struct(structure)?.with_attributes(attributes),
             )),
             WholeEthosItem::Enumeration(enumeration) => Ok(WholeLogosItem::Enumeration(
                 self.lower_enumeration(enumeration)?
                     .with_attributes(attributes),
             )),
-            WholeEthosItem::OperatorApplication(application) => {
-                Err(Self::unsupported_application(application))
+            WholeEthosItem::StreamInitiation(initiation) => {
+                Err(NexusTransformationError::UnsupportedStreamInitiation {
+                    stream: initiation.stream.clone(),
+                })
             }
         }
     }
 
-    fn lower_newtype(&self, newtype: &WholeEthosNewtype) -> WholeLogosNewtype {
+    fn lower_newtype(
+        &self,
+        newtype: &WholeEthosNewtype,
+    ) -> Result<WholeLogosNewtype, NexusTransformationError> {
         let WholeEthosAttributes = *newtype.attributes();
-        WholeLogosNewtype::new(
+        Ok(WholeLogosNewtype::new(
             Self::lower_visibility(*newtype.visibility()),
             newtype.name().clone(),
             Self::lower_visibility(*newtype.wrapped_field().visibility()),
-            self.lower_reference(newtype.wrapped_field().reference()),
-        )
+            self.lower_reference(newtype.wrapped_field().reference())?,
+        ))
     }
 
-    fn lower_struct(&self, structure: &WholeEthosStruct) -> WholeLogosStruct {
-        WholeLogosStruct::new(
+    fn lower_struct(
+        &self,
+        structure: &WholeEthosStruct,
+    ) -> Result<WholeLogosStruct, NexusTransformationError> {
+        Ok(WholeLogosStruct::new(
             WholeLogosVisibility::Public,
             structure.name().clone(),
             structure
                 .fields()
                 .iter()
                 .map(|field| self.lower_reference(field))
-                .collect(),
-        )
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
     }
 
     fn lower_enumeration(
@@ -333,7 +362,7 @@ impl NexusTransformation {
                         .fields()
                         .iter()
                         .map(|field| self.lower_reference(field))
-                        .collect(),
+                        .collect::<Result<Vec<_>, _>>()?,
                 )
                 .map_err(|error| {
                     NexusTransformationError::UnsupportedVariantTupleArity {
@@ -346,49 +375,63 @@ impl NexusTransformation {
         Ok(WholeLogosVariant::new(variant.name().clone(), payload))
     }
 
-    fn lower_trait(&self, trait_definition: &WholeEthosTrait) -> WholeLogosTraitDef {
-        WholeLogosTraitDef::new(
+    fn lower_trait(
+        &self,
+        trait_definition: &WholeEthosTrait,
+    ) -> Result<WholeLogosTraitDef, NexusTransformationError> {
+        Ok(WholeLogosTraitDef::new(
             WholeLogosVisibility::Public,
             trait_definition.name().clone(),
             trait_definition
                 .methods()
                 .iter()
                 .map(|method| self.lower_method(method))
-                .collect(),
-        )
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
     }
 
-    fn lower_method(&self, method: &WholeEthosMethod) -> WholeLogosTraitMethod {
-        WholeLogosTraitMethod::new(
+    fn lower_method(
+        &self,
+        method: &WholeEthosMethod,
+    ) -> Result<WholeLogosTraitMethod, NexusTransformationError> {
+        Ok(WholeLogosTraitMethod::new(
             method.name().clone(),
             method
                 .parameters()
                 .iter()
                 .map(|parameter| self.lower_reference(parameter))
-                .collect(),
-            self.lower_reference(method.return_type()),
-        )
+                .collect::<Result<Vec<_>, _>>()?,
+            self.lower_reference(method.return_type())?,
+        ))
     }
 
-    fn lower_reference(&self, reference: &WholeEthosTypeReference) -> WholeLogosTypeReference {
-        match reference {
+    fn lower_reference(
+        &self,
+        reference: &WholeEthosTypeReference,
+    ) -> Result<WholeLogosTypeReference, NexusTransformationError> {
+        Ok(match reference {
             WholeEthosTypeReference::Identity(identity) => {
                 WholeLogosTypeReference::Identity(self.map_reference(identity))
             }
             WholeEthosTypeReference::Application(application) => {
-                WholeLogosTypeReference::Application(self.lower_application(application))
+                WholeLogosTypeReference::Application(self.lower_application(application)?)
             }
-        }
+        })
     }
 
     fn lower_application(
         &self,
         application: &WholeEthosTypeApplication,
-    ) -> WholeLogosTypeApplication {
-        WholeLogosTypeApplication::new(
+    ) -> Result<WholeLogosTypeApplication, NexusTransformationError> {
+        let [argument] = application.arguments() else {
+            return Err(NexusTransformationError::UnsupportedTypeApplicationArity {
+                found: application.arguments().len(),
+            });
+        };
+        Ok(WholeLogosTypeApplication::new(
             self.map_reference(application.head()),
-            self.lower_reference(application.payload()),
-        )
+            self.lower_reference(argument)?,
+        ))
     }
 
     fn map_reference(&self, source: &VocabularyEncodedId) -> VocabularyEncodedId {
@@ -414,8 +457,12 @@ impl NexusTransformation {
             }
             WholeEthosTypeReference::Application(application) => {
                 let head = self.external_storage_fingerprint(application.head())?;
-                let payload =
-                    self.storage_fingerprint(application.payload(), declarations, visiting)?;
+                let [argument] = application.arguments() else {
+                    return Err(NexusTransformationError::UnsupportedTypeApplicationArity {
+                        found: application.arguments().len(),
+                    });
+                };
+                let payload = self.storage_fingerprint(argument, declarations, visiting)?;
                 let mut hasher = storage_shape_hasher(b"application");
                 update_identity(&mut hasher, application.head());
                 update_identity(&mut hasher, &self.map_reference(application.head()));
@@ -483,9 +530,9 @@ impl NexusTransformation {
                 }
                 WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
             }
-            WholeEthosItem::OperatorApplication(application) => {
+            WholeEthosItem::StreamInitiation(initiation) => {
                 return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
-                    identity: application.name().clone(),
+                    identity: initiation.stream.clone(),
                 });
             }
         };
@@ -519,14 +566,6 @@ impl NexusTransformation {
             WholeEthosVisibility::Private => WholeLogosVisibility::Private,
         }
     }
-
-    fn unsupported_application(
-        application: &WholeEthosOperatorApplication,
-    ) -> NexusTransformationError {
-        NexusTransformationError::UnsupportedOperatorApplication {
-            operator: application.operator().clone(),
-        }
-    }
 }
 
 impl NexusStructuralTransformation for NexusTransformation {
@@ -539,9 +578,13 @@ impl NexusStructuralTransformation for NexusTransformation {
         };
         let mut items = Vec::with_capacity(body.traits().len() + body.types().len());
         items.extend(
-            body.traits().iter().map(|trait_definition| {
-                WholeLogosItem::TraitDef(self.lower_trait(trait_definition))
-            }),
+            body.traits()
+                .iter()
+                .map(|trait_definition| {
+                    self.lower_trait(trait_definition)
+                        .map(WholeLogosItem::TraitDef)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
         );
         items.extend(
             self.lower_type_declarations(body.types(), WholeLogosTypeAttributes::Plain)?
@@ -600,31 +643,31 @@ impl InterfaceStructuralTransformation for NexusTransformation {
         );
         for input in body.inputs() {
             items.push(WholeLogosItem::Newtype(
-                self.lower_newtype(input)
+                self.lower_newtype(input)?
                     .with_attributes(WholeLogosTypeAttributes::Wire),
             ));
             items.push(Self::role_membership(roles.input(), input.name()));
         }
         for output in body.outputs() {
             items.push(WholeLogosItem::Newtype(
-                self.lower_newtype(output)
+                self.lower_newtype(output)?
                     .with_attributes(WholeLogosTypeAttributes::Wire),
             ));
             items.push(Self::role_membership(roles.output(), output.name()));
         }
         for refusal in body.refusals() {
             items.push(WholeLogosItem::Struct(
-                self.lower_struct(refusal)
+                self.lower_struct(refusal)?
                     .with_attributes(WholeLogosTypeAttributes::Wire),
             ));
             items.push(Self::role_membership(roles.refusal(), refusal.name()));
         }
 
-        let mut deferred_operator_applications = Vec::new();
+        let mut deferred_stream_initiations = Vec::new();
         for item in body.types() {
             match item {
-                WholeEthosItem::OperatorApplication(application) => {
-                    deferred_operator_applications.push(application.clone());
+                WholeEthosItem::StreamInitiation(initiation) => {
+                    deferred_stream_initiations.push(initiation.defer());
                 }
                 declaration => {
                     items.push(self.lower_item(declaration, WholeLogosTypeAttributes::Wire)?);
@@ -634,7 +677,7 @@ impl InterfaceStructuralTransformation for NexusTransformation {
 
         Ok(InterfaceTransformationOutcome {
             logos: WholeLogos::new(items),
-            deferred_operator_applications,
+            deferred_stream_initiations,
         })
     }
 }
@@ -658,9 +701,9 @@ impl SemaStructuralTransformation for NexusTransformation {
                 WholeEthosItem::Newtype(newtype) => newtype.name(),
                 WholeEthosItem::Struct(structure) => structure.name(),
                 WholeEthosItem::Enumeration(enumeration) => enumeration.name(),
-                WholeEthosItem::OperatorApplication(application) => {
+                WholeEthosItem::StreamInitiation(initiation) => {
                     return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
-                        identity: application.name().clone(),
+                        identity: initiation.stream.clone(),
                     });
                 }
             };
@@ -855,11 +898,17 @@ pub enum NexusTransformationError {
         /// Actual header/body kind.
         found: WholeEthosFileKind,
     },
-    /// Operator-family semantics are outside this transformer.
-    #[error("Nexus type section contains unsupported operator application {operator:?}")]
-    UnsupportedOperatorApplication {
-        /// Authored operator identity.
-        operator: VocabularyEncodedId,
+    /// Stream lifecycle semantics are outside this transformer.
+    #[error("Nexus type section contains unsupported stream initiation {stream:?}")]
+    UnsupportedStreamInitiation {
+        /// Authored stream identity.
+        stream: VocabularyEncodedId,
+    },
+    /// Core Logos currently represents only unary type application.
+    #[error("Nexus cannot lower a type application with {found} arguments into unary Core Logos")]
+    UnsupportedTypeApplicationArity {
+        /// Authored type-argument count.
+        found: usize,
     },
     /// A tuple variant carried anything other than one payload field.
     #[error("tuple variant payload requires exactly one field, found {found}")]
