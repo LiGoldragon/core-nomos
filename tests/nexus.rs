@@ -3,18 +3,17 @@
 use core_nomos::{
     InterfaceRoleIdentities, InterfaceStructuralTransformation, NexusStructuralTransformation,
     NexusTransformation, NexusTransformationError, NexusVocabularyReferenceMapping,
-    SemaStorageTypeFingerprintMapping, SemaStructuralTransformation,
+    SemaStorageTypeFingerprintMapping, SemaStructuralTransformation, StreamLifecycleIdentities,
     TypeDeclarationStructuralTransformation,
 };
 use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosMethod, WholeEthosNewtype,
-    WholeEthosNexusBody, WholeEthosSemaBody, WholeEthosStreamInitiation,
-    WholeEthosStreamTermination, WholeEthosStruct, WholeEthosTable, WholeEthosTrait,
-    WholeEthosTupleFields, WholeEthosTypeApplication, WholeEthosTypeParameter,
-    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
-    WholeEthosWrappedField,
+    WholeEthosNexusBody, WholeEthosSemaBody, WholeEthosStreamInitiation, WholeEthosStruct,
+    WholeEthosTable, WholeEthosTrait, WholeEthosTupleFields, WholeEthosTypeApplication,
+    WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
+    WholeEthosVisibility, WholeEthosWrappedField,
 };
 use nexus_core_logos::{
     WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference,
@@ -158,7 +157,7 @@ fn non_nexus_documents_refuse_at_the_typed_boundary() {
 }
 
 #[test]
-fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferrals() {
+fn interface_positions_lower_to_wire_types_memberships_and_resolved_stream_lifecycle() {
     let interface = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Interface, 1).expect("Interface header"),
         WholeEthosBody::Interface(WholeEthosInterfaceBody::new(
@@ -199,11 +198,7 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferral
                 WholeEthosItem::StreamInitiation(WholeEthosStreamInitiation {
                     stream: universal(40),
                     query: reference(32),
-                    subscription: reference(35),
                     event: reference(37),
-                }),
-                WholeEthosItem::StreamTermination(WholeEthosStreamTermination {
-                    stream: universal(41),
                 }),
             ],
         )),
@@ -213,6 +208,18 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferral
     let roles = InterfaceRoleIdentities::new(universal(60), universal(61), universal(62))
         .expect("distinct Universal roles");
     let outcome = NexusTransformation::new()
+        .with_stream_lifecycle_identities(vec![
+            StreamLifecycleIdentities::new(
+                universal(40),
+                universal(63),
+                universal(64),
+                universal(65),
+                universal(66),
+                universal(67),
+            )
+            .expect("distinct stream lifecycle identities"),
+        ])
+        .expect("one lifecycle assignment")
         .lower_interface(&interface, &roles)
         .expect("lower structural Interface surface");
     let [
@@ -224,6 +231,7 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferral
         WholeLogosItem::TraitImpl(refusal_membership),
         WholeLogosItem::Struct(structure),
         WholeLogosItem::Enumeration(enumeration),
+        WholeLogosItem::StreamLifecycle(lifecycle),
     ] = outcome.logos().items()
     else {
         panic!("Interface declaration and membership order")
@@ -266,28 +274,24 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferral
     assert!(refusal_membership.associated_type_bindings().is_empty());
     assert_eq!(structure.attributes(), WholeLogosTypeAttributes::Wire);
     assert_eq!(enumeration.attributes(), WholeLogosTypeAttributes::Wire);
-    assert_eq!(outcome.deferred_stream_initiations().len(), 1);
+    assert_eq!(lifecycle.stream(), &universal(40));
+    assert_eq!(lifecycle.initiation().input(), &universal(63));
     assert_eq!(
-        outcome.deferred_stream_initiations()[0].stream,
-        universal(40)
+        lifecycle.initiation().query(),
+        &WholeLogosTypeReference::Identity(universal(32))
     );
+    assert_eq!(lifecycle.initiation().success().identity(), &universal(64));
     assert_eq!(
-        outcome.deferred_stream_initiations()[0].query,
-        reference(32)
+        lifecycle.initiation().success().event(),
+        &WholeLogosTypeReference::Identity(universal(37))
     );
+    assert_eq!(lifecycle.initiation().refusal(), &universal(65));
+    assert_eq!(lifecycle.termination().input(), &universal(66));
     assert_eq!(
-        outcome.deferred_stream_initiations()[0].subscription,
-        reference(35)
+        lifecycle.termination().identity(),
+        lifecycle.initiation().success().identity()
     );
-    assert_eq!(
-        outcome.deferred_stream_initiations()[0].event,
-        reference(37)
-    );
-    assert_eq!(outcome.deferred_stream_terminations().len(), 1);
-    assert_eq!(
-        outcome.deferred_stream_terminations()[0].stream,
-        universal(41)
-    );
+    assert_eq!(lifecycle.termination().refusal(), &universal(67));
 
     let nexus_core_ethos::WholeEthosBody::Interface(body) = interface.body() else {
         panic!("Interface body")
@@ -295,7 +299,36 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferral
     let shared_types = NexusTransformation::new()
         .lower_type_declarations(&body.types()[..2], WholeLogosTypeAttributes::Wire)
         .expect("project declaration-only shared type slice");
-    assert_eq!(shared_types.items(), &outcome.logos().items()[6..],);
+    assert_eq!(shared_types.items(), &outcome.logos().items()[6..8],);
+}
+
+#[test]
+fn stream_initiation_refuses_without_caller_authored_lifecycle_identities() {
+    let interface = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Interface, 1).expect("Interface header"),
+        WholeEthosBody::Interface(WholeEthosInterfaceBody::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![WholeEthosItem::StreamInitiation(
+                WholeEthosStreamInitiation {
+                    stream: universal(40),
+                    query: reference(32),
+                    event: reference(37),
+                },
+            )],
+        )),
+    )
+    .expect("typed Interface document");
+    let roles = InterfaceRoleIdentities::new(universal(60), universal(61), universal(62))
+        .expect("distinct Universal roles");
+
+    assert_eq!(
+        NexusTransformation::new().lower_interface(&interface, &roles),
+        Err(NexusTransformationError::MissingStreamLifecycleIdentities {
+            stream: universal(40),
+        })
+    );
 }
 
 #[test]

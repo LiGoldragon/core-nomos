@@ -5,8 +5,9 @@
 //! only exact caller-supplied reference mappings may cross into Rust vocabulary.
 //! Nexus declarations remain plain. Interface declarations use the canonical
 //! `WireAttributes` policy and acquire universal Input, Output, or Refusal
-//! membership from their body position. Strict stream-initiation transformers
-//! are retained as typed deferrals until their Nomos lifecycle exists.
+//! membership from their body position. Strict stream initiations lower into a
+//! complete archiveable lifecycle contract; this transformer never retains a
+//! deferred stream outcome.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,16 +15,17 @@ use capsule_content_identity::IdentityHasher;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosItem, WholeEthosMethod, WholeEthosNewtype, WholeEthosStreamInitiation,
-    WholeEthosStreamTermination, WholeEthosStruct, WholeEthosTable, WholeEthosTrait,
-    WholeEthosTypeApplication, WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant,
-    WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTypeApplication,
+    WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
+    WholeEthosVisibility,
 };
 use nexus_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
-    WholeLogosStorageFingerprint, WholeLogosStruct, WholeLogosTable, WholeLogosTraitDef,
-    WholeLogosTraitImpl, WholeLogosTraitMethod, WholeLogosTupleFields, WholeLogosTypeApplication,
-    WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference, WholeLogosVariant,
-    WholeLogosVariantPayload, WholeLogosVisibility,
+    WholeLogosStorageFingerprint, WholeLogosStreamHandle, WholeLogosStreamInitiation,
+    WholeLogosStreamLifecycle, WholeLogosStreamTermination, WholeLogosStruct, WholeLogosTable,
+    WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTraitMethod, WholeLogosTupleFields,
+    WholeLogosTypeApplication, WholeLogosTypeAttributes, WholeLogosTypeParameter,
+    WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -45,42 +47,13 @@ pub trait InterfaceTypeStructuralTransformation {
 
 /// The complete presently structural Interface document-to-Logos contract.
 pub trait InterfaceStructuralTransformation {
-    /// Lower positional declarations and their universal role memberships while
-    /// preserving stream initiations as explicit typed deferrals.
+    /// Lower positional declarations, their universal role memberships, and
+    /// each authored stream initiation into its resolved lifecycle contract.
     fn lower_interface(
         &self,
         ethos: &WholeEthos,
         roles: &InterfaceRoleIdentities,
     ) -> Result<InterfaceTransformationOutcome, NexusTransformationError>;
-}
-
-/// Nomos-owned dispatch boundary for one strict transformer schema.
-///
-/// Stream initiation has no lifecycle semantics in this slice. Its structural
-/// lowering is therefore an exact typed deferral rather than a fabricated
-/// execution result; the later lifecycle slice owns the transition beyond it.
-pub trait Transformer {
-    /// The lossless typed form retained by the selected transformer.
-    type Deferred;
-
-    /// Dispatch the input schema through this Nomos boundary.
-    fn defer(&self) -> Self::Deferred;
-}
-
-impl Transformer for WholeEthosStreamInitiation {
-    type Deferred = WholeEthosStreamInitiation;
-
-    fn defer(&self) -> Self::Deferred {
-        self.clone()
-    }
-}
-
-impl Transformer for WholeEthosStreamTermination {
-    type Deferred = WholeEthosStreamTermination;
-
-    fn defer(&self) -> Self::Deferred {
-        self.clone()
-    }
 }
 
 /// The Sema record/table document-to-Logos structural contract.
@@ -169,12 +142,10 @@ impl InterfaceRoleIdentities {
     }
 }
 
-/// Interface Logos plus stream initiations whose lifecycle is not yet live.
+/// Fully lowered Interface Logos.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InterfaceTransformationOutcome {
     logos: WholeLogos,
-    deferred_stream_initiations: Vec<WholeEthosStreamInitiation>,
-    deferred_stream_terminations: Vec<WholeEthosStreamTermination>,
 }
 
 // Trait exception — too trivial: read-only outcome ergonomics.
@@ -182,16 +153,6 @@ impl InterfaceTransformationOutcome {
     /// Structurally projected Interface Logos.
     pub const fn logos(&self) -> &WholeLogos {
         &self.logos
-    }
-
-    /// Stream initiations deliberately retained for their lifecycle Nomos.
-    pub fn deferred_stream_initiations(&self) -> &[WholeEthosStreamInitiation] {
-        &self.deferred_stream_initiations
-    }
-
-    /// Stream terminations deliberately retained for their lifecycle Nomos.
-    pub fn deferred_stream_terminations(&self) -> &[WholeEthosStreamTermination] {
-        &self.deferred_stream_terminations
     }
 }
 
@@ -235,6 +196,7 @@ pub trait TypeDeclarationStructuralTransformation {
 pub struct NexusTransformation {
     reference_mappings: Vec<NexusVocabularyReferenceMapping>,
     storage_fingerprints: Vec<SemaStorageTypeFingerprintMapping>,
+    stream_lifecycle_identities: Vec<StreamLifecycleIdentities>,
 }
 
 // Trait exception — too trivial: constructor and read-only data ergonomics for
@@ -245,6 +207,7 @@ impl NexusTransformation {
         Self {
             reference_mappings: Vec::new(),
             storage_fingerprints: Vec::new(),
+            stream_lifecycle_identities: Vec::new(),
         }
     }
 
@@ -263,6 +226,7 @@ impl NexusTransformation {
         Ok(Self {
             reference_mappings,
             storage_fingerprints: Vec::new(),
+            stream_lifecycle_identities: Vec::new(),
         })
     }
 
@@ -296,6 +260,30 @@ impl NexusTransformation {
         &self.storage_fingerprints
     }
 
+    /// Attach caller-authored generated identities for each strict stream
+    /// lifecycle. This transformer selects and carries these identities but
+    /// never allocates or derives them.
+    pub fn with_stream_lifecycle_identities(
+        mut self,
+        mut stream_lifecycle_identities: Vec<StreamLifecycleIdentities>,
+    ) -> Result<Self, NexusTransformationError> {
+        stream_lifecycle_identities.sort_by(|left, right| left.stream().cmp(right.stream()));
+        for adjacent in stream_lifecycle_identities.windows(2) {
+            if adjacent[0].stream() == adjacent[1].stream() {
+                return Err(NexusTransformationError::DuplicateStreamLifecycleStream {
+                    stream: adjacent[0].stream().clone(),
+                });
+            }
+        }
+        self.stream_lifecycle_identities = stream_lifecycle_identities;
+        Ok(self)
+    }
+
+    /// Canonically ordered strict stream lifecycle assignments.
+    pub fn stream_lifecycle_identities(&self) -> &[StreamLifecycleIdentities] {
+        &self.stream_lifecycle_identities
+    }
+
     fn lower_item(
         &self,
         item: &WholeEthosItem,
@@ -312,17 +300,43 @@ impl NexusTransformation {
                 self.lower_enumeration(enumeration)?
                     .with_attributes(attributes),
             )),
-            WholeEthosItem::StreamInitiation(initiation) => {
-                Err(NexusTransformationError::UnsupportedStreamInitiation {
-                    stream: initiation.stream.clone(),
-                })
-            }
-            WholeEthosItem::StreamTermination(termination) => {
-                Err(NexusTransformationError::UnsupportedStreamTermination {
-                    stream: termination.stream.clone(),
-                })
-            }
+            WholeEthosItem::StreamInitiation(initiation) => Ok(WholeLogosItem::StreamLifecycle(
+                self.lower_stream_initiation(initiation)?,
+            )),
         }
+    }
+
+    fn lower_stream_initiation(
+        &self,
+        initiation: &WholeEthosStreamInitiation,
+    ) -> Result<WholeLogosStreamLifecycle, NexusTransformationError> {
+        let identities = self
+            .stream_lifecycle_identities
+            .binary_search_by(|candidate| candidate.stream().cmp(&initiation.stream))
+            .map(|index| &self.stream_lifecycle_identities[index])
+            .map_err(
+                |_| NexusTransformationError::MissingStreamLifecycleIdentities {
+                    stream: initiation.stream.clone(),
+                },
+            )?;
+        let handle_identity = identities.handle().clone();
+        Ok(WholeLogosStreamLifecycle::new(
+            initiation.stream.clone(),
+            WholeLogosStreamInitiation::new(
+                identities.initiation_input().clone(),
+                self.lower_reference(&initiation.query)?,
+                WholeLogosStreamHandle::new(
+                    handle_identity.clone(),
+                    self.lower_reference(&initiation.event)?,
+                ),
+                identities.initiation_refusal().clone(),
+            ),
+            WholeLogosStreamTermination::new(
+                identities.termination_input().clone(),
+                handle_identity,
+                identities.termination_refusal().clone(),
+            ),
+        ))
     }
 
     fn lower_newtype(
@@ -576,11 +590,6 @@ impl NexusTransformation {
                     identity: initiation.stream.clone(),
                 });
             }
-            WholeEthosItem::StreamTermination(termination) => {
-                return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
-                    identity: termination.stream.clone(),
-                });
-            }
         };
         visiting.remove(identity);
         Ok(result)
@@ -709,26 +718,12 @@ impl InterfaceStructuralTransformation for NexusTransformation {
             items.push(Self::role_membership(roles.refusal(), refusal.name()));
         }
 
-        let mut deferred_stream_initiations = Vec::new();
-        let mut deferred_stream_terminations = Vec::new();
         for item in body.types() {
-            match item {
-                WholeEthosItem::StreamInitiation(initiation) => {
-                    deferred_stream_initiations.push(initiation.defer());
-                }
-                WholeEthosItem::StreamTermination(termination) => {
-                    deferred_stream_terminations.push(termination.defer());
-                }
-                declaration => {
-                    items.push(self.lower_item(declaration, WholeLogosTypeAttributes::Wire)?);
-                }
-            }
+            items.push(self.lower_item(item, WholeLogosTypeAttributes::Wire)?);
         }
 
         Ok(InterfaceTransformationOutcome {
             logos: WholeLogos::new(items),
-            deferred_stream_initiations,
-            deferred_stream_terminations,
         })
     }
 }
@@ -755,11 +750,6 @@ impl SemaStructuralTransformation for NexusTransformation {
                 WholeEthosItem::StreamInitiation(initiation) => {
                     return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
                         identity: initiation.stream.clone(),
-                    });
-                }
-                WholeEthosItem::StreamTermination(termination) => {
-                    return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
-                        identity: termination.stream.clone(),
                     });
                 }
             };
@@ -904,6 +894,100 @@ impl SemaStorageTypeFingerprintMapping {
     }
 }
 
+/// Caller-authored generated identities for one complete stream lifecycle.
+///
+/// The authored stream declaration names initiation only. This record keeps
+/// the separately generated initiation and termination operations explicit so
+/// the lowerer can produce a complete contract without synthesizing names.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StreamLifecycleIdentities {
+    stream: VocabularyEncodedId,
+    initiation_input: VocabularyEncodedId,
+    handle: VocabularyEncodedId,
+    initiation_refusal: VocabularyEncodedId,
+    termination_input: VocabularyEncodedId,
+    termination_refusal: VocabularyEncodedId,
+}
+
+impl StreamLifecycleIdentities {
+    /// Validate one complete set of distinct Universal lifecycle identities.
+    pub fn new(
+        stream: VocabularyEncodedId,
+        initiation_input: VocabularyEncodedId,
+        handle: VocabularyEncodedId,
+        initiation_refusal: VocabularyEncodedId,
+        termination_input: VocabularyEncodedId,
+        termination_refusal: VocabularyEncodedId,
+    ) -> Result<Self, NexusTransformationError> {
+        let roles = [
+            ("stream", &stream),
+            ("initiation input", &initiation_input),
+            ("handle", &handle),
+            ("initiation refusal", &initiation_refusal),
+            ("termination input", &termination_input),
+            ("termination refusal", &termination_refusal),
+        ];
+        for (role, identity) in &roles {
+            if identity.root_variant() != &VocabularyRoot::Universal {
+                return Err(NexusTransformationError::StreamLifecycleIdentityRoot {
+                    role,
+                    found: *identity.root_variant(),
+                });
+            }
+        }
+        for (index, (role, identity)) in roles.iter().enumerate() {
+            if let Some((prior_role, _)) = roles[..index]
+                .iter()
+                .find(|(_, prior_identity)| *prior_identity == *identity)
+            {
+                return Err(NexusTransformationError::DuplicateStreamLifecycleIdentity {
+                    first_role: prior_role,
+                    second_role: role,
+                    identity: (*identity).clone(),
+                });
+            }
+        }
+        Ok(Self {
+            stream,
+            initiation_input,
+            handle,
+            initiation_refusal,
+            termination_input,
+            termination_refusal,
+        })
+    }
+
+    /// Authored stream declaration identity.
+    pub const fn stream(&self) -> &VocabularyEncodedId {
+        &self.stream
+    }
+
+    /// Generated initiation-input identity.
+    pub const fn initiation_input(&self) -> &VocabularyEncodedId {
+        &self.initiation_input
+    }
+
+    /// Generated typed-stream handle identity.
+    pub const fn handle(&self) -> &VocabularyEncodedId {
+        &self.handle
+    }
+
+    /// Generated initiation-refusal identity.
+    pub const fn initiation_refusal(&self) -> &VocabularyEncodedId {
+        &self.initiation_refusal
+    }
+
+    /// Generated termination-input identity.
+    pub const fn termination_input(&self) -> &VocabularyEncodedId {
+        &self.termination_input
+    }
+
+    /// Generated termination-refusal identity.
+    pub const fn termination_refusal(&self) -> &VocabularyEncodedId {
+        &self.termination_refusal
+    }
+}
+
 /// One exact Universal-to-Rust reference relationship.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NexusVocabularyReferenceMapping {
@@ -954,15 +1038,34 @@ pub enum NexusTransformationError {
         /// Actual header/body kind.
         found: WholeEthosFileKind,
     },
-    /// Stream lifecycle semantics are outside this transformer.
-    #[error("Nexus type section contains unsupported stream initiation {stream:?}")]
-    UnsupportedStreamInitiation {
-        /// Authored stream identity.
+    /// A generated lifecycle identity was outside Universal vocabulary.
+    #[error("stream lifecycle {role} identity must be Universal, found {found:?}")]
+    StreamLifecycleIdentityRoot {
+        /// Lifecycle role selected by the caller.
+        role: &'static str,
+        /// Actual vocabulary root.
+        found: VocabularyRoot,
+    },
+    /// Two generated lifecycle roles reused one identity.
+    #[error("stream lifecycle roles {first_role} and {second_role} share identity {identity:?}")]
+    DuplicateStreamLifecycleIdentity {
+        /// First lifecycle role.
+        first_role: &'static str,
+        /// Second lifecycle role.
+        second_role: &'static str,
+        /// Reused identity.
+        identity: VocabularyEncodedId,
+    },
+    /// More than one lifecycle assignment targeted one authored stream.
+    #[error("stream lifecycle assignment is duplicated for {stream:?}")]
+    DuplicateStreamLifecycleStream {
+        /// Repeated authored stream identity.
         stream: VocabularyEncodedId,
     },
-    /// Stream lifecycle semantics are outside this transformer.
-    #[error("Nexus type section contains unsupported stream termination {stream:?}")]
-    UnsupportedStreamTermination {
+    /// The caller supplied no generated lifecycle identities for an authored
+    /// stream, so Nomos cannot lower it without allocating names.
+    #[error("stream lifecycle identities are missing for {stream:?}")]
+    MissingStreamLifecycleIdentities {
         /// Authored stream identity.
         stream: VocabularyEncodedId,
     },

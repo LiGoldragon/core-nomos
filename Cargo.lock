@@ -149,7 +149,7 @@ dependencies = [
 [[package]]
 name = "core-ethos"
 version = "0.25.0"
-source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=038dbeb6ba09eaa27341be9d917b5c1cb08abf72#038dbeb6ba09eaa27341be9d917b5c1cb08abf72"
+source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=904dfce385ad9c7bfe0fa894267dd8815df100f4#904dfce385ad9c7bfe0fa894267dd8815df100f4"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
@@ -183,13 +183,13 @@ dependencies = [
 [[package]]
 name = "core-logos"
 version = "0.24.0"
-source = "git+https://github.com/LiGoldragon/core-logos.git?rev=c40045842c2322fc1e66d30b9f4ef2e1468428e5#c40045842c2322fc1e66d30b9f4ef2e1468428e5"
+source = "git+https://github.com/LiGoldragon/core-logos.git?rev=a960aacff8ed13dc14b0ae0094208189d6609434#a960aacff8ed13dc14b0ae0094208189d6609434"
 dependencies = [
  "content-identity 0.3.0",
- "content-identity 0.4.0",
+ "content-identity 0.5.0",
  "name-table 0.1.0",
  "name-table 0.3.0",
- "protos 0.3.0",
+ "protos 0.5.0",
  "raw-discovery 0.4.0 (git+https://github.com/LiGoldragon/raw-discovery.git?rev=7290f65bbb5e7825ab2ca58340631d154d69d110)",
  "rkyv",
  "signal-sema-translator",
@@ -386,7 +386,7 @@ dependencies = [
 [[package]]
 name = "nomos-types"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/nomos-types.git?rev=183f76c74270fa54cc0d0ad84e860c542240e957#183f76c74270fa54cc0d0ad84e860c542240e957"
+source = "git+https://github.com/LiGoldragon/nomos-types.git?rev=a7b831e0540a8ad263cd07ed44ec4c95c56771fb#a7b831e0540a8ad263cd07ed44ec4c95c56771fb"
 dependencies = [
  "rkyv",
 ]
@@ -442,6 +442,16 @@ dependencies = [
 name = "protos"
 version = "0.4.0"
 source = "git+https://github.com/LiGoldragon/protos.git?rev=c85cec6117bfd4c423d952fd54e0c0bb11562f89#c85cec6117bfd4c423d952fd54e0c0bb11562f89"
+dependencies = [
+ "content-identity 0.5.0",
+ "rkyv",
+ "signal-frame 0.4.0",
+]
+
+[[package]]
+name = "protos"
+version = "0.5.0"
+source = "git+https://github.com/LiGoldragon/protos.git?rev=95aeb1470c549a404518faf1ab0280a36583a2b3#95aeb1470c549a404518faf1ab0280a36583a2b3"
 dependencies = [
  "content-identity 0.5.0",
  "rkyv",
