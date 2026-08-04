@@ -392,7 +392,9 @@ fn nexus_lowering_retains_nary_type_applications_in_authored_order() {
 
 #[test]
 fn nexus_lowering_retains_picked_up_parameter_names_and_quality_bounds() {
-    let ordered = universal(84);
+    let sortable = universal(84);
+    let left = universal(88);
+    let right = universal(89);
     let result = universal(85);
     let error = universal(86);
     let nexus = WholeEthos::new(
@@ -409,8 +411,12 @@ fn nexus_lowering_retains_picked_up_parameter_names_and_quality_bounds() {
                             WholeEthosQuality::Shape(result),
                             vec![
                                 WholeEthosTypeReference::Parameter(WholeEthosTypeParameter::new(
-                                    ordered.clone(),
-                                    WholeEthosQuality::Trait(ordered.clone()),
+                                    left.clone(),
+                                    WholeEthosQuality::Trait(sortable.clone()),
+                                )),
+                                WholeEthosTypeReference::Parameter(WholeEthosTypeParameter::new(
+                                    right.clone(),
+                                    WholeEthosQuality::Trait(sortable.clone()),
                                 )),
                                 WholeEthosTypeReference::Identity(error),
                             ],
@@ -432,17 +438,21 @@ fn nexus_lowering_retains_picked_up_parameter_names_and_quality_bounds() {
     };
     assert_eq!(
         newtype.type_parameters(),
-        &[WholeLogosTypeParameter::new(
-            ordered.clone(),
-            ordered.clone()
-        )]
+        &[
+            WholeLogosTypeParameter::new(left.clone(), sortable.clone()),
+            WholeLogosTypeParameter::new(right.clone(), sortable),
+        ]
     );
     let WholeLogosTypeReference::Application(application) = newtype.wrapped() else {
         panic!("Result application")
     };
     assert_eq!(
         application.arguments()[0],
-        WholeLogosTypeReference::Parameter(ordered)
+        WholeLogosTypeReference::Parameter(left)
+    );
+    assert_eq!(
+        application.arguments()[1],
+        WholeLogosTypeReference::Parameter(right)
     );
 }
 
