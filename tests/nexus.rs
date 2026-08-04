@@ -9,7 +9,7 @@ use core_nomos::{
 use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
-    WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosMethod, WholeEthosNewtype,
+    WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosNewtype,
     WholeEthosNexusBody, WholeEthosSemaBody, WholeEthosStreamInitiation, WholeEthosStruct,
     WholeEthosTable, WholeEthosTrait, WholeEthosTupleFields, WholeEthosTypeApplication,
     WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
@@ -71,15 +71,7 @@ fn nexus_document() -> WholeEthos {
     .expect("decision variants");
     let context = WholeEthosStruct::new(universal(14), vec![reference(15), reference(16)])
         .expect("context fields");
-    let trait_definition = WholeEthosTrait::new(
-        universal(20),
-        vec![WholeEthosMethod::new(
-            universal(21),
-            vec![reference(15), reference(14)],
-            reference(10),
-        )],
-    )
-    .expect("trait method");
+    let trait_definition = WholeEthosTrait::new(universal(20));
     WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Nexus, 1).expect("Nexus header"),
         WholeEthosBody::Nexus(WholeEthosNexusBody::new(

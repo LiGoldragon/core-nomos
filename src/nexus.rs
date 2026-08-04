@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use capsule_content_identity::IdentityHasher;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
-    WholeEthosItem, WholeEthosMethod, WholeEthosNewtype, WholeEthosStreamInitiation,
+    WholeEthosItem, WholeEthosNewtype, WholeEthosStreamInitiation,
     WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTypeApplication,
     WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
     WholeEthosVisibility,
@@ -23,7 +23,7 @@ use nexus_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
     WholeLogosStorageFingerprint, WholeLogosStreamHandle, WholeLogosStreamInitiation,
     WholeLogosStreamLifecycle, WholeLogosStreamTermination, WholeLogosStruct, WholeLogosTable,
-    WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTraitMethod, WholeLogosTupleFields,
+    WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTupleFields,
     WholeLogosTypeApplication, WholeLogosTypeAttributes, WholeLogosTypeParameter,
     WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
 };
@@ -423,26 +423,7 @@ impl NexusTransformation {
         Ok(WholeLogosTraitDef::new(
             WholeLogosVisibility::Public,
             trait_definition.name().clone(),
-            trait_definition
-                .methods()
-                .iter()
-                .map(|method| self.lower_method(method))
-                .collect::<Result<Vec<_>, _>>()?,
-        ))
-    }
-
-    fn lower_method(
-        &self,
-        method: &WholeEthosMethod,
-    ) -> Result<WholeLogosTraitMethod, NexusTransformationError> {
-        Ok(WholeLogosTraitMethod::new(
-            method.name().clone(),
-            method
-                .parameters()
-                .iter()
-                .map(|parameter| self.lower_reference(parameter))
-                .collect::<Result<Vec<_>, _>>()?,
-            self.lower_reference(method.return_type())?,
+            vec![],
         ))
     }
 
