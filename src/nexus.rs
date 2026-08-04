@@ -15,15 +15,15 @@ use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosItem, WholeEthosMethod, WholeEthosNewtype, WholeEthosStreamInitiation,
     WholeEthosStreamTermination, WholeEthosStruct, WholeEthosTable, WholeEthosTrait,
-    WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
+    WholeEthosTypeApplication, WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant,
     WholeEthosVariantPayload, WholeEthosVisibility,
 };
 use nexus_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
     WholeLogosStorageFingerprint, WholeLogosStruct, WholeLogosTable, WholeLogosTraitDef,
     WholeLogosTraitImpl, WholeLogosTraitMethod, WholeLogosTupleFields, WholeLogosTypeApplication,
-    WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload,
-    WholeLogosVisibility,
+    WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference, WholeLogosVariant,
+    WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -335,6 +335,13 @@ impl NexusTransformation {
             newtype.name().clone(),
             Self::lower_visibility(*newtype.wrapped_field().visibility()),
             self.lower_reference(newtype.wrapped_field().reference())?,
+        )
+        .with_type_parameters(
+            newtype
+                .type_parameters()
+                .iter()
+                .map(Self::lower_type_parameter)
+                .collect(),
         ))
     }
 
@@ -433,10 +440,17 @@ impl NexusTransformation {
             WholeEthosTypeReference::Identity(identity) => {
                 WholeLogosTypeReference::Identity(self.map_reference(identity))
             }
+            WholeEthosTypeReference::Parameter(parameter) => {
+                WholeLogosTypeReference::Parameter(parameter.name().clone())
+            }
             WholeEthosTypeReference::Application(application) => {
                 WholeLogosTypeReference::Application(self.lower_application(application)?)
             }
         })
+    }
+
+    fn lower_type_parameter(parameter: &WholeEthosTypeParameter) -> WholeLogosTypeParameter {
+        WholeLogosTypeParameter::new(parameter.name().clone(), parameter.quality().clone())
     }
 
     fn lower_application(
@@ -478,6 +492,11 @@ impl NexusTransformation {
                 } else {
                     self.external_storage_fingerprint(identity)
                 }
+            }
+            WholeEthosTypeReference::Parameter(parameter) => {
+                Err(NexusTransformationError::UnresolvedTypeParameter {
+                    name: parameter.name().clone(),
+                })
             }
             WholeEthosTypeReference::Application(application) => {
                 let head = self.external_storage_fingerprint(application.head())?;
@@ -952,6 +971,12 @@ pub enum NexusTransformationError {
     EmptyTypeApplicationArguments {
         /// Authored application head.
         head: VocabularyEncodedId,
+    },
+    /// Sema storage layouts cannot be derived from an item-local generic pickup.
+    #[error("Sema storage shape cannot resolve type parameter {name:?}")]
+    UnresolvedTypeParameter {
+        /// Parameter name absent from concrete Sema storage.
+        name: VocabularyEncodedId,
     },
     /// A tuple variant carried anything other than one payload field.
     #[error("tuple variant payload requires exactly one field, found {found}")]

@@ -12,11 +12,13 @@ use nexus_core_ethos::{
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosMethod, WholeEthosNewtype,
     WholeEthosNexusBody, WholeEthosSemaBody, WholeEthosStreamInitiation,
     WholeEthosStreamTermination, WholeEthosStruct, WholeEthosTable, WholeEthosTrait,
-    WholeEthosTupleFields, WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
-    WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
+    WholeEthosTupleFields, WholeEthosTypeApplication, WholeEthosTypeParameter,
+    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosWrappedField,
 };
 use nexus_core_logos::{
-    WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariantPayload,
+    WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference,
+    WholeLogosVariantPayload,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -360,6 +362,62 @@ fn nexus_lowering_retains_nary_type_applications_in_authored_order() {
             WholeLogosTypeReference::Identity(universal(82)),
             WholeLogosTypeReference::Identity(universal(83)),
         ]
+    );
+}
+
+#[test]
+fn nexus_lowering_retains_picked_up_parameter_names_and_quality_bounds() {
+    let ordered = universal(84);
+    let result = universal(85);
+    let error = universal(86);
+    let nexus = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Nexus, 1).expect("Nexus header"),
+        WholeEthosBody::Nexus(WholeEthosNexusBody::new(
+            vec![WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                universal(87),
+                WholeEthosVisibility::Public,
+                WholeEthosAttributes,
+                WholeEthosWrappedField::new(
+                    WholeEthosVisibility::Private,
+                    WholeEthosTypeReference::Application(
+                        WholeEthosTypeApplication::new(
+                            result,
+                            vec![
+                                WholeEthosTypeReference::Parameter(WholeEthosTypeParameter::new(
+                                    ordered.clone(),
+                                    ordered.clone(),
+                                )),
+                                WholeEthosTypeReference::Identity(error),
+                            ],
+                        )
+                        .expect("Result application"),
+                    ),
+                ),
+            ))],
+            Vec::new(),
+        )),
+    )
+    .expect("typed parameterized Nexus document");
+
+    let logos = NexusTransformation::new()
+        .lower(&nexus)
+        .expect("preserve picked-up parameter");
+    let [WholeLogosItem::Newtype(newtype)] = logos.items() else {
+        panic!("parameterized newtype")
+    };
+    assert_eq!(
+        newtype.type_parameters(),
+        &[WholeLogosTypeParameter::new(
+            ordered.clone(),
+            ordered.clone()
+        )]
+    );
+    let WholeLogosTypeReference::Application(application) = newtype.wrapped() else {
+        panic!("Result application")
+    };
+    assert_eq!(
+        application.arguments()[0],
+        WholeLogosTypeReference::Parameter(ordered)
     );
 }
 

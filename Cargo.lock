@@ -149,7 +149,7 @@ dependencies = [
 [[package]]
 name = "core-ethos"
 version = "0.25.0"
-source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=3fd3faa3210a2a36f0c803c9319a6776068c1c72#3fd3faa3210a2a36f0c803c9319a6776068c1c72"
+source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=038dbeb6ba09eaa27341be9d917b5c1cb08abf72#038dbeb6ba09eaa27341be9d917b5c1cb08abf72"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
@@ -183,7 +183,7 @@ dependencies = [
 [[package]]
 name = "core-logos"
 version = "0.24.0"
-source = "git+https://github.com/LiGoldragon/core-logos.git?rev=39c9cbbd8bcdfb7a6eadf26cab044c5ba4607cb9#39c9cbbd8bcdfb7a6eadf26cab044c5ba4607cb9"
+source = "git+https://github.com/LiGoldragon/core-logos.git?rev=c40045842c2322fc1e66d30b9f4ef2e1468428e5#c40045842c2322fc1e66d30b9f4ef2e1468428e5"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
