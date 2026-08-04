@@ -14,9 +14,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use capsule_content_identity::{ArchiveError, PortableArchive};
 use core_ethos::{
-    WholeEthos, WholeEthosEnumeration, WholeEthosItem, WholeEthosNewtype,
-    WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
-    WholeEthosVariantPayload,
+    WholeEthos, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind, WholeEthosItem,
+    WholeEthosNewtype, WholeEthosQuality, WholeEthosTypeApplication, WholeEthosTypeReference,
+    WholeEthosVariant, WholeEthosVariantPayload,
 };
 use core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosTupleFields,
@@ -364,6 +364,37 @@ struct NativeRecursiveUniverse<'ethos> {
     enumerations: BTreeMap<VocabularyEncodedId, RecursiveEnumeration<'ethos>>,
 }
 
+enum NativeDocumentItem<'ethos> {
+    Newtype(&'ethos WholeEthosNewtype),
+    Enumeration(&'ethos WholeEthosEnumeration),
+}
+
+fn native_document_items(
+    ethos: &WholeEthos,
+) -> Result<Vec<NativeDocumentItem<'_>>, NativeEvaluationError> {
+    let WholeEthosBody::Nexus(body) = ethos.body() else {
+        return Err(NativeEvaluationError::UnsupportedDocumentBody {
+            kind: ethos.body().kind(),
+        });
+    };
+    if !body.traits().is_empty() {
+        return Err(NativeEvaluationError::UnsupportedNexusTraits);
+    }
+    body.types()
+        .iter()
+        .map(|item| match item {
+            WholeEthosItem::Newtype(newtype) => Ok(NativeDocumentItem::Newtype(newtype)),
+            WholeEthosItem::Enumeration(enumeration) => Ok(NativeDocumentItem::Enumeration(enumeration)),
+            WholeEthosItem::Struct(_) => Err(NativeEvaluationError::UnsupportedDocumentItem {
+                item: "struct",
+            }),
+            WholeEthosItem::StreamInitiation(_) => Err(NativeEvaluationError::UnsupportedDocumentItem {
+                item: "stream initiation",
+            }),
+        })
+        .collect()
+}
+
 impl<'ethos> NativeRecursiveUniverse<'ethos> {
     fn preflight(
         package: &AuthoredTransformerSet,
@@ -381,17 +412,17 @@ impl<'ethos> NativeRecursiveUniverse<'ethos> {
 
         let mut identities = BTreeSet::new();
         let mut enumerations = BTreeMap::new();
-        for item in ethos.items() {
+        for item in native_document_items(ethos)? {
             let identity = match item {
-                WholeEthosItem::Newtype(newtype) => newtype.name(),
-                WholeEthosItem::Enumeration(enumeration) => enumeration.name(),
+                NativeDocumentItem::Newtype(newtype) => newtype.name(),
+                NativeDocumentItem::Enumeration(enumeration) => enumeration.name(),
             };
             if !identities.insert(identity.clone()) {
                 return Err(NativeEvaluationError::DuplicateRecursiveSourceIdentity {
                     identity: identity.clone(),
                 });
             }
-            if let WholeEthosItem::Enumeration(enumeration) = item {
+            if let NativeDocumentItem::Enumeration(enumeration) = item {
                 enumerations.insert(
                     identity.clone(),
                     RecursiveEnumeration {
@@ -404,8 +435,8 @@ impl<'ethos> NativeRecursiveUniverse<'ethos> {
 
         let mut indegrees = BTreeMap::<VocabularyEncodedId, usize>::new();
         let enumeration_identities = enumerations.keys().cloned().collect::<BTreeSet<_>>();
-        for item in ethos.items() {
-            let WholeEthosItem::Enumeration(enumeration) = item else {
+        for item in native_document_items(ethos)? {
+            let NativeDocumentItem::Enumeration(enumeration) = item else {
                 continue;
             };
             let mut children = Vec::new();
@@ -428,6 +459,13 @@ impl<'ethos> NativeRecursiveUniverse<'ethos> {
                             }
                         }
                         WholeEthosTypeReference::Identity(_) => {}
+                        WholeEthosTypeReference::Parameter(parameter) => {
+                            return Err(NativeEvaluationError::RecursiveSourceParameter {
+                                enumeration: enumeration.name().clone(),
+                                variant: variant.name().clone(),
+                                parameter: parameter.name().clone(),
+                            });
+                        }
                         WholeEthosTypeReference::Application(_) => {
                             return Err(NativeEvaluationError::RecursiveSourceApplication {
                                 enumeration: enumeration.name().clone(),
@@ -537,14 +575,15 @@ impl<'package> NativeAuthoredEvaluator<'package> {
         let ethos = population.encoded_form();
         let recursive_universe = NativeRecursiveUniverse::preflight(self.package, ethos)?;
         let names = population.name_tree().authenticated_plan()?;
-        let mut values = Vec::with_capacity(ethos.items().len());
-        let mut whole_items = Vec::with_capacity(ethos.items().len());
-        for item in ethos.items() {
+        let items = native_document_items(ethos)?;
+        let mut values = Vec::with_capacity(items.len());
+        let mut whole_items = Vec::with_capacity(items.len());
+        for item in items {
             let evaluated = match item {
-                WholeEthosItem::Newtype(newtype) => {
+                NativeDocumentItem::Newtype(newtype) => {
                     self.evaluate_newtype(newtype, &names, &recursive_universe)?
                 }
-                WholeEthosItem::Enumeration(enumeration) => {
+                NativeDocumentItem::Enumeration(enumeration) => {
                     self.evaluate_enumeration(enumeration, &names, &recursive_universe)?
                 }
             };
@@ -714,7 +753,7 @@ fn bind_newtype(
                 MetaType::Type => NativeBindingValue::Type(lower_reference(
                     newtype.wrapped_field().reference(),
                     references,
-                )),
+                )?),
                 found => {
                     return Err(NativeEvaluationError::InputMetaMismatch {
                         section: SectionDefault::Newtype,
@@ -747,7 +786,7 @@ fn bind_enumeration(
                         .variants()
                         .iter()
                         .map(|variant| lower_variant(variant, references))
-                        .collect(),
+                        .collect::<Result<Vec<_>, _>>()?,
                 ),
                 found => {
                     return Err(NativeEvaluationError::InputMetaMismatch {
@@ -1091,7 +1130,7 @@ where
             value: NativeBindingValue::SourceVariants(vec![lower_variant(
                 variant,
                 context.references,
-            )]),
+            )?]),
         },
         NativeBinding {
             identity: judgment.constructor_binding().clone(),
@@ -1818,9 +1857,13 @@ fn validate_restored_type_reference(
 ) -> Result<(), NativeEvaluationError> {
     match reference {
         WholeLogosTypeReference::Identity(identity) => validate_restored_reference(identity),
+        WholeLogosTypeReference::Parameter(name) => validate_restored_reference(name),
         WholeLogosTypeReference::Application(application) => {
             validate_restored_reference(application.head())?;
-            validate_restored_type_reference(application.payload())
+            for argument in application.arguments() {
+                validate_restored_type_reference(argument)?;
+            }
+            Ok(())
         }
     }
 }
@@ -2182,31 +2225,46 @@ fn project_variants(
 fn lower_reference(
     reference: &WholeEthosTypeReference,
     references: &NativeReferenceUniverse,
-) -> WholeLogosTypeReference {
-    match reference {
+) -> Result<WholeLogosTypeReference, NativeEvaluationError> {
+    Ok(match reference {
         WholeEthosTypeReference::Identity(identity) => {
             WholeLogosTypeReference::Identity(references.map(identity))
         }
-        WholeEthosTypeReference::Application(application) => {
-            WholeLogosTypeReference::Application(lower_application(application, references))
+        WholeEthosTypeReference::Parameter(parameter) => {
+            WholeLogosTypeReference::Parameter(parameter.name().clone())
         }
-    }
+        WholeEthosTypeReference::Application(application) => {
+            WholeLogosTypeReference::Application(lower_application(application, references)?)
+        }
+    })
 }
 
 fn lower_application(
     application: &WholeEthosTypeApplication,
     references: &NativeReferenceUniverse,
-) -> WholeLogosTypeApplication {
+) -> Result<WholeLogosTypeApplication, NativeEvaluationError> {
+    let WholeEthosQuality::Shape(head) = application.head() else {
+        return Err(NativeEvaluationError::TypeApplicationHeadMustBeShape {
+            quality: application.head().identity().clone(),
+        });
+    };
     WholeLogosTypeApplication::new(
-        references.map(application.head()),
-        lower_reference(application.payload(), references),
+        references.map(head),
+        application
+            .arguments()
+            .iter()
+            .map(|argument| lower_reference(argument, references))
+            .collect::<Result<Vec<_>, _>>()?,
     )
+    .map_err(|_| NativeEvaluationError::EmptyTypeApplicationArguments {
+        head: head.clone(),
+    })
 }
 
 fn lower_variant(
     variant: &WholeEthosVariant,
     references: &NativeReferenceUniverse,
-) -> WholeLogosVariant {
+) -> Result<WholeLogosVariant, NativeEvaluationError> {
     let payload = match variant.payload() {
         WholeEthosVariantPayload::Unit => WholeLogosVariantPayload::Unit,
         WholeEthosVariantPayload::Tuple(fields) => {
@@ -2215,13 +2273,15 @@ fn lower_variant(
                     .fields()
                     .iter()
                     .map(|field| lower_reference(field, references))
-                    .collect(),
+                    .collect::<Result<Vec<_>, _>>()?,
             )
-            .expect("whole-Ethos tuple fields are non-empty");
+            .map_err(|_| NativeEvaluationError::EmptyVariantTuple {
+                variant: variant.name().clone(),
+            })?;
             WholeLogosVariantPayload::Tuple(fields)
         }
     };
-    WholeLogosVariant::new(variant.name().clone(), payload)
+    Ok(WholeLogosVariant::new(variant.name().clone(), payload))
 }
 
 /// A typed refusal from native authored evaluation or the bounded po2.6
@@ -2238,6 +2298,24 @@ pub enum NativeIdentityPosition {
 
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum NativeEvaluationError {
+    #[error("native authored evaluation only admits a Nexus document, found {kind:?}")]
+    UnsupportedDocumentBody { kind: WholeEthosFileKind },
+    #[error("native authored evaluation does not lower {item} declarations")]
+    UnsupportedDocumentItem { item: &'static str },
+    #[error("native authored evaluation does not lower Nexus trait declarations")]
+    UnsupportedNexusTraits,
+    #[error("recursive source {enumeration:?} variant {variant:?} uses parameter {parameter:?}")]
+    RecursiveSourceParameter {
+        enumeration: VocabularyEncodedId,
+        variant: VocabularyEncodedId,
+        parameter: VocabularyEncodedId,
+    },
+    #[error("type application head must be a Shape, found trait quality {quality:?}")]
+    TypeApplicationHeadMustBeShape { quality: VocabularyEncodedId },
+    #[error("type application {head:?} has no arguments")]
+    EmptyTypeApplicationArguments { head: VocabularyEncodedId },
+    #[error("variant {variant:?} has no tuple fields")]
+    EmptyVariantTuple { variant: VocabularyEncodedId },
     #[error(transparent)]
     NameTree(#[from] NativeNameTreeRefusal),
     #[error("reference mapping source belongs to {found:?}; expected Universal")]

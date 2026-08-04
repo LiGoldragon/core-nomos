@@ -12,14 +12,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use capsule_content_identity::IdentityHasher;
-use nexus_core_ethos::{
+use core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosItem, WholeEthosNewtype, WholeEthosQuality, WholeEthosStreamInitiation,
     WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTypeApplication,
     WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
     WholeEthosVisibility,
 };
-use nexus_core_logos::{
+use core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
     WholeLogosStorageFingerprint, WholeLogosStreamHandle, WholeLogosStreamInitiation,
     WholeLogosStreamLifecycle, WholeLogosStreamTermination, WholeLogosStruct, WholeLogosTable,

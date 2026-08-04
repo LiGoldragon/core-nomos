@@ -6,7 +6,7 @@
 //! typed gates.
 
 use core_ethos::{
-    WholeEthos, WholeEthosEnumeration, WholeEthosItem, WholeEthosTypeReference,
+    WholeEthos, WholeEthosBody, WholeEthosEnumeration, WholeEthosItem, WholeEthosTypeReference,
     WholeEthosVariantPayload, WholeEthosVisibility,
 };
 use core_logos::{WholeLogosEnumeration, WholeLogosVisibility};
@@ -151,22 +151,17 @@ impl ScopeOfDeclarationRecognition for ScopeOfTransformer {
             return Ok(None);
         };
 
-        // [assumption primary-zjo-A2 — exact typed application recognition]
-        if application.head() != &self.scope_of_head {
+        // [assumption primary-zjo-A2 — exact legacy spelling is recognized]
+        // [assumption primary-zjo-A3 — the unsupported spelling refuses]
+        // ScopeOf is a later complex transformer, not an angle Shape. Keep an
+        // old type-application spelling visible as a typed refusal rather than
+        // assigning it a new ontology category.
+        if application.head().identity() != &self.scope_of_head {
             return Ok(None);
         }
-
-        // [assumption primary-zjo-A3 — malformed matching form refuses]
-        let WholeEthosTypeReference::Identity(source) = application.payload() else {
-            return Err(ScopeOfRefusal::SourceOperandNotIdentity {
-                target: newtype.name().clone(),
-            });
-        };
-
-        Ok(Some(ScopeOfDeclaration {
+        Err(ScopeOfRefusal::LegacyScopeOfApplicationUnsupported {
             target: newtype.name().clone(),
-            source: source.clone(),
-        }))
+        })
     }
 }
 
@@ -179,7 +174,12 @@ impl ScopeOfSourceResolution for ScopeOfTransformer {
         let mut resolved = None;
         let mut wrong_kind = false;
 
-        for item in ethos.items() {
+        let items = match ethos.body() {
+            WholeEthosBody::Interface(body) => body.types(),
+            WholeEthosBody::Nexus(body) => body.types(),
+            WholeEthosBody::Sema(body) => body.record_types(),
+        };
+        for item in items {
             match item {
                 WholeEthosItem::Enumeration(enumeration)
                     if enumeration.name() == declaration.source() =>
@@ -198,7 +198,28 @@ impl ScopeOfSourceResolution for ScopeOfTransformer {
                     }
                     wrong_kind = true;
                 }
-                WholeEthosItem::Newtype(_) | WholeEthosItem::Enumeration(_) => {}
+                WholeEthosItem::Struct(structure) if structure.name() == declaration.source() => {
+                    if resolved.is_some() || wrong_kind {
+                        return Err(ScopeOfRefusal::DuplicateSourceDeclaration {
+                            source_identity: declaration.source().clone(),
+                        });
+                    }
+                    wrong_kind = true;
+                }
+                WholeEthosItem::StreamInitiation(initiation)
+                    if initiation.stream == *declaration.source() =>
+                {
+                    if resolved.is_some() || wrong_kind {
+                        return Err(ScopeOfRefusal::DuplicateSourceDeclaration {
+                            source_identity: declaration.source().clone(),
+                        });
+                    }
+                    wrong_kind = true;
+                }
+                WholeEthosItem::Newtype(_)
+                | WholeEthosItem::Struct(_)
+                | WholeEthosItem::Enumeration(_)
+                | WholeEthosItem::StreamInitiation(_) => {}
             }
         }
 
@@ -428,6 +449,10 @@ pub enum ScopeOfConfiguredIdentityPosition {
 /// Typed refusals from the pre-gate ScopeOf slice.
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ScopeOfRefusal {
+    /// The superseded angle-form ScopeOf spelling belongs to the later
+    /// transformer schema, not to the strict type-application ontology.
+    #[error("ScopeOf declaration {target:?} uses an unsupported legacy type application")]
+    LegacyScopeOfApplicationUnsupported { target: VocabularyEncodedId },
     /// A configured identity did not belong to Universal vocabulary.
     #[error("configured {position:?} identity belongs to {found:?}; expected Universal")]
     NonUniversalConfiguration {

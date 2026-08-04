@@ -911,6 +911,7 @@ fn lift_descriptor(
         | SharedDescriptor::Leaf(_)
         | SharedDescriptor::OrderedProduct(_)
         | SharedDescriptor::OrderedSequence(_)
+        | SharedDescriptor::AdjacentSequence(_)
         | SharedDescriptor::Application { .. }
         | SharedDescriptor::Delimited { .. }
         | SharedDescriptor::ItemBoundary { .. } => source.clone(),

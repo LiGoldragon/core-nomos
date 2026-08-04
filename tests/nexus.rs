@@ -7,7 +7,7 @@ use core_nomos::{
     TypeDeclarationStructuralTransformation,
 };
 use encoded_name_table::LocalEncodedId;
-use nexus_core_ethos::{
+use core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosNewtype,
     WholeEthosNexusBody, WholeEthosQuality, WholeEthosSemaBody, WholeEthosStreamInitiation,
@@ -15,7 +15,7 @@ use nexus_core_ethos::{
     WholeEthosTypeApplication, WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant,
     WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
 };
-use nexus_core_logos::{
+use core_logos::{
     WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference,
     WholeLogosVariantPayload,
 };
@@ -122,7 +122,7 @@ fn nexus_traits_lower_first_and_types_remain_plain_without_identity_allocation()
     );
     let archive = logos.to_archive_bytes().expect("archive Nexus Logos");
     assert_eq!(
-        nexus_core_logos::WholeLogos::from_archive_bytes(&archive).expect("restore Nexus Logos"),
+        core_logos::WholeLogos::from_archive_bytes(&archive).expect("restore Nexus Logos"),
         logos
     );
 }
@@ -131,7 +131,7 @@ fn nexus_traits_lower_first_and_types_remain_plain_without_identity_allocation()
 fn non_nexus_documents_refuse_at_the_typed_boundary() {
     let interface = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Interface, 1).expect("Interface header"),
-        WholeEthosBody::Interface(nexus_core_ethos::WholeEthosInterfaceBody::new(
+        WholeEthosBody::Interface(core_ethos::WholeEthosInterfaceBody::new(
             Vec::new(),
             Vec::new(),
             Vec::new(),
@@ -285,7 +285,7 @@ fn interface_positions_lower_to_wire_types_memberships_and_resolved_stream_lifec
     );
     assert_eq!(lifecycle.termination().refusal(), &universal(67));
 
-    let nexus_core_ethos::WholeEthosBody::Interface(body) = interface.body() else {
+    let core_ethos::WholeEthosBody::Interface(body) = interface.body() else {
         panic!("Interface body")
     };
     let shared_types = NexusTransformation::new()

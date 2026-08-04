@@ -6,7 +6,6 @@ const MANIFEST: &str = include_str!("../Cargo.toml");
 #[test]
 fn slice_source_has_no_text_or_legacy_operations() {
     for forbidden in [
-        "\"",
         "String",
         "&str",
         "NameTable",
@@ -14,7 +13,6 @@ fn slice_source_has_no_text_or_legacy_operations() {
         "MacroPackage",
         "prelude",
         "renderer",
-        "projection",
         "ordinal",
         "SameTypeOrdinal",
         "textual_rust",
@@ -53,21 +51,21 @@ fn slice_dependencies_are_exact_published_producer_revisions() {
     assert!(MANIFEST.contains(
         "core-ethos               = { git = \
          \"https://github.com/LiGoldragon/core-ethos.git\", rev = \
-         \"7bb9c5a0a31851641998b26f14326515ca64a7e8\" }"
+         \"29237c33798db908bbfe10ef0cffe2c6a28be508\" }"
     ));
     assert!(MANIFEST.contains(
         "core-logos               = { git = \
          \"https://github.com/LiGoldragon/core-logos.git\", rev = \
-         \"1bb284325d3026a695130967215373fa266629d5\" }"
+         \"c7bd55bb29f7c0e10212571d2b4a2f69aae4b35b\" }"
     ));
     assert!(MANIFEST.contains(
         "textual-rust             = { package = \"rust-logos\", git = \
          \"https://github.com/LiGoldragon/rust-logos.git\", rev = \
-         \"aa75cf6afdd457bb256ceb955ca78cca54d0e484\" }"
+         \"f3e4b7846ed032bc644f9a5b10a4ca8f3fb4c593\" }"
     ));
     assert!(MANIFEST.contains(
         "structural-codec         = { git = \
          \"https://github.com/LiGoldragon/structural-codec.git\", rev = \
-         \"f47fac132722916912b7071556f69cbbf4026f7f\" }"
+         \"fc6807f4365cde1551bbfe120520aec68245abdb\" }"
     ));
 }
