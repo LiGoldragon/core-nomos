@@ -14,8 +14,9 @@ use capsule_content_identity::IdentityHasher;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosItem, WholeEthosMethod, WholeEthosNewtype, WholeEthosStreamInitiation,
-    WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTypeApplication,
-    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosStreamTermination, WholeEthosStruct, WholeEthosTable, WholeEthosTrait,
+    WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
+    WholeEthosVariantPayload, WholeEthosVisibility,
 };
 use nexus_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
@@ -68,6 +69,14 @@ pub trait Transformer {
 
 impl Transformer for WholeEthosStreamInitiation {
     type Deferred = WholeEthosStreamInitiation;
+
+    fn defer(&self) -> Self::Deferred {
+        self.clone()
+    }
+}
+
+impl Transformer for WholeEthosStreamTermination {
+    type Deferred = WholeEthosStreamTermination;
 
     fn defer(&self) -> Self::Deferred {
         self.clone()
@@ -165,6 +174,7 @@ impl InterfaceRoleIdentities {
 pub struct InterfaceTransformationOutcome {
     logos: WholeLogos,
     deferred_stream_initiations: Vec<WholeEthosStreamInitiation>,
+    deferred_stream_terminations: Vec<WholeEthosStreamTermination>,
 }
 
 // Trait exception — too trivial: read-only outcome ergonomics.
@@ -177,6 +187,11 @@ impl InterfaceTransformationOutcome {
     /// Stream initiations deliberately retained for their lifecycle Nomos.
     pub fn deferred_stream_initiations(&self) -> &[WholeEthosStreamInitiation] {
         &self.deferred_stream_initiations
+    }
+
+    /// Stream terminations deliberately retained for their lifecycle Nomos.
+    pub fn deferred_stream_terminations(&self) -> &[WholeEthosStreamTermination] {
+        &self.deferred_stream_terminations
     }
 }
 
@@ -300,6 +315,11 @@ impl NexusTransformation {
             WholeEthosItem::StreamInitiation(initiation) => {
                 Err(NexusTransformationError::UnsupportedStreamInitiation {
                     stream: initiation.stream.clone(),
+                })
+            }
+            WholeEthosItem::StreamTermination(termination) => {
+                Err(NexusTransformationError::UnsupportedStreamTermination {
+                    stream: termination.stream.clone(),
                 })
             }
         }
@@ -535,6 +555,11 @@ impl NexusTransformation {
                     identity: initiation.stream.clone(),
                 });
             }
+            WholeEthosItem::StreamTermination(termination) => {
+                return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
+                    identity: termination.stream.clone(),
+                });
+            }
         };
         visiting.remove(identity);
         Ok(result)
@@ -664,10 +689,14 @@ impl InterfaceStructuralTransformation for NexusTransformation {
         }
 
         let mut deferred_stream_initiations = Vec::new();
+        let mut deferred_stream_terminations = Vec::new();
         for item in body.types() {
             match item {
                 WholeEthosItem::StreamInitiation(initiation) => {
                     deferred_stream_initiations.push(initiation.defer());
+                }
+                WholeEthosItem::StreamTermination(termination) => {
+                    deferred_stream_terminations.push(termination.defer());
                 }
                 declaration => {
                     items.push(self.lower_item(declaration, WholeLogosTypeAttributes::Wire)?);
@@ -678,6 +707,7 @@ impl InterfaceStructuralTransformation for NexusTransformation {
         Ok(InterfaceTransformationOutcome {
             logos: WholeLogos::new(items),
             deferred_stream_initiations,
+            deferred_stream_terminations,
         })
     }
 }
@@ -704,6 +734,11 @@ impl SemaStructuralTransformation for NexusTransformation {
                 WholeEthosItem::StreamInitiation(initiation) => {
                     return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
                         identity: initiation.stream.clone(),
+                    });
+                }
+                WholeEthosItem::StreamTermination(termination) => {
+                    return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
+                        identity: termination.stream.clone(),
                     });
                 }
             };
@@ -901,6 +936,12 @@ pub enum NexusTransformationError {
     /// Stream lifecycle semantics are outside this transformer.
     #[error("Nexus type section contains unsupported stream initiation {stream:?}")]
     UnsupportedStreamInitiation {
+        /// Authored stream identity.
+        stream: VocabularyEncodedId,
+    },
+    /// Stream lifecycle semantics are outside this transformer.
+    #[error("Nexus type section contains unsupported stream termination {stream:?}")]
+    UnsupportedStreamTermination {
         /// Authored stream identity.
         stream: VocabularyEncodedId,
     },

@@ -10,10 +10,10 @@ use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosMethod, WholeEthosNewtype,
-    WholeEthosNexusBody, WholeEthosSemaBody, WholeEthosStreamInitiation, WholeEthosStruct,
-    WholeEthosTable, WholeEthosTrait, WholeEthosTupleFields, WholeEthosTypeApplication,
-    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
-    WholeEthosWrappedField,
+    WholeEthosNexusBody, WholeEthosSemaBody, WholeEthosStreamInitiation,
+    WholeEthosStreamTermination, WholeEthosStruct, WholeEthosTable, WholeEthosTrait,
+    WholeEthosTupleFields, WholeEthosTypeApplication, WholeEthosTypeReference, WholeEthosVariant,
+    WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
 };
 use nexus_core_logos::{
     WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariantPayload,
@@ -200,6 +200,9 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferral
                     subscription: reference(35),
                     event: reference(37),
                 }),
+                WholeEthosItem::StreamTermination(WholeEthosStreamTermination {
+                    stream: universal(41),
+                }),
             ],
         )),
     )
@@ -277,6 +280,11 @@ fn interface_positions_lower_to_wire_types_memberships_and_typed_stream_deferral
     assert_eq!(
         outcome.deferred_stream_initiations()[0].event,
         reference(37)
+    );
+    assert_eq!(outcome.deferred_stream_terminations().len(), 1);
+    assert_eq!(
+        outcome.deferred_stream_terminations()[0].stream,
+        universal(41)
     );
 
     let nexus_core_ethos::WholeEthosBody::Interface(body) = interface.body() else {

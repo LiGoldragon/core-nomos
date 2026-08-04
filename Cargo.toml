@@ -20,7 +20,7 @@ encoded-name-table       = { package = "name-table", git = "https://github.com/L
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "c85cec6117bfd4c423d952fd54e0c0bb11562f89" }
 core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "7bb9c5a0a31851641998b26f14326515ca64a7e8" }
 core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "1bb284325d3026a695130967215373fa266629d5" }
-nexus-core-ethos         = { package = "core-ethos", git = "https://github.com/LiGoldragon/core-ethos.git", rev = "ddd3ec66a57fc4b58a4f9b2395ed70690cb9d100" }
+nexus-core-ethos         = { package = "core-ethos", git = "https://github.com/LiGoldragon/core-ethos.git", rev = "3fd3faa3210a2a36f0c803c9319a6776068c1c72" }
 nexus-core-logos         = { package = "core-logos", git = "https://github.com/LiGoldragon/core-logos.git", rev = "f02ce18c93f85ce44e6e2e291a2bd514346eccbe" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "7290f65bbb5e7825ab2ca58340631d154d69d110" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "51c02c4a7b6f67d9dad095f11986085d7d65785b" }
