@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use capsule_content_identity::IdentityHasher;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
-    WholeEthosItem, WholeEthosNewtype, WholeEthosStreamInitiation,
+    WholeEthosItem, WholeEthosNewtype, WholeEthosQuality, WholeEthosStreamInitiation,
     WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTypeApplication,
     WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
     WholeEthosVisibility,
@@ -23,9 +23,9 @@ use nexus_core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
     WholeLogosStorageFingerprint, WholeLogosStreamHandle, WholeLogosStreamInitiation,
     WholeLogosStreamLifecycle, WholeLogosStreamTermination, WholeLogosStruct, WholeLogosTable,
-    WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTupleFields,
-    WholeLogosTypeApplication, WholeLogosTypeAttributes, WholeLogosTypeParameter,
-    WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
+    WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTupleFields, WholeLogosTypeApplication,
+    WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference, WholeLogosVariant,
+    WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -355,7 +355,7 @@ impl NexusTransformation {
                 .type_parameters()
                 .iter()
                 .map(Self::lower_type_parameter)
-                .collect(),
+                .collect::<Result<Vec<_>, _>>()?,
         ))
     }
 
@@ -444,27 +444,38 @@ impl NexusTransformation {
         })
     }
 
-    fn lower_type_parameter(parameter: &WholeEthosTypeParameter) -> WholeLogosTypeParameter {
-        WholeLogosTypeParameter::new(parameter.name().clone(), parameter.quality().clone())
+    fn lower_type_parameter(
+        parameter: &WholeEthosTypeParameter,
+    ) -> Result<WholeLogosTypeParameter, NexusTransformationError> {
+        let WholeEthosQuality::Trait(quality) = parameter.quality() else {
+            return Err(NexusTransformationError::TypeParameterQualityMustBeTrait {
+                quality: parameter.quality().identity().clone(),
+            });
+        };
+        Ok(WholeLogosTypeParameter::new(
+            parameter.name().clone(),
+            quality.clone(),
+        ))
     }
 
     fn lower_application(
         &self,
         application: &WholeEthosTypeApplication,
     ) -> Result<WholeLogosTypeApplication, NexusTransformationError> {
+        let WholeEthosQuality::Shape(head) = application.head() else {
+            return Err(NexusTransformationError::TypeApplicationHeadMustBeShape {
+                quality: application.head().identity().clone(),
+            });
+        };
         WholeLogosTypeApplication::new(
-            self.map_reference(application.head()),
+            self.map_reference(head),
             application
                 .arguments()
                 .iter()
                 .map(|argument| self.lower_reference(argument))
                 .collect::<Result<Vec<_>, _>>()?,
         )
-        .map_err(
-            |_| NexusTransformationError::EmptyTypeApplicationArguments {
-                head: application.head().clone(),
-            },
-        )
+        .map_err(|_| NexusTransformationError::EmptyTypeApplicationArguments { head: head.clone() })
     }
 
     fn map_reference(&self, source: &VocabularyEncodedId) -> VocabularyEncodedId {
@@ -494,10 +505,15 @@ impl NexusTransformation {
                 })
             }
             WholeEthosTypeReference::Application(application) => {
-                let head = self.external_storage_fingerprint(application.head())?;
+                let WholeEthosQuality::Shape(application_head) = application.head() else {
+                    return Err(NexusTransformationError::TypeApplicationHeadMustBeShape {
+                        quality: application.head().identity().clone(),
+                    });
+                };
+                let head = self.external_storage_fingerprint(application_head)?;
                 let mut hasher = storage_shape_hasher(b"application");
-                update_identity(&mut hasher, application.head());
-                update_identity(&mut hasher, &self.map_reference(application.head()));
+                update_identity(&mut hasher, application_head);
+                update_identity(&mut hasher, &self.map_reference(application_head));
                 hasher.update_length_prefixed(&head.bytes());
                 update_count(&mut hasher, application.arguments().len());
                 for argument in application.arguments() {
@@ -1055,6 +1071,18 @@ pub enum NexusTransformationError {
     EmptyTypeApplicationArguments {
         /// Authored application head.
         head: VocabularyEncodedId,
+    },
+    /// A malformed Whole-Ethos parameter carried a shape where a trait bound is required.
+    #[error("Nexus cannot lower shape quality {quality:?} as a type-parameter trait")]
+    TypeParameterQualityMustBeTrait {
+        /// Quality supplied in the wrong role.
+        quality: VocabularyEncodedId,
+    },
+    /// A malformed Whole-Ethos application carried a trait where a shape is required.
+    #[error("Nexus cannot lower trait quality {quality:?} as a type-application shape")]
+    TypeApplicationHeadMustBeShape {
+        /// Quality supplied in the wrong role.
+        quality: VocabularyEncodedId,
     },
     /// Sema storage layouts cannot be derived from an item-local generic pickup.
     #[error("Sema storage shape cannot resolve type parameter {name:?}")]

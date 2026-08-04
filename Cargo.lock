@@ -149,7 +149,7 @@ dependencies = [
 [[package]]
 name = "core-ethos"
 version = "0.25.0"
-source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=5fead8cb69144f0b4bfbfa7b889c3cd32d1ce4da#5fead8cb69144f0b4bfbfa7b889c3cd32d1ce4da"
+source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=d9181788954cb61c0efe05397304fb060f2d765f#d9181788954cb61c0efe05397304fb060f2d765f"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",

@@ -10,10 +10,10 @@ use encoded_name_table::LocalEncodedId;
 use nexus_core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosNewtype,
-    WholeEthosNexusBody, WholeEthosSemaBody, WholeEthosStreamInitiation, WholeEthosStruct,
-    WholeEthosTable, WholeEthosTrait, WholeEthosTupleFields, WholeEthosTypeApplication,
-    WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
-    WholeEthosVisibility, WholeEthosWrappedField,
+    WholeEthosNexusBody, WholeEthosQuality, WholeEthosSemaBody, WholeEthosStreamInitiation,
+    WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTupleFields,
+    WholeEthosTypeApplication, WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant,
+    WholeEthosVariantPayload, WholeEthosVisibility, WholeEthosWrappedField,
 };
 use nexus_core_logos::{
     WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference,
@@ -359,7 +359,7 @@ fn nexus_lowering_retains_nary_type_applications_in_authored_order() {
                     WholeEthosVisibility::Private,
                     WholeEthosTypeReference::Application(
                         WholeEthosTypeApplication::new(
-                            universal(81),
+                            WholeEthosQuality::Shape(universal(81)),
                             vec![reference(82), reference(83)],
                         )
                         .expect("two authored arguments"),
@@ -406,11 +406,11 @@ fn nexus_lowering_retains_picked_up_parameter_names_and_quality_bounds() {
                     WholeEthosVisibility::Private,
                     WholeEthosTypeReference::Application(
                         WholeEthosTypeApplication::new(
-                            result,
+                            WholeEthosQuality::Shape(result),
                             vec![
                                 WholeEthosTypeReference::Parameter(WholeEthosTypeParameter::new(
                                     ordered.clone(),
-                                    ordered.clone(),
+                                    WholeEthosQuality::Trait(ordered.clone()),
                                 )),
                                 WholeEthosTypeReference::Identity(error),
                             ],
@@ -620,7 +620,7 @@ fn sema_table_refuses_applied_record_and_key_shapes_without_partial_logos() {
     };
     let applied = |payload| {
         WholeEthosTypeReference::Application(
-            WholeEthosTypeApplication::new(universal(93), vec![payload])
+            WholeEthosTypeApplication::new(WholeEthosQuality::Shape(universal(93)), vec![payload])
                 .expect("one application argument"),
         )
     };
