@@ -15,9 +15,8 @@ use capsule_content_identity::IdentityHasher;
 use core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosItem, WholeEthosNewtype, WholeEthosQuality, WholeEthosStreamInitiation,
-    WholeEthosStruct, WholeEthosTable, WholeEthosTrait, WholeEthosTypeApplication,
-    WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
-    WholeEthosVisibility,
+    WholeEthosStruct, WholeEthosTrait, WholeEthosTypeApplication, WholeEthosTypeParameter,
+    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
 };
 use core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
@@ -58,13 +57,333 @@ pub trait InterfaceStructuralTransformation {
 
 /// The Sema record/table document-to-Logos structural contract.
 pub trait SemaStructuralTransformation {
-    /// Lower stored record declarations and every table whose record type is
-    /// declared by this document. Valid imported-record tables remain explicit
-    /// typed deferrals; malformed record/key shapes refuse the whole projection.
+    /// Lower stored record declarations and every table whose record shape is
+    /// registered in the complete authored bundle. Malformed, unknown, or
+    /// foreign-owned record shapes refuse the whole projection.
     fn lower_sema(
         &self,
         ethos: &WholeEthos,
+        provenance: &dyn NomosStorageProvenance,
     ) -> Result<SemaTransformationOutcome, NexusTransformationError>;
+}
+
+/// Exact revision-bearing owner evidence for an externally archived storage
+/// type. The owner/revision records provenance without changing the stable
+/// storage-shape bytes: an ABI-preserving producer repin is not a new layout.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorageProvenanceOwner {
+    source: String,
+    revision: String,
+}
+
+impl StorageProvenanceOwner {
+    /// Bind one published producer source and immutable revision.
+    pub fn new(source: String, revision: String) -> Result<Self, NexusTransformationError> {
+        if source.is_empty() {
+            return Err(NexusTransformationError::StorageProvenanceOwnerEmpty { field: "source" });
+        }
+        if revision.is_empty() {
+            return Err(NexusTransformationError::StorageProvenanceOwnerEmpty {
+                field: "revision",
+            });
+        }
+        Ok(Self { source, revision })
+    }
+
+    /// Published producer that owns this archived storage contract.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Immutable producer revision that supplied the contract.
+    pub fn revision(&self) -> &str {
+        &self.revision
+    }
+}
+
+/// Provenance for one non-bundle storage type. The identity, exact archive
+/// fingerprint, and published owner revision travel together; no unlabelled
+/// fingerprint map can cross the Nomos boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalStorageProvenance {
+    identity: VocabularyEncodedId,
+    fingerprint: WholeLogosStorageFingerprint,
+    owner: StorageProvenanceOwner,
+}
+
+impl ExternalStorageProvenance {
+    /// Bind one Universal external type to evidence from its owning producer.
+    pub fn new(
+        identity: VocabularyEncodedId,
+        fingerprint: [u8; 32],
+        owner: StorageProvenanceOwner,
+    ) -> Result<Self, NexusTransformationError> {
+        if identity.root_variant() != &VocabularyRoot::Universal {
+            return Err(NexusTransformationError::StorageProvenanceIdentityRoot {
+                found: *identity.root_variant(),
+            });
+        }
+        Ok(Self {
+            identity,
+            fingerprint: WholeLogosStorageFingerprint::new(fingerprint),
+            owner,
+        })
+    }
+
+    /// The imported Ethos identity covered by this evidence.
+    pub const fn identity(&self) -> &VocabularyEncodedId {
+        &self.identity
+    }
+
+    /// Exact archived storage-shape evidence supplied by its owner.
+    pub const fn fingerprint(&self) -> WholeLogosStorageFingerprint {
+        self.fingerprint
+    }
+
+    /// Published owner and immutable revision for the evidence.
+    pub const fn owner(&self) -> &StorageProvenanceOwner {
+        &self.owner
+    }
+}
+
+/// Typed storage-shape resolution owned by Nomos. Bundle declarations receive
+/// the same recursive local algorithm wherever they are imported; only absent
+/// identities may use explicit external producer provenance.
+pub trait NomosStorageProvenance {
+    /// Resolve one complete concrete reference into its deterministic storage
+    /// shape or refuse the missing/foreign/cyclic ownership boundary.
+    fn storage_fingerprint(
+        &self,
+        reference: &WholeEthosTypeReference,
+    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError>;
+
+    /// Whether a type identity is a declaration in the pre-registered bundle.
+    fn declares(&self, identity: &VocabularyEncodedId) -> bool;
+}
+
+/// Pre-registered declarations from the entire authored Interface/Nexus/Sema
+/// bundle and exact provenance for the genuinely external leaves it reaches.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BundleStorageProvenance {
+    declarations: BTreeMap<VocabularyEncodedId, WholeEthosItem>,
+    external: Vec<ExternalStorageProvenance>,
+}
+
+impl BundleStorageProvenance {
+    /// Register all value declarations before lowering any root. Duplicate
+    /// Universal identities and bundle/external ownership conflicts are typed
+    /// refusals rather than order-sensitive overwrite behavior.
+    pub fn from_documents(
+        documents: impl IntoIterator<Item = WholeEthos>,
+        mut external: Vec<ExternalStorageProvenance>,
+    ) -> Result<Self, NexusTransformationError> {
+        let mut declarations = BTreeMap::new();
+        for document in documents {
+            Self::register_document(&mut declarations, document)?;
+        }
+        external.sort_by(|left, right| left.identity().cmp(right.identity()));
+        for adjacent in external.windows(2) {
+            if adjacent[0].identity() == adjacent[1].identity() {
+                return Err(
+                    NexusTransformationError::DuplicateExternalStorageProvenance {
+                        identity: adjacent[0].identity().clone(),
+                    },
+                );
+            }
+        }
+        for provenance in &external {
+            if declarations.contains_key(provenance.identity()) {
+                return Err(
+                    NexusTransformationError::StorageProvenanceOwnershipConflict {
+                        identity: provenance.identity().clone(),
+                    },
+                );
+            }
+        }
+        Ok(Self {
+            declarations,
+            external,
+        })
+    }
+
+    /// Canonically ordered external provenance in this bundle boundary.
+    pub fn external(&self) -> &[ExternalStorageProvenance] {
+        &self.external
+    }
+
+    fn register_document(
+        declarations: &mut BTreeMap<VocabularyEncodedId, WholeEthosItem>,
+        document: WholeEthos,
+    ) -> Result<(), NexusTransformationError> {
+        let mut register = |item: WholeEthosItem| {
+            let Some(identity) = storage_declaration_identity(&item).cloned() else {
+                return Ok(());
+            };
+            if declarations.insert(identity.clone(), item).is_some() {
+                return Err(
+                    NexusTransformationError::DuplicateBundleStorageDeclaration { identity },
+                );
+            }
+            Ok(())
+        };
+        match document.body() {
+            WholeEthosBody::Interface(body) => {
+                for input in body.inputs() {
+                    register(WholeEthosItem::Newtype(input.clone()))?;
+                }
+                for output in body.outputs() {
+                    register(WholeEthosItem::Newtype(output.clone()))?;
+                }
+                for refusal in body.refusals() {
+                    register(WholeEthosItem::Struct(refusal.clone()))?;
+                }
+                for item in body.types() {
+                    register(item.clone())?;
+                }
+            }
+            WholeEthosBody::Nexus(body) => {
+                for item in body.types() {
+                    register(item.clone())?;
+                }
+            }
+            WholeEthosBody::Sema(body) => {
+                for item in body.record_types() {
+                    register(item.clone())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn external_fingerprint(
+        &self,
+        identity: &VocabularyEncodedId,
+    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
+        self.external
+            .binary_search_by(|entry| entry.identity().cmp(identity))
+            .map(|index| self.external[index].fingerprint())
+            .map_err(
+                |_| NexusTransformationError::MissingExternalStorageProvenance {
+                    identity: identity.clone(),
+                },
+            )
+    }
+
+    fn local_storage_fingerprint(
+        &self,
+        identity: &VocabularyEncodedId,
+        visiting: &mut BTreeSet<VocabularyEncodedId>,
+    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
+        if !visiting.insert(identity.clone()) {
+            return Err(NexusTransformationError::CyclicSemaStorageShape {
+                identity: identity.clone(),
+            });
+        }
+        let declaration = self
+            .declarations
+            .get(identity)
+            .expect("bundle declaration checked before local storage fingerprint");
+        let result = match declaration {
+            WholeEthosItem::Newtype(newtype) => {
+                let wrapped =
+                    self.storage_fingerprint_inner(newtype.wrapped_field().reference(), visiting)?;
+                let mut hasher = storage_shape_hasher(b"newtype");
+                update_identity(&mut hasher, identity);
+                hasher.update_length_prefixed(&wrapped.bytes());
+                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
+            }
+            WholeEthosItem::Struct(structure) => {
+                let mut hasher = storage_shape_hasher(b"struct");
+                update_identity(&mut hasher, identity);
+                update_count(&mut hasher, structure.fields().len());
+                for field in structure.fields() {
+                    let field = self.storage_fingerprint_inner(field, visiting)?;
+                    hasher.update_length_prefixed(&field.bytes());
+                }
+                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
+            }
+            WholeEthosItem::Enumeration(enumeration) => {
+                let mut hasher = storage_shape_hasher(b"enumeration");
+                update_identity(&mut hasher, identity);
+                update_count(&mut hasher, enumeration.variants().len());
+                for variant in enumeration.variants() {
+                    update_identity(&mut hasher, variant.name());
+                    match variant.payload() {
+                        WholeEthosVariantPayload::Unit => {
+                            hasher.update_length_prefixed(b"unit");
+                        }
+                        WholeEthosVariantPayload::Tuple(fields) => {
+                            hasher.update_length_prefixed(b"tuple");
+                            update_count(&mut hasher, fields.fields().len());
+                            for field in fields.fields() {
+                                let field = self.storage_fingerprint_inner(field, visiting)?;
+                                hasher.update_length_prefixed(&field.bytes());
+                            }
+                        }
+                    }
+                }
+                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
+            }
+            WholeEthosItem::StreamInitiation(initiation) => {
+                return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
+                    identity: initiation.stream.clone(),
+                });
+            }
+        };
+        visiting.remove(identity);
+        Ok(result)
+    }
+
+    fn storage_fingerprint_inner(
+        &self,
+        reference: &WholeEthosTypeReference,
+        visiting: &mut BTreeSet<VocabularyEncodedId>,
+    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
+        match reference {
+            WholeEthosTypeReference::Identity(identity) => {
+                if self.declarations.contains_key(identity) {
+                    self.local_storage_fingerprint(identity, visiting)
+                } else {
+                    self.external_fingerprint(identity)
+                }
+            }
+            WholeEthosTypeReference::Parameter(parameter) => {
+                Err(NexusTransformationError::UnresolvedTypeParameter {
+                    name: parameter.name().clone(),
+                })
+            }
+            WholeEthosTypeReference::Application(application) => {
+                let WholeEthosQuality::Shape(application_head) = application.head() else {
+                    return Err(NexusTransformationError::TypeApplicationHeadMustBeShape {
+                        quality: application.head().identity().clone(),
+                    });
+                };
+                let head = self.external_fingerprint(application_head)?;
+                let mut hasher = storage_shape_hasher(b"application");
+                update_identity(&mut hasher, application_head);
+                hasher.update_length_prefixed(&head.bytes());
+                update_count(&mut hasher, application.arguments().len());
+                for argument in application.arguments() {
+                    let argument = self.storage_fingerprint_inner(argument, visiting)?;
+                    hasher.update_length_prefixed(&argument.bytes());
+                }
+                Ok(WholeLogosStorageFingerprint::new(hasher.finalize_bytes()))
+            }
+        }
+    }
+}
+
+impl NomosStorageProvenance for BundleStorageProvenance {
+    fn storage_fingerprint(
+        &self,
+        reference: &WholeEthosTypeReference,
+    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
+        self.storage_fingerprint_inner(reference, &mut BTreeSet::new())
+    }
+
+    fn declares(&self, identity: &VocabularyEncodedId) -> bool {
+        self.declarations.contains_key(identity)
+    }
 }
 
 /// The three universal marker-trait identities assigned by Interface position.
@@ -161,19 +480,13 @@ impl InterfaceTransformationOutcome {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemaTransformationOutcome {
     logos: WholeLogos,
-    deferred_tables: Vec<WholeEthosTable>,
 }
 
 // Trait exception — too trivial: read-only outcome ergonomics.
 impl SemaTransformationOutcome {
-    /// Stored record declarations followed by structurally supported tables.
+    /// Stored record declarations followed by their complete table set.
     pub const fn logos(&self) -> &WholeLogos {
         &self.logos
-    }
-
-    /// Valid imported-record tables retained for a later producer.
-    pub fn deferred_tables(&self) -> &[WholeEthosTable] {
-        &self.deferred_tables
     }
 }
 
@@ -195,7 +508,6 @@ pub trait TypeDeclarationStructuralTransformation {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct NexusTransformation {
     reference_mappings: Vec<NexusVocabularyReferenceMapping>,
-    storage_fingerprints: Vec<SemaStorageTypeFingerprintMapping>,
     stream_lifecycle_identities: Vec<StreamLifecycleIdentities>,
 }
 
@@ -206,7 +518,6 @@ impl NexusTransformation {
     pub const fn new() -> Self {
         Self {
             reference_mappings: Vec::new(),
-            storage_fingerprints: Vec::new(),
             stream_lifecycle_identities: Vec::new(),
         }
     }
@@ -225,7 +536,6 @@ impl NexusTransformation {
         }
         Ok(Self {
             reference_mappings,
-            storage_fingerprints: Vec::new(),
             stream_lifecycle_identities: Vec::new(),
         })
     }
@@ -233,31 +543,6 @@ impl NexusTransformation {
     /// Canonically ordered exact reference mappings.
     pub fn reference_mappings(&self) -> &[NexusVocabularyReferenceMapping] {
         &self.reference_mappings
-    }
-
-    /// Attach exact storage contracts for non-local types used by Sema table
-    /// record graphs or keys.
-    pub fn with_storage_fingerprints(
-        mut self,
-        mut storage_fingerprints: Vec<SemaStorageTypeFingerprintMapping>,
-    ) -> Result<Self, NexusTransformationError> {
-        storage_fingerprints.sort_by(|left, right| left.source().cmp(right.source()));
-        for adjacent in storage_fingerprints.windows(2) {
-            if adjacent[0].source() == adjacent[1].source() {
-                return Err(
-                    NexusTransformationError::DuplicateSemaStorageFingerprintSource {
-                        identity: adjacent[0].source().clone(),
-                    },
-                );
-            }
-        }
-        self.storage_fingerprints = storage_fingerprints;
-        Ok(self)
-    }
-
-    /// Canonically ordered external storage contracts.
-    pub fn storage_fingerprints(&self) -> &[SemaStorageTypeFingerprintMapping] {
-        &self.storage_fingerprints
     }
 
     /// Attach caller-authored generated identities for each strict stream
@@ -485,133 +770,6 @@ impl NexusTransformation {
             .unwrap_or_else(|_| source.clone())
     }
 
-    fn storage_fingerprint(
-        &self,
-        reference: &WholeEthosTypeReference,
-        declarations: &BTreeMap<VocabularyEncodedId, &WholeEthosItem>,
-        visiting: &mut BTreeSet<VocabularyEncodedId>,
-    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
-        match reference {
-            WholeEthosTypeReference::Identity(identity) => {
-                if let Some(declaration) = declarations.get(identity) {
-                    self.local_storage_fingerprint(identity, declaration, declarations, visiting)
-                } else {
-                    self.external_storage_fingerprint(identity)
-                }
-            }
-            WholeEthosTypeReference::Parameter(parameter) => {
-                Err(NexusTransformationError::UnresolvedTypeParameter {
-                    name: parameter.name().clone(),
-                })
-            }
-            WholeEthosTypeReference::Application(application) => {
-                let WholeEthosQuality::Shape(application_head) = application.head() else {
-                    return Err(NexusTransformationError::TypeApplicationHeadMustBeShape {
-                        quality: application.head().identity().clone(),
-                    });
-                };
-                let head = self.external_storage_fingerprint(application_head)?;
-                let mut hasher = storage_shape_hasher(b"application");
-                update_identity(&mut hasher, application_head);
-                update_identity(&mut hasher, &self.map_reference(application_head));
-                hasher.update_length_prefixed(&head.bytes());
-                update_count(&mut hasher, application.arguments().len());
-                for argument in application.arguments() {
-                    let argument = self.storage_fingerprint(argument, declarations, visiting)?;
-                    hasher.update_length_prefixed(&argument.bytes());
-                }
-                Ok(WholeLogosStorageFingerprint::new(hasher.finalize_bytes()))
-            }
-        }
-    }
-
-    fn local_storage_fingerprint(
-        &self,
-        identity: &VocabularyEncodedId,
-        declaration: &WholeEthosItem,
-        declarations: &BTreeMap<VocabularyEncodedId, &WholeEthosItem>,
-        visiting: &mut BTreeSet<VocabularyEncodedId>,
-    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
-        if !visiting.insert(identity.clone()) {
-            return Err(NexusTransformationError::CyclicSemaStorageShape {
-                identity: identity.clone(),
-            });
-        }
-        let result = match declaration {
-            WholeEthosItem::Newtype(newtype) => {
-                let wrapped = self.storage_fingerprint(
-                    newtype.wrapped_field().reference(),
-                    declarations,
-                    visiting,
-                )?;
-                let mut hasher = storage_shape_hasher(b"newtype");
-                update_identity(&mut hasher, identity);
-                hasher.update_length_prefixed(&wrapped.bytes());
-                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
-            }
-            WholeEthosItem::Struct(structure) => {
-                let mut hasher = storage_shape_hasher(b"struct");
-                update_identity(&mut hasher, identity);
-                update_count(&mut hasher, structure.fields().len());
-                for field in structure.fields() {
-                    let field = self.storage_fingerprint(field, declarations, visiting)?;
-                    hasher.update_length_prefixed(&field.bytes());
-                }
-                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
-            }
-            WholeEthosItem::Enumeration(enumeration) => {
-                let mut hasher = storage_shape_hasher(b"enumeration");
-                update_identity(&mut hasher, identity);
-                update_count(&mut hasher, enumeration.variants().len());
-                for variant in enumeration.variants() {
-                    update_identity(&mut hasher, variant.name());
-                    match variant.payload() {
-                        WholeEthosVariantPayload::Unit => {
-                            hasher.update_length_prefixed(b"unit");
-                        }
-                        WholeEthosVariantPayload::Tuple(fields) => {
-                            hasher.update_length_prefixed(b"tuple");
-                            update_count(&mut hasher, fields.fields().len());
-                            for field in fields.fields() {
-                                let field =
-                                    self.storage_fingerprint(field, declarations, visiting)?;
-                                hasher.update_length_prefixed(&field.bytes());
-                            }
-                        }
-                    }
-                }
-                WholeLogosStorageFingerprint::new(hasher.finalize_bytes())
-            }
-            WholeEthosItem::StreamInitiation(initiation) => {
-                return Err(NexusTransformationError::InvalidSemaRecordDeclaration {
-                    identity: initiation.stream.clone(),
-                });
-            }
-        };
-        visiting.remove(identity);
-        Ok(result)
-    }
-
-    fn external_storage_fingerprint(
-        &self,
-        source: &VocabularyEncodedId,
-    ) -> Result<WholeLogosStorageFingerprint, NexusTransformationError> {
-        let index = self
-            .storage_fingerprints
-            .binary_search_by(|mapping| mapping.source().cmp(source))
-            .map_err(
-                |_| NexusTransformationError::MissingSemaStorageFingerprint {
-                    identity: source.clone(),
-                },
-            )?;
-        let mapping = &self.storage_fingerprints[index];
-        let mut hasher = storage_shape_hasher(b"external");
-        update_identity(&mut hasher, source);
-        update_identity(&mut hasher, &self.map_reference(source));
-        hasher.update_length_prefixed(&mapping.fingerprint().bytes());
-        Ok(WholeLogosStorageFingerprint::new(hasher.finalize_bytes()))
-    }
-
     const fn lower_visibility(visibility: WholeEthosVisibility) -> WholeLogosVisibility {
         match visibility {
             WholeEthosVisibility::Public => WholeLogosVisibility::Public,
@@ -729,6 +887,7 @@ impl SemaStructuralTransformation for NexusTransformation {
     fn lower_sema(
         &self,
         ethos: &WholeEthos,
+        provenance: &dyn NomosStorageProvenance,
     ) -> Result<SemaTransformationOutcome, NexusTransformationError> {
         let WholeEthosBody::Sema(body) = ethos.body() else {
             return Err(NexusTransformationError::UnsupportedFileKind {
@@ -738,7 +897,6 @@ impl SemaStructuralTransformation for NexusTransformation {
         };
 
         let mut declared_records = Vec::with_capacity(body.record_types().len());
-        let mut record_declarations = BTreeMap::new();
         for item in body.record_types() {
             let name = match item {
                 WholeEthosItem::Newtype(newtype) => newtype.name(),
@@ -751,7 +909,6 @@ impl SemaStructuralTransformation for NexusTransformation {
                 }
             };
             declared_records.push(name.clone());
-            record_declarations.insert(name.clone(), item);
         }
         declared_records.sort();
         for adjacent in declared_records.windows(2) {
@@ -779,7 +936,6 @@ impl SemaStructuralTransformation for NexusTransformation {
         let mut items = self
             .lower_type_declarations(body.record_types(), WholeLogosTypeAttributes::Stored)?
             .into_items();
-        let mut deferred_tables = Vec::new();
         for table in body.tables() {
             let WholeEthosTypeReference::Identity(record) = table.record() else {
                 return Err(NexusTransformationError::InvalidSemaTableRecordShape {
@@ -791,17 +947,14 @@ impl SemaStructuralTransformation for NexusTransformation {
                     table: table.name().clone(),
                 });
             };
-            if declared_records.binary_search(record).is_err() {
-                deferred_tables.push(table.clone());
-                continue;
+            if !provenance.declares(record) {
+                return Err(NexusTransformationError::SemaTableRecordNotBundleOwned {
+                    table: table.name().clone(),
+                    record: record.clone(),
+                });
             }
-            let record_storage = self.storage_fingerprint(
-                table.record(),
-                &record_declarations,
-                &mut BTreeSet::new(),
-            )?;
-            let key_storage =
-                self.storage_fingerprint(table.key(), &record_declarations, &mut BTreeSet::new())?;
+            let record_storage = provenance.storage_fingerprint(table.record())?;
+            let key_storage = provenance.storage_fingerprint(table.key())?;
             items.push(WholeLogosItem::Table(WholeLogosTable::new(
                 table.name().clone(),
                 WholeLogosTypeReference::Identity(self.map_reference(record)),
@@ -813,7 +966,6 @@ impl SemaStructuralTransformation for NexusTransformation {
 
         Ok(SemaTransformationOutcome {
             logos: WholeLogos::new(items),
-            deferred_tables,
         })
     }
 }
@@ -855,39 +1007,12 @@ fn update_identity(hasher: &mut IdentityHasher, identity: &VocabularyEncodedId) 
     }
 }
 
-/// One caller-supplied content/ABI fingerprint for a non-local storage type.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SemaStorageTypeFingerprintMapping {
-    source: VocabularyEncodedId,
-    fingerprint: WholeLogosStorageFingerprint,
-}
-
-impl SemaStorageTypeFingerprintMapping {
-    /// Bind one Universal type identity to its authoritative external storage
-    /// contract without allocating or deriving another identity.
-    pub fn new(
-        source: VocabularyEncodedId,
-        fingerprint: [u8; 32],
-    ) -> Result<Self, NexusTransformationError> {
-        if source.root_variant() != &VocabularyRoot::Universal {
-            return Err(NexusTransformationError::SemaStorageFingerprintSourceRoot {
-                found: *source.root_variant(),
-            });
-        }
-        Ok(Self {
-            source,
-            fingerprint: WholeLogosStorageFingerprint::new(fingerprint),
-        })
-    }
-
-    /// External Universal type identity.
-    pub const fn source(&self) -> &VocabularyEncodedId {
-        &self.source
-    }
-
-    /// Assembly-supplied storage contract.
-    pub const fn fingerprint(&self) -> WholeLogosStorageFingerprint {
-        self.fingerprint
+fn storage_declaration_identity(item: &WholeEthosItem) -> Option<&VocabularyEncodedId> {
+    match item {
+        WholeEthosItem::Newtype(newtype) => Some(newtype.name()),
+        WholeEthosItem::Struct(structure) => Some(structure.name()),
+        WholeEthosItem::Enumeration(enumeration) => Some(enumeration.name()),
+        WholeEthosItem::StreamInitiation(_) => None,
     }
 }
 
@@ -1114,16 +1239,26 @@ pub enum NexusTransformationError {
         /// Repeated source identity.
         identity: VocabularyEncodedId,
     },
-    /// A storage contract was assigned to a non-Universal source type.
-    #[error("Sema storage fingerprint source must be Universal, found {found:?}")]
-    SemaStorageFingerprintSourceRoot { found: VocabularyRoot },
-    /// One external storage type received multiple compatibility contracts.
-    #[error("Sema storage fingerprint source {identity:?} is duplicated")]
-    DuplicateSemaStorageFingerprintSource { identity: VocabularyEncodedId },
-    /// A reachable non-local storage type has no authoritative compatibility
-    /// contract supplied by the owning assembly.
-    #[error("Sema storage type {identity:?} has no caller-supplied fingerprint")]
-    MissingSemaStorageFingerprint { identity: VocabularyEncodedId },
+    /// An external storage provenance owner omitted its immutable source or
+    /// revision evidence.
+    #[error("storage provenance owner {field} must be non-empty")]
+    StorageProvenanceOwnerEmpty { field: &'static str },
+    /// External storage evidence must preserve a Universal source identity.
+    #[error("external storage provenance identity must be Universal, found {found:?}")]
+    StorageProvenanceIdentityRoot { found: VocabularyRoot },
+    /// More than one external producer claimed the same source identity.
+    #[error("external storage provenance for {identity:?} is duplicated")]
+    DuplicateExternalStorageProvenance { identity: VocabularyEncodedId },
+    /// A type identity was both authored by the bundle and declared external.
+    #[error("storage provenance ownership conflicts for {identity:?}")]
+    StorageProvenanceOwnershipConflict { identity: VocabularyEncodedId },
+    /// More than one document in the bundle authored the same type identity.
+    #[error("bundle storage declaration {identity:?} is duplicated")]
+    DuplicateBundleStorageDeclaration { identity: VocabularyEncodedId },
+    /// A reachable external storage type has no owner/revision/fingerprint
+    /// evidence from its published producer.
+    #[error("external storage provenance is missing for {identity:?}")]
+    MissingExternalStorageProvenance { identity: VocabularyEncodedId },
     /// The locally generated stored declaration graph contains a cycle; the
     /// bounded structural fingerprint deliberately has no fixpoint machinery.
     #[error("Sema storage shape contains a cycle through {identity:?}")]
@@ -1156,6 +1291,14 @@ pub enum NexusTransformationError {
     /// Two Sema tables reused one stable identity.
     #[error("Sema table identity {identity:?} is declared more than once")]
     DuplicateSemaTableIdentity { identity: VocabularyEncodedId },
+    /// A table's record type was not pre-registered as a bundle declaration.
+    #[error("Sema table {table:?} record {record:?} is not owned by this bundle")]
+    SemaTableRecordNotBundleOwned {
+        /// Stable table identity.
+        table: VocabularyEncodedId,
+        /// Unknown or foreign record identity.
+        record: VocabularyEncodedId,
+    },
     /// A Sema table attempted to store an applied type instead of one record.
     #[error("Sema table {table:?} has an unsupported record type application")]
     InvalidSemaTableRecordShape { table: VocabularyEncodedId },

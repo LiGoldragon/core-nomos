@@ -1,12 +1,5 @@
 //! Focused witnesses for the Nexus structural transformation.
 
-use core_nomos::{
-    InterfaceRoleIdentities, InterfaceStructuralTransformation, NexusStructuralTransformation,
-    NexusTransformation, NexusTransformationError, NexusVocabularyReferenceMapping,
-    SemaStorageTypeFingerprintMapping, SemaStructuralTransformation, StreamLifecycleIdentities,
-    TypeDeclarationStructuralTransformation,
-};
-use encoded_name_table::LocalEncodedId;
 use core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosHeader, WholeEthosInterfaceBody, WholeEthosItem, WholeEthosNewtype,
@@ -19,6 +12,13 @@ use core_logos::{
     WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference,
     WholeLogosVariantPayload,
 };
+use core_nomos::{
+    BundleStorageProvenance, ExternalStorageProvenance, InterfaceRoleIdentities,
+    InterfaceStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
+    NexusTransformationError, NexusVocabularyReferenceMapping, SemaStructuralTransformation,
+    StorageProvenanceOwner, StreamLifecycleIdentities, TypeDeclarationStructuralTransformation,
+};
+use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
 fn identity(root: VocabularyRoot, local: u16) -> VocabularyEncodedId {
@@ -34,18 +34,23 @@ fn reference(local: u16) -> WholeEthosTypeReference {
     WholeEthosTypeReference::Identity(universal(local))
 }
 
-fn storage_transformation(entries: &[(u16, u8)]) -> NexusTransformation {
-    NexusTransformation::new()
-        .with_storage_fingerprints(
-            entries
-                .iter()
-                .map(|(identity, byte)| {
-                    SemaStorageTypeFingerprintMapping::new(universal(*identity), [*byte; 32])
-                        .expect("Universal storage mapping")
-                })
-                .collect(),
-        )
-        .expect("unique storage fingerprint sources")
+fn storage_provenance(documents: &[WholeEthos], entries: &[(u16, u8)]) -> BundleStorageProvenance {
+    let owner = StorageProvenanceOwner::new(
+        "test://published-storage-producer".to_owned(),
+        "test-revision".to_owned(),
+    )
+    .expect("published owner evidence");
+    BundleStorageProvenance::from_documents(
+        documents.iter().cloned(),
+        entries
+            .iter()
+            .map(|(identity, byte)| {
+                ExternalStorageProvenance::new(universal(*identity), [*byte; 32], owner.clone())
+                    .expect("Universal storage provenance")
+            })
+            .collect(),
+    )
+    .expect("complete bundle storage provenance")
 }
 
 fn nexus_document() -> WholeEthos {
@@ -89,20 +94,19 @@ fn nexus_document() -> WholeEthos {
 fn nexus_traits_lower_first_and_types_remain_plain_without_identity_allocation() {
     let guardian_reason = universal(13);
     let rust_guardian_reason = identity(VocabularyRoot::Rust, 103);
-    let transformation = NexusTransformation::with_reference_mappings(vec![
-        NexusVocabularyReferenceMapping::new(guardian_reason.clone(), rust_guardian_reason.clone())
-            .expect("typed reference mapping"),
-    ])
-    .expect("unique mapping source");
+    let transformation =
+        NexusTransformation::with_reference_mappings(vec![NexusVocabularyReferenceMapping::new(
+            guardian_reason.clone(),
+            rust_guardian_reason.clone(),
+        )
+        .expect("typed reference mapping")])
+        .expect("unique mapping source");
     let logos = transformation
         .lower(&nexus_document())
         .expect("lower Nexus document");
 
-    let [
-        WholeLogosItem::TraitDef(_),
-        WholeLogosItem::Enumeration(decision),
-        WholeLogosItem::Struct(context),
-    ] = logos.items()
+    let [WholeLogosItem::TraitDef(_), WholeLogosItem::Enumeration(decision), WholeLogosItem::Struct(context)] =
+        logos.items()
     else {
         panic!("traits precede Nexus operand types")
     };
@@ -200,31 +204,20 @@ fn interface_positions_lower_to_wire_types_memberships_and_resolved_stream_lifec
     let roles = InterfaceRoleIdentities::new(universal(60), universal(61), universal(62))
         .expect("distinct Universal roles");
     let outcome = NexusTransformation::new()
-        .with_stream_lifecycle_identities(vec![
-            StreamLifecycleIdentities::new(
-                universal(40),
-                universal(63),
-                universal(64),
-                universal(65),
-                universal(66),
-                universal(67),
-            )
-            .expect("distinct stream lifecycle identities"),
-        ])
+        .with_stream_lifecycle_identities(vec![StreamLifecycleIdentities::new(
+            universal(40),
+            universal(63),
+            universal(64),
+            universal(65),
+            universal(66),
+            universal(67),
+        )
+        .expect("distinct stream lifecycle identities")])
         .expect("one lifecycle assignment")
         .lower_interface(&interface, &roles)
         .expect("lower structural Interface surface");
-    let [
-        WholeLogosItem::Newtype(input),
-        WholeLogosItem::TraitImpl(input_membership),
-        WholeLogosItem::Newtype(output),
-        WholeLogosItem::TraitImpl(output_membership),
-        WholeLogosItem::Struct(refusal),
-        WholeLogosItem::TraitImpl(refusal_membership),
-        WholeLogosItem::Struct(structure),
-        WholeLogosItem::Enumeration(enumeration),
-        WholeLogosItem::StreamLifecycle(lifecycle),
-    ] = outcome.logos().items()
+    let [WholeLogosItem::Newtype(input), WholeLogosItem::TraitImpl(input_membership), WholeLogosItem::Newtype(output), WholeLogosItem::TraitImpl(output_membership), WholeLogosItem::Struct(refusal), WholeLogosItem::TraitImpl(refusal_membership), WholeLogosItem::Struct(structure), WholeLogosItem::Enumeration(enumeration), WholeLogosItem::StreamLifecycle(lifecycle)] =
+        outcome.logos().items()
     else {
         panic!("Interface declaration and membership order")
     };
@@ -508,13 +501,12 @@ fn sema_record_types_become_stored_values_and_local_tables_become_typed_specific
     )
     .expect("typed Sema document");
 
-    let outcome = storage_transformation(&[(81, 1), (83, 2)])
-        .lower_sema(&sema)
+    let provenance = storage_provenance(std::slice::from_ref(&sema), &[(81, 1), (83, 2)]);
+    let outcome = NexusTransformation::new()
+        .lower_sema(&sema, &provenance)
         .expect("lower Sema storage declarations");
-    let [
-        WholeLogosItem::Struct(stored),
-        WholeLogosItem::Table(specification),
-    ] = outcome.logos().items()
+    let [WholeLogosItem::Struct(stored), WholeLogosItem::Table(specification)] =
+        outcome.logos().items()
     else {
         panic!("stored record precedes its table specification")
     };
@@ -525,7 +517,6 @@ fn sema_record_types_become_stored_values_and_local_tables_become_typed_specific
         &WholeLogosTypeReference::Identity(record),
     );
     assert_eq!(specification.key(), &WholeLogosTypeReference::Identity(key),);
-    assert!(outcome.deferred_tables().is_empty());
 }
 
 #[test]
@@ -564,12 +555,21 @@ fn sema_schema_hash_tracks_direct_and_transitive_layout_under_stable_identities(
         WholeEthosStruct::new(nested, vec![reference(114), reference(115)])
             .expect("changed nested fields"),
     );
-    let transformation = storage_transformation(&[(113, 3), (114, 4), (115, 5)]);
-    let original = transformation
-        .lower_sema(&document(nested_newtype))
+    let original_document = document(nested_newtype);
+    let original_provenance = storage_provenance(
+        std::slice::from_ref(&original_document),
+        &[(113, 3), (114, 4), (115, 5)],
+    );
+    let original = NexusTransformation::new()
+        .lower_sema(&original_document, &original_provenance)
         .expect("original storage graph");
-    let changed = transformation
-        .lower_sema(&document(nested_struct))
+    let changed_document = document(nested_struct);
+    let changed_provenance = storage_provenance(
+        std::slice::from_ref(&changed_document),
+        &[(113, 3), (114, 4), (115, 5)],
+    );
+    let changed = NexusTransformation::new()
+        .lower_sema(&changed_document, &changed_provenance)
         .expect("changed storage graph");
     let schema_hash = |outcome: &core_nomos::SemaTransformationOutcome| {
         let WholeLogosItem::Table(table) = outcome.logos().items().last().expect("table item")
@@ -600,10 +600,152 @@ fn sema_reachable_external_storage_shape_requires_an_explicit_fingerprint() {
     )
     .expect("typed Sema document");
 
+    let provenance = storage_provenance(std::slice::from_ref(&sema), &[]);
     assert!(matches!(
-        NexusTransformation::new().lower_sema(&sema),
-        Err(NexusTransformationError::MissingSemaStorageFingerprint { identity })
+        NexusTransformation::new().lower_sema(&sema, &provenance),
+        Err(NexusTransformationError::MissingExternalStorageProvenance { identity })
             if identity == universal(121)
+    ));
+}
+
+#[test]
+fn sema_resolves_same_bundle_interface_record_without_external_fingerprint() {
+    let primitive = universal(130);
+    let identifier = universal(131);
+    let entry = universal(132);
+    let table = universal(133);
+    let interface = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Interface, 1).expect("Interface header"),
+        WholeEthosBody::Interface(WholeEthosInterfaceBody::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![
+                WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                    identifier.clone(),
+                    WholeEthosVisibility::Public,
+                    WholeEthosAttributes,
+                    WholeEthosWrappedField::new(
+                        WholeEthosVisibility::Private,
+                        WholeEthosTypeReference::Identity(primitive.clone()),
+                    ),
+                )),
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(entry.clone(), vec![reference(131)])
+                        .expect("Interface entry field"),
+                ),
+            ],
+        )),
+    )
+    .expect("typed Interface document");
+    let sema = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+        WholeEthosBody::Sema(WholeEthosSemaBody::new(
+            Vec::new(),
+            vec![WholeEthosTable::new(
+                table.clone(),
+                WholeEthosTypeReference::Identity(entry.clone()),
+                WholeEthosTypeReference::Identity(identifier.clone()),
+            )],
+        )),
+    )
+    .expect("typed Sema document");
+
+    let forward = storage_provenance(&[interface.clone(), sema.clone()], &[(130, 7)]);
+    let reverse = storage_provenance(&[sema.clone(), interface.clone()], &[(130, 7)]);
+    let forward_logos = NexusTransformation::new()
+        .lower_sema(&sema, &forward)
+        .expect("same-bundle Interface record resolves");
+    let reverse_logos = NexusTransformation::new()
+        .lower_sema(&sema, &reverse)
+        .expect("bundle registration order has no effect");
+
+    assert_eq!(forward_logos, reverse_logos);
+    let [WholeLogosItem::Table(specification)] = forward_logos.logos().items() else {
+        panic!("one imported-record table specification")
+    };
+    assert_eq!(specification.name(), &table);
+    assert_eq!(
+        specification.record(),
+        &WholeLogosTypeReference::Identity(entry)
+    );
+    assert_eq!(
+        specification.key(),
+        &WholeLogosTypeReference::Identity(identifier)
+    );
+}
+
+#[test]
+fn sema_table_refuses_a_record_not_declared_by_the_bundle() {
+    let foreign_record = universal(140);
+    let table = universal(141);
+    let sema = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+        WholeEthosBody::Sema(WholeEthosSemaBody::new(
+            Vec::new(),
+            vec![WholeEthosTable::new(
+                table.clone(),
+                reference(140),
+                reference(142),
+            )],
+        )),
+    )
+    .expect("typed Sema document");
+    let provenance = storage_provenance(std::slice::from_ref(&sema), &[(142, 8)]);
+
+    assert!(matches!(
+        NexusTransformation::new().lower_sema(&sema, &provenance),
+        Err(NexusTransformationError::SemaTableRecordNotBundleOwned {
+            table: refused_table,
+            record,
+        }) if refused_table == table && record == foreign_record
+    ));
+}
+
+#[test]
+fn sema_bundle_provenance_refuses_cycles_and_duplicate_declarations() {
+    let first = universal(150);
+    let second = universal(151);
+    let table = universal(152);
+    let cyclic = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+        WholeEthosBody::Sema(WholeEthosSemaBody::new(
+            vec![
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(first.clone(), vec![reference(151)])
+                        .expect("first cyclic field"),
+                ),
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(second.clone(), vec![reference(150)])
+                        .expect("second cyclic field"),
+                ),
+            ],
+            vec![WholeEthosTable::new(table, reference(150), reference(153))],
+        )),
+    )
+    .expect("typed cyclic Sema document");
+    let cyclic_provenance = storage_provenance(std::slice::from_ref(&cyclic), &[(153, 9)]);
+    assert!(matches!(
+        NexusTransformation::new().lower_sema(&cyclic, &cyclic_provenance),
+        Err(NexusTransformationError::CyclicSemaStorageShape { identity }) if identity == first
+    ));
+
+    let duplicate = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Interface, 1).expect("Interface header"),
+        WholeEthosBody::Interface(WholeEthosInterfaceBody::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![WholeEthosItem::Struct(
+                WholeEthosStruct::new(first.clone(), vec![reference(153)])
+                    .expect("duplicate declaration field"),
+            )],
+        )),
+    )
+    .expect("typed duplicate Interface document");
+    assert!(matches!(
+        BundleStorageProvenance::from_documents(vec![cyclic, duplicate], Vec::new()),
+        Err(NexusTransformationError::DuplicateBundleStorageDeclaration { identity }) if identity == first
     ));
 }
 
@@ -635,12 +777,16 @@ fn sema_table_refuses_applied_record_and_key_shapes_without_partial_logos() {
         )
     };
 
+    let applied_record = document(applied(reference(90)), reference(94));
+    let applied_record_provenance = storage_provenance(std::slice::from_ref(&applied_record), &[]);
     assert!(matches!(
-        NexusTransformation::new().lower_sema(&document(applied(reference(90)), reference(94))),
+        NexusTransformation::new().lower_sema(&applied_record, &applied_record_provenance),
         Err(NexusTransformationError::InvalidSemaTableRecordShape { .. })
     ));
+    let applied_key = document(reference(90), applied(reference(94)));
+    let applied_key_provenance = storage_provenance(std::slice::from_ref(&applied_key), &[]);
     assert!(matches!(
-        NexusTransformation::new().lower_sema(&document(reference(90), applied(reference(94)))),
+        NexusTransformation::new().lower_sema(&applied_key, &applied_key_provenance),
         Err(NexusTransformationError::InvalidSemaTableKeyShape { .. })
     ));
 }
