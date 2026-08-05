@@ -19,6 +19,15 @@ workaround, and the proper fix or the design question the psyche must settle.
   emits both the final Logos type and its unresolved Nomos mirror. The
   handwritten pairs become the generator's first fixtures and are retired.
 
+## Protos train unification underway (temporary)
+
+The Protos family is converging on main with breakage licensed
+(epic primary-eyr; psyche ruling 2026-08-05,
+primary design/ProtosEngine/deepCenterVision-2026-08-05.md).
+Do not advance pins on protos-family dependencies to track upstream
+until upstream is marked stable. Proper fix: remove this notice when
+epic primary-eyr closes.
+
 ## Resolved
 
 ### The class-D `TraceEvent` tuple-struct declaration is not projectable
