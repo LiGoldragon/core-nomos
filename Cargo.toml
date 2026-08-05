@@ -16,19 +16,19 @@ path = "src/lib.rs"
 content-identity         = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "24b43bae5d9748b0e7f679c6ec9f85a643c4d36a" }
 capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "896b21e17f31b66d0802bff899b4b60acea9c0f1" }
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
-encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
+encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "a22f48d8040ab9235f3552ad8654ff8e27b8157d" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "65e7c6d4692a40e1c49deffb3fb4a9a2c3555c5b" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "508cc55588a3ce5178d8eb79508f7f10a179dc2e" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "d1cdc53108446eb9779653936611558afd2cb41d" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "c9c880316b30c4d1f1085316dd56369df48b6534" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "41d366fb75820f8cb033e56433e62a6d7a5b73fb" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "2d4e2e00f2821c4e2893fa96028cef0ac76e9644" }
-signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "51c02c4a7b6f67d9dad095f11986085d7d65785b" }
-textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "36a294d6a73d05b2daa8d1ae882fd5fb43755719" }
-structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "fc6807f4365cde1551bbfe120520aec68245abdb" }
+signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "3a26cb43f8ce7f9fe85da64d19aa55aa662943ce" }
+textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "be014caca5e66a32a756b47c4e82503bf46f508a" }
+structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "413e3744569ca237e837a1fd57d9ba6ad6adc3de" }
 rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror                = "2"
 
 [dev-dependencies]
-sema-translator = { git = "https://github.com/LiGoldragon/sema-translator.git", rev = "6df830ab1ec9f315a5b50e40ffc393b48ea3d412" }
+sema-translator = { git = "https://github.com/LiGoldragon/sema-translator.git", rev = "1afcd7b1b17666b5489fe58d72f46c8848d33498" }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
