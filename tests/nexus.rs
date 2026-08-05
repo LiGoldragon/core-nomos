@@ -13,11 +13,12 @@ use core_logos::{
     WholeLogosVariantPayload,
 };
 use core_nomos::{
-    BundleStorageProvenance, ExternalStorageProvenance, InterfaceRoleIdentities,
-    InterfaceStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
-    NexusTransformationError, NexusVocabularyReferenceMapping, NomosStorageProvenance,
-    PreservedSemaFamilyProvenance, SemaStructuralTransformation, StorageProvenanceOwner,
-    StreamLifecycleIdentities, TypeDeclarationStructuralTransformation,
+    ArchiveAbiEquivalenceChecks, BundleStorageProvenance, ExternalStorageProvenance,
+    ExternalStorageSuccessorEvidence, InterfaceRoleIdentities, InterfaceStructuralTransformation,
+    NexusStructuralTransformation, NexusTransformation, NexusTransformationError,
+    NexusVocabularyReferenceMapping, NomosStorageProvenance, PreservedSemaFamilyProvenance,
+    SemaStructuralTransformation, StorageProvenanceOwner, StreamLifecycleIdentities,
+    TypeDeclarationStructuralTransformation,
 };
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
@@ -52,6 +53,78 @@ fn storage_provenance(documents: &[WholeEthos], entries: &[(u16, u8)]) -> Bundle
             .collect(),
     )
     .expect("complete bundle storage provenance")
+}
+
+#[test]
+fn external_storage_successor_requires_every_archive_abi_predicate_and_covered_identity() {
+    let physical = StorageProvenanceOwner::new(
+        "test://physical-owner".to_owned(),
+        "physical-revision".to_owned(),
+    )
+    .expect("physical owner");
+    let compiled = StorageProvenanceOwner::new(
+        "test://compiled-owner".to_owned(),
+        "compiled-revision".to_owned(),
+    )
+    .expect("compiled owner");
+    assert!(matches!(
+        ArchiveAbiEquivalenceChecks::new(true, true, true, true, true, false),
+        Err(NexusTransformationError::ArchiveAbiCheckNotProven {
+            check: "archive bytes"
+        })
+    ));
+
+    let checks = ArchiveAbiEquivalenceChecks::new(true, true, true, true, true, true)
+        .expect("complete archive ABI proof");
+    let evidence = ExternalStorageSuccessorEvidence::new(
+        physical.clone(),
+        compiled.clone(),
+        vec![universal(713), universal(714)],
+        [7; 32],
+        "evidence-revision".to_owned(),
+        checks,
+    )
+    .expect("complete successor evidence");
+    let provenance =
+        ExternalStorageProvenance::with_successor(universal(713), [9; 32], compiled, evidence)
+            .expect("covered current owner");
+    assert_eq!(provenance.owner().revision(), "compiled-revision");
+    let successor = provenance
+        .successor()
+        .expect("successor evidence is retained");
+    assert_eq!(successor.physical_owner(), &physical);
+    assert_eq!(
+        successor.type_identities(),
+        &[universal(713), universal(714)]
+    );
+
+    let missing = ExternalStorageSuccessorEvidence::new(
+        physical,
+        StorageProvenanceOwner::new(
+            "test://compiled-owner".to_owned(),
+            "compiled-revision".to_owned(),
+        )
+        .expect("same compiled owner"),
+        vec![universal(714)],
+        [8; 32],
+        "evidence-revision".to_owned(),
+        checks,
+    )
+    .expect("complete but non-covering successor evidence");
+    assert!(matches!(
+        ExternalStorageProvenance::with_successor(
+            universal(713),
+            [9; 32],
+            StorageProvenanceOwner::new(
+                "test://compiled-owner".to_owned(),
+                "compiled-revision".to_owned(),
+            )
+            .expect("configured owner"),
+            missing,
+        ),
+        Err(NexusTransformationError::ExternalStorageSuccessorIdentityMissing { identity })
+            if identity == universal(713)
+    ));
 }
 
 fn nexus_document() -> WholeEthos {

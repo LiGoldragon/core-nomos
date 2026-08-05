@@ -105,12 +105,13 @@ pub use native::{
     NativeTransformation,
 };
 pub use nexus::{
-    BundleStorageProvenance, ExternalStorageProvenance, InterfaceRoleIdentities,
-    InterfaceStructuralTransformation, InterfaceTransformationOutcome,
-    InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
-    NexusTransformationError, NexusVocabularyReferenceMapping, NomosStorageProvenance,
-    PreservedSemaFamilyProvenance, SemaStructuralTransformation, SemaTransformationOutcome,
-    StorageProvenanceOwner, StreamLifecycleIdentities, TypeDeclarationStructuralTransformation,
+    ArchiveAbiEquivalenceChecks, BundleStorageProvenance, ExternalStorageProvenance,
+    ExternalStorageSuccessorEvidence, InterfaceRoleIdentities, InterfaceStructuralTransformation,
+    InterfaceTransformationOutcome, InterfaceTypeStructuralTransformation,
+    NexusStructuralTransformation, NexusTransformation, NexusTransformationError,
+    NexusVocabularyReferenceMapping, NomosStorageProvenance, PreservedSemaFamilyProvenance,
+    SemaStructuralTransformation, SemaTransformationOutcome, StorageProvenanceOwner,
+    StreamLifecycleIdentities, TypeDeclarationStructuralTransformation,
 };
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};

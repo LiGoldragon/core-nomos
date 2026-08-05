@@ -115,6 +115,182 @@ pub struct ExternalStorageProvenance {
     identity: VocabularyEncodedId,
     fingerprint: WholeLogosStorageFingerprint,
     owner: StorageProvenanceOwner,
+    successor: Option<ExternalStorageSuccessorEvidence>,
+}
+
+/// The complete set of archive-ABI predicates discharged before an external
+/// producer successor may retain an already-published storage fingerprint.
+///
+/// This is deliberately a closed record: a successor may not omit a check or
+/// claim only a source-level rename. Each predicate must have been proven for
+/// the sealed evidence revision before Nomos will carry the adoption record.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ArchiveAbiEquivalenceChecks {
+    layout: bool,
+    variant_order: bool,
+    discriminants: bool,
+    size: bool,
+    alignment: bool,
+    archive_bytes: bool,
+}
+
+impl ArchiveAbiEquivalenceChecks {
+    /// Construct a complete archive-ABI proof claim, refusing every partial
+    /// or failed predicate.
+    pub fn new(
+        layout: bool,
+        variant_order: bool,
+        discriminants: bool,
+        size: bool,
+        alignment: bool,
+        archive_bytes: bool,
+    ) -> Result<Self, NexusTransformationError> {
+        for (check, passed) in [
+            ("layout", layout),
+            ("variant order", variant_order),
+            ("discriminants", discriminants),
+            ("size", size),
+            ("alignment", alignment),
+            ("archive bytes", archive_bytes),
+        ] {
+            if !passed {
+                return Err(NexusTransformationError::ArchiveAbiCheckNotProven { check });
+            }
+        }
+        Ok(Self {
+            layout,
+            variant_order,
+            discriminants,
+            size,
+            alignment,
+            archive_bytes,
+        })
+    }
+
+    /// Whether the proof includes the exact generated declaration layout.
+    pub const fn layout(&self) -> bool {
+        self.layout
+    }
+
+    /// Whether the proof includes exact enum variant ordering.
+    pub const fn variant_order(&self) -> bool {
+        self.variant_order
+    }
+
+    /// Whether the proof includes exact enum discriminants.
+    pub const fn discriminants(&self) -> bool {
+        self.discriminants
+    }
+
+    /// Whether the proof includes native type sizes.
+    pub const fn size(&self) -> bool {
+        self.size
+    }
+
+    /// Whether the proof includes native type alignment.
+    pub const fn alignment(&self) -> bool {
+        self.alignment
+    }
+
+    /// Whether the proof includes archived wire bytes.
+    pub const fn archive_bytes(&self) -> bool {
+        self.archive_bytes
+    }
+}
+
+/// Sealed adoption evidence for an archive-ABI-equivalent external producer
+/// successor. It keeps the physical v14 owner and the currently compiled
+/// owner simultaneously, without introducing a second decoder or storage
+/// descriptor.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalStorageSuccessorEvidence {
+    physical_owner: StorageProvenanceOwner,
+    compiled_owner: StorageProvenanceOwner,
+    type_identities: Vec<VocabularyEncodedId>,
+    proof_digest: [u8; 32],
+    evidence_revision: String,
+    checks: ArchiveAbiEquivalenceChecks,
+}
+
+impl ExternalStorageSuccessorEvidence {
+    /// Bind a fully checked successor proof to every declared external type
+    /// whose v14 physical layout it retains.
+    pub fn new(
+        physical_owner: StorageProvenanceOwner,
+        compiled_owner: StorageProvenanceOwner,
+        mut type_identities: Vec<VocabularyEncodedId>,
+        proof_digest: [u8; 32],
+        evidence_revision: String,
+        checks: ArchiveAbiEquivalenceChecks,
+    ) -> Result<Self, NexusTransformationError> {
+        if physical_owner == compiled_owner {
+            return Err(NexusTransformationError::ExternalStorageSuccessorUnchanged);
+        }
+        if evidence_revision.is_empty() {
+            return Err(NexusTransformationError::ExternalStorageEvidenceRevisionEmpty);
+        }
+        if proof_digest == [0; 32] {
+            return Err(NexusTransformationError::ExternalStorageEvidenceDigestEmpty);
+        }
+        if type_identities.is_empty() {
+            return Err(NexusTransformationError::ExternalStorageSuccessorTypesEmpty);
+        }
+        for identity in &type_identities {
+            if identity.root_variant() != &VocabularyRoot::Universal {
+                return Err(NexusTransformationError::StorageProvenanceIdentityRoot {
+                    found: *identity.root_variant(),
+                });
+            }
+        }
+        type_identities.sort();
+        for adjacent in type_identities.windows(2) {
+            if adjacent[0] == adjacent[1] {
+                return Err(
+                    NexusTransformationError::ExternalStorageSuccessorTypeDuplicate {
+                        identity: adjacent[0].clone(),
+                    },
+                );
+            }
+        }
+        Ok(Self {
+            physical_owner,
+            compiled_owner,
+            type_identities,
+            proof_digest,
+            evidence_revision,
+            checks,
+        })
+    }
+
+    /// Published revision that originated the still-frozen physical layout.
+    pub const fn physical_owner(&self) -> &StorageProvenanceOwner {
+        &self.physical_owner
+    }
+
+    /// Published revision that is compiled now.
+    pub const fn compiled_owner(&self) -> &StorageProvenanceOwner {
+        &self.compiled_owner
+    }
+
+    /// Every Universal type identity covered by the one successor proof.
+    pub fn type_identities(&self) -> &[VocabularyEncodedId] {
+        &self.type_identities
+    }
+
+    /// Digest of the immutable archive-ABI proof material.
+    pub const fn proof_digest(&self) -> [u8; 32] {
+        self.proof_digest
+    }
+
+    /// Immutable revision containing the proof material.
+    pub fn evidence_revision(&self) -> &str {
+        &self.evidence_revision
+    }
+
+    /// Complete proof predicates; partial evidence is never representable.
+    pub const fn checks(&self) -> ArchiveAbiEquivalenceChecks {
+        self.checks
+    }
 }
 
 /// One catalogued current-Spirit-v14 physical family adopted by a fresh
@@ -346,6 +522,38 @@ impl ExternalStorageProvenance {
             identity,
             fingerprint: WholeLogosStorageFingerprint::new(fingerprint),
             owner,
+            successor: None,
+        })
+    }
+
+    /// Bind a compiled external producer to its different physical-layout
+    /// origin only after one complete archive-ABI successor proof has been
+    /// supplied. The currently compiled owner is never inferred from a
+    /// fingerprint or a package alias.
+    pub fn with_successor(
+        identity: VocabularyEncodedId,
+        fingerprint: [u8; 32],
+        owner: StorageProvenanceOwner,
+        successor: ExternalStorageSuccessorEvidence,
+    ) -> Result<Self, NexusTransformationError> {
+        if successor.compiled_owner() != &owner {
+            return Err(
+                NexusTransformationError::ExternalStorageSuccessorOwnerMismatch {
+                    configured: owner,
+                    evidence: successor.compiled_owner().clone(),
+                },
+            );
+        }
+        if !successor.type_identities().contains(&identity) {
+            return Err(
+                NexusTransformationError::ExternalStorageSuccessorIdentityMissing { identity },
+            );
+        }
+        Ok(Self {
+            identity,
+            fingerprint: WholeLogosStorageFingerprint::new(fingerprint),
+            owner,
+            successor: Some(successor),
         })
     }
 
@@ -362,6 +570,12 @@ impl ExternalStorageProvenance {
     /// Published owner and immutable revision for the evidence.
     pub const fn owner(&self) -> &StorageProvenanceOwner {
         &self.owner
+    }
+
+    /// Sealed physical-to-current producer evidence, when the compiled owner
+    /// is an archive-ABI-equivalent successor rather than the physical origin.
+    pub const fn successor(&self) -> Option<&ExternalStorageSuccessorEvidence> {
+        self.successor.as_ref()
     }
 }
 
@@ -1571,6 +1785,37 @@ pub enum NexusTransformationError {
     /// revision evidence.
     #[error("storage provenance owner {field} must be non-empty")]
     StorageProvenanceOwnerEmpty { field: &'static str },
+    /// A successor record tried to claim an unchanged producer instead of
+    /// keeping the ordinary single-owner provenance form.
+    #[error("external storage successor evidence must name a distinct physical and compiled owner")]
+    ExternalStorageSuccessorUnchanged,
+    /// A successor record omitted its immutable proof revision.
+    #[error("external storage successor evidence revision must be non-empty")]
+    ExternalStorageEvidenceRevisionEmpty,
+    /// A successor record omitted its immutable proof digest.
+    #[error("external storage successor evidence digest must be non-zero")]
+    ExternalStorageEvidenceDigestEmpty,
+    /// A successor record named no covered external type identities.
+    #[error("external storage successor evidence must name at least one type identity")]
+    ExternalStorageSuccessorTypesEmpty,
+    /// A successor record repeated one covered external type identity.
+    #[error("external storage successor evidence repeats type identity {identity:?}")]
+    ExternalStorageSuccessorTypeDuplicate { identity: VocabularyEncodedId },
+    /// One required archive-ABI predicate was not proven.
+    #[error("external storage successor evidence did not prove {check}")]
+    ArchiveAbiCheckNotProven { check: &'static str },
+    /// The successor's compiled owner differed from the active external owner.
+    #[error(
+        "external storage successor compiled owner {evidence:?} differs from configured owner {configured:?}"
+    )]
+    ExternalStorageSuccessorOwnerMismatch {
+        configured: StorageProvenanceOwner,
+        evidence: StorageProvenanceOwner,
+    },
+    /// The direct external identity was omitted from its successor's sealed
+    /// covered set.
+    #[error("external storage successor evidence does not cover {identity:?}")]
+    ExternalStorageSuccessorIdentityMissing { identity: VocabularyEncodedId },
     /// External storage evidence must preserve a Universal source identity.
     #[error("external storage provenance identity must be Universal, found {found:?}")]
     StorageProvenanceIdentityRoot { found: VocabularyRoot },
