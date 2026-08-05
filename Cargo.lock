@@ -174,7 +174,7 @@ dependencies = [
  "core-logos",
  "name-table 0.1.0",
  "name-table 0.3.0",
- "protos 0.4.0",
+ "protos 0.5.0",
  "raw-discovery",
  "rkyv",
  "rust-logos",
@@ -405,8 +405,8 @@ dependencies = [
 
 [[package]]
 name = "protos"
-version = "0.4.0"
-source = "git+https://github.com/LiGoldragon/protos.git?rev=c85cec6117bfd4c423d952fd54e0c0bb11562f89#c85cec6117bfd4c423d952fd54e0c0bb11562f89"
+version = "0.5.0"
+source = "git+https://github.com/LiGoldragon/protos.git?rev=65e7c6d4692a40e1c49deffb3fb4a9a2c3555c5b#65e7c6d4692a40e1c49deffb3fb4a9a2c3555c5b"
 dependencies = [
  "content-identity 0.5.0",
  "rkyv",

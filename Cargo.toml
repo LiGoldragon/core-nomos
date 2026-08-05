@@ -17,7 +17,7 @@ content-identity         = { git = "https://github.com/LiGoldragon/content-ident
 capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "896b21e17f31b66d0802bff899b4b60acea9c0f1" }
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
 encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
-protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "c85cec6117bfd4c423d952fd54e0c0bb11562f89" }
+protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "65e7c6d4692a40e1c49deffb3fb4a9a2c3555c5b" }
 core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "e0abb0a369ecfd146e406a99ed8db75327a564d2" }
 core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "80e4ab18856f388a347320955eac365cfa766ce3" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "2d4e2e00f2821c4e2893fa96028cef0ac76e9644" }
