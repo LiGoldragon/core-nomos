@@ -18,11 +18,11 @@ capsule-content-identity = { package = "content-identity", git = "https://github
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
 encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "65e7c6d4692a40e1c49deffb3fb4a9a2c3555c5b" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "e0abb0a369ecfd146e406a99ed8db75327a564d2" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "80e4ab18856f388a347320955eac365cfa766ce3" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "508cc55588a3ce5178d8eb79508f7f10a179dc2e" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "d1cdc53108446eb9779653936611558afd2cb41d" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "2d4e2e00f2821c4e2893fa96028cef0ac76e9644" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "51c02c4a7b6f67d9dad095f11986085d7d65785b" }
-textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "7366fff3f8adb2a78c6e66fd77bb267e6ee3e5d2" }
+textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "36a294d6a73d05b2daa8d1ae882fd5fb43755719" }
 structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "fc6807f4365cde1551bbfe120520aec68245abdb" }
 rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror                = "2"
