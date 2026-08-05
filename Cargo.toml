@@ -19,10 +19,10 @@ name-table               = { git = "https://github.com/LiGoldragon/name-table.gi
 encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "50cb4bb53ae2dc4f2516f6912be328ef98ae49f8" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "c85cec6117bfd4c423d952fd54e0c0bb11562f89" }
 core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "29237c33798db908bbfe10ef0cffe2c6a28be508" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "c7bd55bb29f7c0e10212571d2b4a2f69aae4b35b" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "5733b586c72a3191e12b3e09cf01a4a6caba4242" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "2d4e2e00f2821c4e2893fa96028cef0ac76e9644" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "51c02c4a7b6f67d9dad095f11986085d7d65785b" }
-textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "f3e4b7846ed032bc644f9a5b10a4ca8f3fb4c593" }
+textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "9b2a6ef7a14a7df77e8c7f165226169c85c79ccd" }
 structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "fc6807f4365cde1551bbfe120520aec68245abdb" }
 rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror                = "2"

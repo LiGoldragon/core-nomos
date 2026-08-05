@@ -7,12 +7,12 @@
 use core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosItem,
     WholeEthosNewtype, WholeEthosQuality, WholeEthosStruct, WholeEthosTypeApplication,
-    WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant,
-    WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
+    WholeEthosVisibility,
 };
 use core_logos::{
-    WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosTupleFields,
-    WholeLogosStruct, WholeLogosTypeApplication, WholeLogosTypeParameter,
+    WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosStruct,
+    WholeLogosTupleFields, WholeLogosTypeApplication, WholeLogosTypeParameter,
     WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
@@ -59,28 +59,49 @@ impl SliceOneTransformation {
         let mut items = Vec::new();
         match ethos.body() {
             WholeEthosBody::Interface(body) => {
-                items.extend(body.inputs().iter().map(|newtype| {
-                    self.lower_newtype(newtype).map(WholeLogosItem::Newtype)
-                }).collect::<Result<Vec<_>, _>>()?);
-                items.extend(body.outputs().iter().map(|newtype| {
-                    self.lower_newtype(newtype).map(WholeLogosItem::Newtype)
-                }).collect::<Result<Vec<_>, _>>()?);
-                items.extend(body.refusals().iter().map(|structure| {
-                    self.lower_struct(structure).map(WholeLogosItem::Struct)
-                }).collect::<Result<Vec<_>, _>>()?);
-                items.extend(body.types().iter().map(|item| self.lower_item(item))
-                    .collect::<Result<Vec<_>, _>>()?);
+                items.extend(
+                    body.inputs()
+                        .iter()
+                        .map(|newtype| self.lower_newtype(newtype).map(WholeLogosItem::Newtype))
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
+                items.extend(
+                    body.outputs()
+                        .iter()
+                        .map(|newtype| self.lower_newtype(newtype).map(WholeLogosItem::Newtype))
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
+                items.extend(
+                    body.refusals()
+                        .iter()
+                        .map(|structure| self.lower_struct(structure).map(WholeLogosItem::Struct))
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
+                items.extend(
+                    body.types()
+                        .iter()
+                        .map(|item| self.lower_item(item))
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
             }
             WholeEthosBody::Nexus(body) => {
-                items.extend(body.types().iter().map(|item| self.lower_item(item))
-                    .collect::<Result<Vec<_>, _>>()?);
+                items.extend(
+                    body.types()
+                        .iter()
+                        .map(|item| self.lower_item(item))
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
                 if !body.traits().is_empty() {
                     return Err(SliceOneTransformationError::UnsupportedNexusTraits);
                 }
             }
             WholeEthosBody::Sema(body) => {
-                items.extend(body.record_types().iter().map(|item| self.lower_item(item))
-                    .collect::<Result<Vec<_>, _>>()?);
+                items.extend(
+                    body.record_types()
+                        .iter()
+                        .map(|item| self.lower_item(item))
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
                 if !body.tables().is_empty() {
                     return Err(SliceOneTransformationError::UnsupportedSemaTables);
                 }
@@ -89,18 +110,32 @@ impl SliceOneTransformation {
         Ok(WholeLogos::new(items))
     }
 
-    fn lower_item(&self, item: &WholeEthosItem) -> Result<WholeLogosItem, SliceOneTransformationError> {
+    fn lower_item(
+        &self,
+        item: &WholeEthosItem,
+    ) -> Result<WholeLogosItem, SliceOneTransformationError> {
         match item {
-            WholeEthosItem::Newtype(newtype) => self.lower_newtype(newtype).map(WholeLogosItem::Newtype),
-            WholeEthosItem::Struct(structure) => self.lower_struct(structure).map(WholeLogosItem::Struct),
-            WholeEthosItem::Enumeration(enumeration) => self.lower_enumeration(enumeration).map(WholeLogosItem::Enumeration),
-            WholeEthosItem::StreamInitiation(initiation) => Err(SliceOneTransformationError::StreamLifecycleIdentitiesRequired {
-                stream: initiation.stream.clone(),
-            }),
+            WholeEthosItem::Newtype(newtype) => {
+                self.lower_newtype(newtype).map(WholeLogosItem::Newtype)
+            }
+            WholeEthosItem::Struct(structure) => {
+                self.lower_struct(structure).map(WholeLogosItem::Struct)
+            }
+            WholeEthosItem::Enumeration(enumeration) => self
+                .lower_enumeration(enumeration)
+                .map(WholeLogosItem::Enumeration),
+            WholeEthosItem::StreamInitiation(initiation) => Err(
+                SliceOneTransformationError::StreamLifecycleIdentitiesRequired {
+                    stream: initiation.stream.clone(),
+                },
+            ),
         }
     }
 
-    fn lower_newtype(&self, newtype: &WholeEthosNewtype) -> Result<WholeLogosNewtype, SliceOneTransformationError> {
+    fn lower_newtype(
+        &self,
+        newtype: &WholeEthosNewtype,
+    ) -> Result<WholeLogosNewtype, SliceOneTransformationError> {
         let WholeEthosAttributes = *newtype.attributes();
 
         Ok(WholeLogosNewtype::new(
@@ -108,37 +143,60 @@ impl SliceOneTransformation {
             newtype.name().clone(),
             Self::lower_visibility(*newtype.wrapped_field().visibility()),
             self.lower_reference(newtype.wrapped_field().reference())?,
-        ).with_type_parameters(newtype.type_parameters().iter().map(Self::lower_type_parameter)
-            .collect::<Result<Vec<_>, _>>()?))
-    }
-
-    fn lower_struct(&self, structure: &WholeEthosStruct) -> Result<WholeLogosStruct, SliceOneTransformationError> {
-        if structure.fields().iter().any(reference_contains_parameter) {
-            return Err(SliceOneTransformationError::UnsupportedParameterizedDeclaration {
-                kind: "struct",
-                declaration: structure.name().clone(),
-            });
-        }
-        Ok(WholeLogosStruct::new(
-            WholeLogosVisibility::Public,
-            structure.name().clone(),
-            structure.fields().iter().map(|field| self.lower_reference(field))
+        )
+        .with_type_parameters(
+            newtype
+                .type_parameters()
+                .iter()
+                .map(Self::lower_type_parameter)
                 .collect::<Result<Vec<_>, _>>()?,
         ))
     }
 
-    fn lower_enumeration(&self, enumeration: &WholeEthosEnumeration) -> Result<WholeLogosEnumeration, SliceOneTransformationError> {
+    fn lower_struct(
+        &self,
+        structure: &WholeEthosStruct,
+    ) -> Result<WholeLogosStruct, SliceOneTransformationError> {
+        if structure.fields().iter().any(reference_contains_parameter) {
+            return Err(
+                SliceOneTransformationError::UnsupportedParameterizedDeclaration {
+                    kind: "struct",
+                    declaration: structure.name().clone(),
+                },
+            );
+        }
+        Ok(WholeLogosStruct::new(
+            WholeLogosVisibility::Public,
+            structure.name().clone(),
+            structure
+                .fields()
+                .iter()
+                .map(|field| self.lower_reference(field))
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
+    }
+
+    fn lower_enumeration(
+        &self,
+        enumeration: &WholeEthosEnumeration,
+    ) -> Result<WholeLogosEnumeration, SliceOneTransformationError> {
         let WholeEthosAttributes = *enumeration.attributes();
-        if enumeration.variants().iter().any(|variant| match variant.payload() {
-            WholeEthosVariantPayload::Unit => false,
-            WholeEthosVariantPayload::Tuple(fields) => {
-                fields.fields().iter().any(reference_contains_parameter)
-            }
-        }) {
-            return Err(SliceOneTransformationError::UnsupportedParameterizedDeclaration {
-                kind: "enumeration",
-                declaration: enumeration.name().clone(),
-            });
+        if enumeration
+            .variants()
+            .iter()
+            .any(|variant| match variant.payload() {
+                WholeEthosVariantPayload::Unit => false,
+                WholeEthosVariantPayload::Tuple(fields) => {
+                    fields.fields().iter().any(reference_contains_parameter)
+                }
+            })
+        {
+            return Err(
+                SliceOneTransformationError::UnsupportedParameterizedDeclaration {
+                    kind: "enumeration",
+                    declaration: enumeration.name().clone(),
+                },
+            );
         }
 
         Ok(WholeLogosEnumeration::new(
@@ -152,7 +210,10 @@ impl SliceOneTransformation {
         ))
     }
 
-    fn lower_variant(&self, variant: &WholeEthosVariant) -> Result<WholeLogosVariant, SliceOneTransformationError> {
+    fn lower_variant(
+        &self,
+        variant: &WholeEthosVariant,
+    ) -> Result<WholeLogosVariant, SliceOneTransformationError> {
         let WholeEthosAttributes = *variant.attributes();
         let payload = match variant.payload() {
             WholeEthosVariantPayload::Unit => WholeLogosVariantPayload::Unit,
@@ -163,7 +224,8 @@ impl SliceOneTransformation {
                         .iter()
                         .map(|reference| self.lower_reference(reference))
                         .collect::<Result<Vec<_>, _>>()?,
-                ).map_err(|_| SliceOneTransformationError::EmptyTupleFields {
+                )
+                .map_err(|_| SliceOneTransformationError::EmptyTupleFields {
                     variant: variant.name().clone(),
                 })?;
                 WholeLogosVariantPayload::Tuple(fields)
@@ -172,7 +234,10 @@ impl SliceOneTransformation {
         Ok(WholeLogosVariant::new(variant.name().clone(), payload))
     }
 
-    fn lower_reference(&self, reference: &WholeEthosTypeReference) -> Result<WholeLogosTypeReference, SliceOneTransformationError> {
+    fn lower_reference(
+        &self,
+        reference: &WholeEthosTypeReference,
+    ) -> Result<WholeLogosTypeReference, SliceOneTransformationError> {
         Ok(match reference {
             WholeEthosTypeReference::Identity(encoded_id) => {
                 WholeLogosTypeReference::Identity(self.map_reference(encoded_id))
@@ -186,13 +251,20 @@ impl SliceOneTransformation {
         })
     }
 
-    fn lower_type_parameter(parameter: &WholeEthosTypeParameter) -> Result<WholeLogosTypeParameter, SliceOneTransformationError> {
+    fn lower_type_parameter(
+        parameter: &WholeEthosTypeParameter,
+    ) -> Result<WholeLogosTypeParameter, SliceOneTransformationError> {
         let WholeEthosQuality::Trait(bound) = parameter.quality() else {
-            return Err(SliceOneTransformationError::TypeParameterQualityMustBeTrait {
-                quality: parameter.quality().identity().clone(),
-            });
+            return Err(
+                SliceOneTransformationError::TypeParameterQualityMustBeTrait {
+                    quality: parameter.quality().identity().clone(),
+                },
+            );
         };
-        Ok(WholeLogosTypeParameter::new(parameter.name().clone(), bound.clone()))
+        Ok(WholeLogosTypeParameter::new(
+            parameter.name().clone(),
+            bound.clone(),
+        ))
     }
 
     fn lower_application(
@@ -200,15 +272,23 @@ impl SliceOneTransformation {
         application: &WholeEthosTypeApplication,
     ) -> Result<WholeLogosTypeApplication, SliceOneTransformationError> {
         let WholeEthosQuality::Shape(head) = application.head() else {
-            return Err(SliceOneTransformationError::TypeApplicationHeadMustBeShape {
-                quality: application.head().identity().clone(),
-            });
+            return Err(
+                SliceOneTransformationError::TypeApplicationHeadMustBeShape {
+                    quality: application.head().identity().clone(),
+                },
+            );
         };
         WholeLogosTypeApplication::new(
             self.map_reference(head),
-            application.arguments().iter().map(|argument| self.lower_reference(argument))
+            application
+                .arguments()
+                .iter()
+                .map(|argument| self.lower_reference(argument))
                 .collect::<Result<Vec<_>, _>>()?,
-        ).map_err(|_| SliceOneTransformationError::EmptyTypeApplicationArguments { head: head.clone() })
+        )
+        .map_err(
+            |_| SliceOneTransformationError::EmptyTypeApplicationArguments { head: head.clone() },
+        )
     }
 
     fn map_reference(&self, source: &VocabularyEncodedId) -> VocabularyEncodedId {
@@ -230,9 +310,10 @@ fn reference_contains_parameter(reference: &WholeEthosTypeReference) -> bool {
     match reference {
         WholeEthosTypeReference::Identity(_) => false,
         WholeEthosTypeReference::Parameter(_) => true,
-        WholeEthosTypeReference::Application(application) => {
-            application.arguments().iter().any(reference_contains_parameter)
-        }
+        WholeEthosTypeReference::Application(application) => application
+            .arguments()
+            .iter()
+            .any(reference_contains_parameter),
     }
 }
 

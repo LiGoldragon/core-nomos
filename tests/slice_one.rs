@@ -47,8 +47,12 @@ fn lowers_shape_application_with_ordered_arguments_and_named_trait_parameter() {
         WholeEthosWrappedField::new(WholeEthosVisibility::Private, wrapped),
     ))]);
 
-    let logos = SliceOneTransformation::new().lower(&document).expect("strict lowering");
-    let [WholeLogosItem::Newtype(newtype)] = logos.items() else { panic!("one newtype") };
+    let logos = SliceOneTransformation::new()
+        .lower(&document)
+        .expect("strict lowering");
+    let [WholeLogosItem::Newtype(newtype)] = logos.items() else {
+        panic!("one newtype")
+    };
     assert_eq!(newtype.type_parameters().len(), 1);
     assert_eq!(newtype.type_parameters()[0].name(), &ordered);
     let WholeLogosTypeReference::Application(application) = newtype.wrapped() else {
@@ -56,8 +60,12 @@ fn lowers_shape_application_with_ordered_arguments_and_named_trait_parameter() {
     };
     assert_eq!(application.head(), &vector);
     assert_eq!(application.arguments().len(), 2);
-    assert!(matches!(application.arguments()[0], WholeLogosTypeReference::Parameter(ref name) if name == &ordered));
-    assert!(matches!(application.arguments()[1], WholeLogosTypeReference::Identity(ref name) if name == &error));
+    assert!(
+        matches!(application.arguments()[0], WholeLogosTypeReference::Parameter(ref name) if name == &ordered)
+    );
+    assert!(
+        matches!(application.arguments()[1], WholeLogosTypeReference::Identity(ref name) if name == &error)
+    );
 }
 
 #[test]
@@ -65,21 +73,24 @@ fn refuses_trait_head_and_parameterized_struct_without_erasing_ontology() {
     let ordered = id(10);
     let invalid_head = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Nexus, 1).expect("supported header"),
-        WholeEthosBody::Nexus(WholeEthosNexusBody::new(vec![WholeEthosItem::Newtype(WholeEthosNewtype::new(
-        id(11),
-        WholeEthosVisibility::Public,
-        WholeEthosAttributes::empty(),
-        WholeEthosWrappedField::new(
-            WholeEthosVisibility::Private,
-            WholeEthosTypeReference::Application(
-                WholeEthosTypeApplication::new(
-                    WholeEthosQuality::Trait(ordered.clone()),
-                    vec![WholeEthosTypeReference::Identity(id(12))],
-                )
-                .expect("nonempty application"),
-            ),
-        ),
-    ))], vec![])),
+        WholeEthosBody::Nexus(WholeEthosNexusBody::new(
+            vec![WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                id(11),
+                WholeEthosVisibility::Public,
+                WholeEthosAttributes::empty(),
+                WholeEthosWrappedField::new(
+                    WholeEthosVisibility::Private,
+                    WholeEthosTypeReference::Application(
+                        WholeEthosTypeApplication::new(
+                            WholeEthosQuality::Trait(ordered.clone()),
+                            vec![WholeEthosTypeReference::Identity(id(12))],
+                        )
+                        .expect("nonempty application"),
+                    ),
+                ),
+            ))],
+            vec![],
+        )),
     );
     assert!(matches!(
         invalid_head,
@@ -89,27 +100,33 @@ fn refuses_trait_head_and_parameterized_struct_without_erasing_ontology() {
     let parameterized_struct = nexus(vec![WholeEthosItem::Struct(
         WholeEthosStruct::new(
             id(13),
-            vec![WholeEthosTypeReference::Parameter(WholeEthosTypeParameter::new(
-                ordered.clone(),
-                WholeEthosQuality::Trait(ordered.clone()),
-            ))],
+            vec![WholeEthosTypeReference::Parameter(
+                WholeEthosTypeParameter::new(
+                    ordered.clone(),
+                    WholeEthosQuality::Trait(ordered.clone()),
+                ),
+            )],
         )
         .expect("nonempty struct"),
     )]);
     assert!(matches!(
         SliceOneTransformation::new().lower(&parameterized_struct),
-        Err(SliceOneTransformationError::UnsupportedParameterizedDeclaration { kind: "struct", .. })
+        Err(
+            SliceOneTransformationError::UnsupportedParameterizedDeclaration { kind: "struct", .. }
+        )
     ));
 }
 
 #[test]
 fn refuses_stream_without_translator_issued_lifecycle_identities() {
     let stream = id(20);
-    let document = nexus(vec![WholeEthosItem::StreamInitiation(WholeEthosStreamInitiation {
-        stream: stream.clone(),
-        query: WholeEthosTypeReference::Identity(id(21)),
-        event: WholeEthosTypeReference::Identity(id(22)),
-    })]);
+    let document = nexus(vec![WholeEthosItem::StreamInitiation(
+        WholeEthosStreamInitiation {
+            stream: stream.clone(),
+            query: WholeEthosTypeReference::Identity(id(21)),
+            event: WholeEthosTypeReference::Identity(id(22)),
+        },
+    )]);
     assert!(matches!(
         SliceOneTransformation::new().lower(&document),
         Err(SliceOneTransformationError::StreamLifecycleIdentitiesRequired { stream: found }) if found == stream

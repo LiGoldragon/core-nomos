@@ -20,13 +20,18 @@ use core_ethos::{
 };
 use core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
-    WholeLogosStorageFingerprint, WholeLogosStreamHandle, WholeLogosStreamInitiation,
-    WholeLogosStreamLifecycle, WholeLogosStreamTermination, WholeLogosStruct, WholeLogosTable,
-    WholeLogosTraitDef, WholeLogosTraitImpl, WholeLogosTupleFields, WholeLogosTypeApplication,
-    WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference, WholeLogosVariant,
-    WholeLogosVariantPayload, WholeLogosVisibility,
+    WholeLogosPreservedSemaFamily, WholeLogosStorageFingerprint, WholeLogosStreamHandle,
+    WholeLogosStreamInitiation, WholeLogosStreamLifecycle, WholeLogosStreamTermination,
+    WholeLogosStruct, WholeLogosTable, WholeLogosTraitDef, WholeLogosTraitImpl,
+    WholeLogosTupleFields, WholeLogosTypeApplication, WholeLogosTypeAttributes,
+    WholeLogosTypeParameter, WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload,
+    WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
+
+const CURRENT_SPIRIT_V14_SOURCE: &str = "https://github.com/LiGoldragon/spirit";
+const CURRENT_SPIRIT_V14_REVISION: &str = "7405eee89e3b1b5b6764eb1a50cbdf467b93c9a7";
+const CURRENT_SPIRIT_V14_STORE_SCHEMA: u64 = 14;
 
 /// The Nexus document-to-Logos structural contract.
 pub trait NexusStructuralTransformation {
@@ -111,6 +116,219 @@ pub struct ExternalStorageProvenance {
     owner: StorageProvenanceOwner,
 }
 
+/// One catalogued current-Spirit-v14 physical family adopted by a fresh
+/// semantic Sema table. Unlike external type evidence, this does not make a
+/// second storage implementation available: it only proves that one declared
+/// semantic table may retain one exact existing descriptor.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreservedSemaFamilyProvenance {
+    table: VocabularyEncodedId,
+    record_archive_type: VocabularyEncodedId,
+    key_archive_type: VocabularyEncodedId,
+    record_layout: WholeLogosStorageFingerprint,
+    key_layout: WholeLogosStorageFingerprint,
+    source_spirit_revision: String,
+    store_schema: u64,
+    physical: WholeLogosPreservedSemaFamily,
+}
+
+impl PreservedSemaFamilyProvenance {
+    /// Admit exactly one known Spirit-v14 physical descriptor only when every
+    /// semantic identity, archive layout, source revision, and store schema
+    /// has been supplied. The physical name/family/hash are checked against a
+    /// sealed catalogue rather than accepted as an arbitrary override.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        table: VocabularyEncodedId,
+        record_archive_type: VocabularyEncodedId,
+        key_archive_type: VocabularyEncodedId,
+        physical_table_name: String,
+        physical_family_name: String,
+        physical_schema_hash: [u8; 32],
+        source_spirit_revision: String,
+        store_schema: u64,
+        record_layout: [u8; 32],
+        key_layout: [u8; 32],
+    ) -> Result<Self, NexusTransformationError> {
+        for (position, identity) in [
+            ("table", &table),
+            ("record archive type", &record_archive_type),
+            ("key archive type", &key_archive_type),
+        ] {
+            if identity.root_variant() != &VocabularyRoot::Universal {
+                return Err(NexusTransformationError::PreservedSemaFamilyIdentityRoot {
+                    position,
+                    found: *identity.root_variant(),
+                });
+            }
+        }
+        let catalogue = current_spirit_v14_family(&physical_table_name, &physical_family_name)
+            .ok_or_else(|| NexusTransformationError::UnknownPreservedSemaFamily {
+                table_name: physical_table_name.clone(),
+                family_name: physical_family_name.clone(),
+            })?;
+        if physical_schema_hash != catalogue.schema_hash {
+            return Err(
+                NexusTransformationError::PreservedSemaFamilySchemaHashMismatch {
+                    family_name: physical_family_name,
+                    found: physical_schema_hash,
+                    expected: catalogue.schema_hash,
+                },
+            );
+        }
+        for (position, found, expected) in [
+            ("table", &table, catalogue.table),
+            (
+                "record archive type",
+                &record_archive_type,
+                catalogue.record,
+            ),
+            ("key archive type", &key_archive_type, catalogue.key),
+        ] {
+            if found != &current_spirit_v14_identity(expected) {
+                return Err(
+                    NexusTransformationError::PreservedSemaFamilyIdentityMismatch {
+                        position,
+                        found: found.clone(),
+                        expected: current_spirit_v14_identity(expected),
+                    },
+                );
+            }
+        }
+        if source_spirit_revision != CURRENT_SPIRIT_V14_REVISION {
+            return Err(
+                NexusTransformationError::PreservedSemaFamilyRevisionMismatch {
+                    found: source_spirit_revision,
+                    expected: CURRENT_SPIRIT_V14_REVISION,
+                },
+            );
+        }
+        if store_schema != CURRENT_SPIRIT_V14_STORE_SCHEMA {
+            return Err(
+                NexusTransformationError::PreservedSemaFamilyStoreSchemaMismatch {
+                    found: store_schema,
+                    expected: CURRENT_SPIRIT_V14_STORE_SCHEMA,
+                },
+            );
+        }
+        Ok(Self {
+            table,
+            record_archive_type,
+            key_archive_type,
+            record_layout: WholeLogosStorageFingerprint::new(record_layout),
+            key_layout: WholeLogosStorageFingerprint::new(key_layout),
+            source_spirit_revision,
+            store_schema,
+            physical: WholeLogosPreservedSemaFamily::new(
+                physical_table_name,
+                physical_family_name,
+                physical_schema_hash,
+            ),
+        })
+    }
+
+    /// Fresh semantic Sema table receiving the physical descriptor.
+    pub const fn table(&self) -> &VocabularyEncodedId {
+        &self.table
+    }
+
+    /// Semantic identity of the record archive type.
+    pub const fn record_archive_type(&self) -> &VocabularyEncodedId {
+        &self.record_archive_type
+    }
+
+    /// Semantic identity of the key archive type.
+    pub const fn key_archive_type(&self) -> &VocabularyEncodedId {
+        &self.key_archive_type
+    }
+
+    /// Exact immutable source of the preserved physical descriptor.
+    pub const fn source(&self) -> &'static str {
+        CURRENT_SPIRIT_V14_SOURCE
+    }
+
+    /// Immutable current-Spirit-v14 revision cited by this proof.
+    pub fn source_spirit_revision(&self) -> &str {
+        &self.source_spirit_revision
+    }
+
+    /// Store schema accepted by this purpose-built adoption path.
+    pub const fn store_schema(&self) -> u64 {
+        self.store_schema
+    }
+
+    /// Exact physical descriptor retained on successful lowering.
+    pub const fn physical(&self) -> &WholeLogosPreservedSemaFamily {
+        &self.physical
+    }
+
+    fn validate_table_layout(
+        &self,
+        record: &VocabularyEncodedId,
+        key: &VocabularyEncodedId,
+        record_layout: WholeLogosStorageFingerprint,
+        key_layout: WholeLogosStorageFingerprint,
+    ) -> Result<WholeLogosPreservedSemaFamily, NexusTransformationError> {
+        if record != &self.record_archive_type || key != &self.key_archive_type {
+            return Err(
+                NexusTransformationError::PreservedSemaFamilyTableTypeMismatch {
+                    table: self.table.clone(),
+                },
+            );
+        }
+        if record_layout != self.record_layout || key_layout != self.key_layout {
+            return Err(
+                NexusTransformationError::PreservedSemaFamilyLayoutMismatch {
+                    table: self.table.clone(),
+                },
+            );
+        }
+        Ok(self.physical.clone())
+    }
+}
+
+struct CurrentSpiritV14Family {
+    table: u16,
+    record: u16,
+    key: u16,
+    schema_hash: [u8; 32],
+}
+
+fn current_spirit_v14_family(
+    table_name: &str,
+    family_name: &str,
+) -> Option<CurrentSpiritV14Family> {
+    match (table_name, family_name) {
+        ("records", "RecordsFamily") => Some(CurrentSpiritV14Family {
+            table: 142,
+            record: 126,
+            key: 109,
+            schema_hash: [
+                169, 167, 27, 203, 113, 158, 12, 113, 89, 93, 195, 166, 134, 208, 34, 40, 178, 38,
+                203, 139, 155, 209, 108, 101, 12, 183, 180, 233, 6, 84, 230, 177,
+            ],
+        }),
+        ("migrations", "MigrationsFamily") => Some(CurrentSpiritV14Family {
+            table: 141,
+            record: 84,
+            key: 121,
+            schema_hash: [
+                230, 253, 154, 216, 87, 227, 13, 141, 82, 16, 203, 108, 170, 143, 69, 87, 143, 191,
+                234, 25, 90, 168, 75, 182, 238, 134, 0, 229, 158, 24, 20, 143,
+            ],
+        }),
+        _ => None,
+    }
+}
+
+fn current_spirit_v14_identity(local: u16) -> VocabularyEncodedId {
+    VocabularyEncodedId::new(
+        VocabularyRoot::Universal,
+        vec![encoded_name_table::LocalEncodedId::new(local)],
+    )
+    .expect("one sealed current-Spirit-v14 identity")
+}
+
 impl ExternalStorageProvenance {
     /// Bind one Universal external type to evidence from its owning producer.
     pub fn new(
@@ -159,6 +377,18 @@ pub trait NomosStorageProvenance {
 
     /// Whether a type identity is a declaration in the pre-registered bundle.
     fn declares(&self, identity: &VocabularyEncodedId) -> bool;
+
+    /// Return the one physical descriptor proven for this semantic table, or
+    /// refuse a cited proof whose table types or complete layouts no longer
+    /// match. Absence keeps ordinary fresh-table generation intact.
+    fn preserved_sema_family(
+        &self,
+        table: &VocabularyEncodedId,
+        record: &VocabularyEncodedId,
+        key: &VocabularyEncodedId,
+        record_layout: WholeLogosStorageFingerprint,
+        key_layout: WholeLogosStorageFingerprint,
+    ) -> Result<Option<WholeLogosPreservedSemaFamily>, NexusTransformationError>;
 }
 
 /// Pre-registered declarations from the entire authored Interface/Nexus/Sema
@@ -167,6 +397,7 @@ pub trait NomosStorageProvenance {
 pub struct BundleStorageProvenance {
     declarations: BTreeMap<VocabularyEncodedId, WholeEthosItem>,
     external: Vec<ExternalStorageProvenance>,
+    preserved_sema_families: Vec<PreservedSemaFamilyProvenance>,
 }
 
 impl BundleStorageProvenance {
@@ -175,7 +406,18 @@ impl BundleStorageProvenance {
     /// refusals rather than order-sensitive overwrite behavior.
     pub fn from_documents(
         documents: impl IntoIterator<Item = WholeEthos>,
+        external: Vec<ExternalStorageProvenance>,
+    ) -> Result<Self, NexusTransformationError> {
+        Self::from_documents_with_preserved_families(documents, external, Vec::new())
+    }
+
+    /// Register the full bundle plus the only admissible existing Spirit-v14
+    /// physical descriptors. Duplicate semantic tables and all mismatches are
+    /// rejected before any root is lowered.
+    pub fn from_documents_with_preserved_families(
+        documents: impl IntoIterator<Item = WholeEthos>,
         mut external: Vec<ExternalStorageProvenance>,
+        mut preserved_sema_families: Vec<PreservedSemaFamilyProvenance>,
     ) -> Result<Self, NexusTransformationError> {
         let mut declarations = BTreeMap::new();
         for document in documents {
@@ -200,9 +442,18 @@ impl BundleStorageProvenance {
                 );
             }
         }
+        preserved_sema_families.sort_by(|left, right| left.table().cmp(right.table()));
+        for adjacent in preserved_sema_families.windows(2) {
+            if adjacent[0].table() == adjacent[1].table() {
+                return Err(NexusTransformationError::DuplicatePreservedSemaFamily {
+                    table: adjacent[0].table().clone(),
+                });
+            }
+        }
         Ok(Self {
             declarations,
             external,
+            preserved_sema_families,
         })
     }
 
@@ -383,6 +634,25 @@ impl NomosStorageProvenance for BundleStorageProvenance {
 
     fn declares(&self, identity: &VocabularyEncodedId) -> bool {
         self.declarations.contains_key(identity)
+    }
+
+    fn preserved_sema_family(
+        &self,
+        table: &VocabularyEncodedId,
+        record: &VocabularyEncodedId,
+        key: &VocabularyEncodedId,
+        record_layout: WholeLogosStorageFingerprint,
+        key_layout: WholeLogosStorageFingerprint,
+    ) -> Result<Option<WholeLogosPreservedSemaFamily>, NexusTransformationError> {
+        match self
+            .preserved_sema_families
+            .binary_search_by(|entry| entry.table().cmp(table))
+        {
+            Ok(index) => self.preserved_sema_families[index]
+                .validate_table_layout(record, key, record_layout, key_layout)
+                .map(Some),
+            Err(_) => Ok(None),
+        }
     }
 }
 
@@ -955,13 +1225,24 @@ impl SemaStructuralTransformation for NexusTransformation {
             }
             let record_storage = provenance.storage_fingerprint(table.record())?;
             let key_storage = provenance.storage_fingerprint(table.key())?;
-            items.push(WholeLogosItem::Table(WholeLogosTable::new(
+            let table = WholeLogosTable::new(
                 table.name().clone(),
                 WholeLogosTypeReference::Identity(self.map_reference(record)),
                 WholeLogosTypeReference::Identity(self.map_reference(key)),
                 record_storage,
                 key_storage,
-            )));
+            );
+            let table = match provenance.preserved_sema_family(
+                table.name(),
+                record,
+                key,
+                record_storage,
+                key_storage,
+            )? {
+                Some(physical) => table.with_preserved_sema_family(physical),
+                None => table,
+            };
+            items.push(WholeLogosItem::Table(table));
         }
 
         Ok(SemaTransformationOutcome {
@@ -1306,4 +1587,88 @@ pub enum NexusTransformationError {
     /// one-identity key contract.
     #[error("Sema table {table:?} has an unsupported key type application")]
     InvalidSemaTableKeyShape { table: VocabularyEncodedId },
+    /// One adopted physical family attempted to bind a non-Universal semantic
+    /// identity.
+    #[error("preserved Sema family {position} identity must be Universal, found {found:?}")]
+    PreservedSemaFamilyIdentityRoot {
+        /// Identity role in the adoption proof.
+        position: &'static str,
+        /// Actual vocabulary root.
+        found: VocabularyRoot,
+    },
+    /// The proof named a physical descriptor outside the sealed current
+    /// Spirit-v14 catalogue.
+    #[error("preserved Sema family {family_name:?} at table {table_name:?} is not catalogued")]
+    UnknownPreservedSemaFamily {
+        /// Physical table coordinate.
+        table_name: String,
+        /// Physical record-family coordinate.
+        family_name: String,
+    },
+    /// A catalogue family carried a non-authoritative physical schema hash.
+    #[error("preserved Sema family {family_name:?} schema hash differs from the sealed v14 value")]
+    PreservedSemaFamilySchemaHashMismatch {
+        /// Physical family coordinate.
+        family_name: String,
+        /// Caller-supplied schema hash.
+        found: [u8; 32],
+        /// Sealed current-v14 schema hash.
+        expected: [u8; 32],
+    },
+    /// A proof attempted to use a known physical family for a different
+    /// semantic table or archived type identity.
+    #[error(
+        "preserved Sema family {position} identity {found:?} differs from its sealed v14 identity {expected:?}"
+    )]
+    PreservedSemaFamilyIdentityMismatch {
+        /// Bound identity role.
+        position: &'static str,
+        /// Caller-supplied identity.
+        found: VocabularyEncodedId,
+        /// Sealed source identity.
+        expected: VocabularyEncodedId,
+    },
+    /// The physical descriptor was not cited from the current immutable
+    /// Spirit-v14 revision.
+    #[error(
+        "preserved Sema family Spirit revision {found:?} differs from sealed revision {expected}"
+    )]
+    PreservedSemaFamilyRevisionMismatch {
+        /// Caller-supplied revision.
+        found: String,
+        /// Sealed revision.
+        expected: &'static str,
+    },
+    /// Adoption supports only the current physical store schema.
+    #[error("preserved Sema family store schema {found} differs from sealed schema {expected}")]
+    PreservedSemaFamilyStoreSchemaMismatch {
+        /// Caller-supplied store schema.
+        found: u64,
+        /// Sealed store schema.
+        expected: u64,
+    },
+    /// More than one physical family attempted to bind one semantic table.
+    #[error("preserved Sema family is duplicated for semantic table {table:?}")]
+    DuplicatePreservedSemaFamily {
+        /// Repeated semantic table identity.
+        table: VocabularyEncodedId,
+    },
+    /// The cited semantic table's record or key type no longer matches the
+    /// adoption proof.
+    #[error(
+        "preserved Sema family table {table:?} record/key identities differ from its adoption proof"
+    )]
+    PreservedSemaFamilyTableTypeMismatch {
+        /// Semantic table identity.
+        table: VocabularyEncodedId,
+    },
+    /// The cited semantic table's complete record/key layouts no longer match
+    /// the evidence that authorized physical-descriptor adoption.
+    #[error(
+        "preserved Sema family table {table:?} record/key layout fingerprints differ from its adoption proof"
+    )]
+    PreservedSemaFamilyLayoutMismatch {
+        /// Semantic table identity.
+        table: VocabularyEncodedId,
+    },
 }

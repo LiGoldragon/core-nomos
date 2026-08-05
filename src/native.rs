@@ -384,13 +384,17 @@ fn native_document_items(
         .iter()
         .map(|item| match item {
             WholeEthosItem::Newtype(newtype) => Ok(NativeDocumentItem::Newtype(newtype)),
-            WholeEthosItem::Enumeration(enumeration) => Ok(NativeDocumentItem::Enumeration(enumeration)),
-            WholeEthosItem::Struct(_) => Err(NativeEvaluationError::UnsupportedDocumentItem {
-                item: "struct",
-            }),
-            WholeEthosItem::StreamInitiation(_) => Err(NativeEvaluationError::UnsupportedDocumentItem {
-                item: "stream initiation",
-            }),
+            WholeEthosItem::Enumeration(enumeration) => {
+                Ok(NativeDocumentItem::Enumeration(enumeration))
+            }
+            WholeEthosItem::Struct(_) => {
+                Err(NativeEvaluationError::UnsupportedDocumentItem { item: "struct" })
+            }
+            WholeEthosItem::StreamInitiation(_) => {
+                Err(NativeEvaluationError::UnsupportedDocumentItem {
+                    item: "stream initiation",
+                })
+            }
         })
         .collect()
 }
@@ -2256,9 +2260,7 @@ fn lower_application(
             .map(|argument| lower_reference(argument, references))
             .collect::<Result<Vec<_>, _>>()?,
     )
-    .map_err(|_| NativeEvaluationError::EmptyTypeApplicationArguments {
-        head: head.clone(),
-    })
+    .map_err(|_| NativeEvaluationError::EmptyTypeApplicationArguments { head: head.clone() })
 }
 
 fn lower_variant(

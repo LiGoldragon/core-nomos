@@ -2,9 +2,7 @@ use core_ethos::{
     WholeEthosAttributes, WholeEthosNewtype, WholeEthosQuality, WholeEthosTypeApplication,
     WholeEthosTypeReference, WholeEthosVisibility, WholeEthosWrappedField,
 };
-use core_nomos::{
-    ScopeOfDeclarationRecognition, ScopeOfRefusal, ScopeOfTransformer,
-};
+use core_nomos::{ScopeOfDeclarationRecognition, ScopeOfRefusal, ScopeOfTransformer};
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -32,7 +30,8 @@ fn legacy_scope_of_angle_application_is_a_typed_later_work_refusal() {
             ),
         ),
     ));
-    let transformer = ScopeOfTransformer::try_new(scope_of, id(4)).expect("Universal configuration");
+    let transformer =
+        ScopeOfTransformer::try_new(scope_of, id(4)).expect("Universal configuration");
     assert!(matches!(
         transformer.recognize(&item),
         Err(ScopeOfRefusal::LegacyScopeOfApplicationUnsupported { target: found }) if found == target

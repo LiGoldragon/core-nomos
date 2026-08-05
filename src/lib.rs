@@ -109,8 +109,8 @@ pub use nexus::{
     InterfaceStructuralTransformation, InterfaceTransformationOutcome,
     InterfaceTypeStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
     NexusTransformationError, NexusVocabularyReferenceMapping, NomosStorageProvenance,
-    SemaStructuralTransformation, SemaTransformationOutcome, StorageProvenanceOwner,
-    StreamLifecycleIdentities, TypeDeclarationStructuralTransformation,
+    PreservedSemaFamilyProvenance, SemaStructuralTransformation, SemaTransformationOutcome,
+    StorageProvenanceOwner, StreamLifecycleIdentities, TypeDeclarationStructuralTransformation,
 };
 pub use package::{MacroDefinitions, MacroPackage, PackageRevision};
 pub use prelude::{GENERATED_MARKER, ModuleHead};

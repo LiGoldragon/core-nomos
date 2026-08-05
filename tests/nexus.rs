@@ -15,8 +15,9 @@ use core_logos::{
 use core_nomos::{
     BundleStorageProvenance, ExternalStorageProvenance, InterfaceRoleIdentities,
     InterfaceStructuralTransformation, NexusStructuralTransformation, NexusTransformation,
-    NexusTransformationError, NexusVocabularyReferenceMapping, SemaStructuralTransformation,
-    StorageProvenanceOwner, StreamLifecycleIdentities, TypeDeclarationStructuralTransformation,
+    NexusTransformationError, NexusVocabularyReferenceMapping, NomosStorageProvenance,
+    PreservedSemaFamilyProvenance, SemaStructuralTransformation, StorageProvenanceOwner,
+    StreamLifecycleIdentities, TypeDeclarationStructuralTransformation,
 };
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
@@ -94,19 +95,20 @@ fn nexus_document() -> WholeEthos {
 fn nexus_traits_lower_first_and_types_remain_plain_without_identity_allocation() {
     let guardian_reason = universal(13);
     let rust_guardian_reason = identity(VocabularyRoot::Rust, 103);
-    let transformation =
-        NexusTransformation::with_reference_mappings(vec![NexusVocabularyReferenceMapping::new(
-            guardian_reason.clone(),
-            rust_guardian_reason.clone(),
-        )
-        .expect("typed reference mapping")])
-        .expect("unique mapping source");
+    let transformation = NexusTransformation::with_reference_mappings(vec![
+        NexusVocabularyReferenceMapping::new(guardian_reason.clone(), rust_guardian_reason.clone())
+            .expect("typed reference mapping"),
+    ])
+    .expect("unique mapping source");
     let logos = transformation
         .lower(&nexus_document())
         .expect("lower Nexus document");
 
-    let [WholeLogosItem::TraitDef(_), WholeLogosItem::Enumeration(decision), WholeLogosItem::Struct(context)] =
-        logos.items()
+    let [
+        WholeLogosItem::TraitDef(_),
+        WholeLogosItem::Enumeration(decision),
+        WholeLogosItem::Struct(context),
+    ] = logos.items()
     else {
         panic!("traits precede Nexus operand types")
     };
@@ -204,20 +206,31 @@ fn interface_positions_lower_to_wire_types_memberships_and_resolved_stream_lifec
     let roles = InterfaceRoleIdentities::new(universal(60), universal(61), universal(62))
         .expect("distinct Universal roles");
     let outcome = NexusTransformation::new()
-        .with_stream_lifecycle_identities(vec![StreamLifecycleIdentities::new(
-            universal(40),
-            universal(63),
-            universal(64),
-            universal(65),
-            universal(66),
-            universal(67),
-        )
-        .expect("distinct stream lifecycle identities")])
+        .with_stream_lifecycle_identities(vec![
+            StreamLifecycleIdentities::new(
+                universal(40),
+                universal(63),
+                universal(64),
+                universal(65),
+                universal(66),
+                universal(67),
+            )
+            .expect("distinct stream lifecycle identities"),
+        ])
         .expect("one lifecycle assignment")
         .lower_interface(&interface, &roles)
         .expect("lower structural Interface surface");
-    let [WholeLogosItem::Newtype(input), WholeLogosItem::TraitImpl(input_membership), WholeLogosItem::Newtype(output), WholeLogosItem::TraitImpl(output_membership), WholeLogosItem::Struct(refusal), WholeLogosItem::TraitImpl(refusal_membership), WholeLogosItem::Struct(structure), WholeLogosItem::Enumeration(enumeration), WholeLogosItem::StreamLifecycle(lifecycle)] =
-        outcome.logos().items()
+    let [
+        WholeLogosItem::Newtype(input),
+        WholeLogosItem::TraitImpl(input_membership),
+        WholeLogosItem::Newtype(output),
+        WholeLogosItem::TraitImpl(output_membership),
+        WholeLogosItem::Struct(refusal),
+        WholeLogosItem::TraitImpl(refusal_membership),
+        WholeLogosItem::Struct(structure),
+        WholeLogosItem::Enumeration(enumeration),
+        WholeLogosItem::StreamLifecycle(lifecycle),
+    ] = outcome.logos().items()
     else {
         panic!("Interface declaration and membership order")
     };
@@ -505,8 +518,10 @@ fn sema_record_types_become_stored_values_and_local_tables_become_typed_specific
     let outcome = NexusTransformation::new()
         .lower_sema(&sema, &provenance)
         .expect("lower Sema storage declarations");
-    let [WholeLogosItem::Struct(stored), WholeLogosItem::Table(specification)] =
-        outcome.logos().items()
+    let [
+        WholeLogosItem::Struct(stored),
+        WholeLogosItem::Table(specification),
+    ] = outcome.logos().items()
     else {
         panic!("stored record precedes its table specification")
     };
@@ -517,6 +532,156 @@ fn sema_record_types_become_stored_values_and_local_tables_become_typed_specific
         &WholeLogosTypeReference::Identity(record),
     );
     assert_eq!(specification.key(), &WholeLogosTypeReference::Identity(key),);
+}
+
+#[test]
+fn preserved_current_spirit_v14_family_requires_the_catalogue_and_exact_generated_layout() {
+    let record = universal(126);
+    let key = universal(109);
+    let entry = universal(125);
+    let table = universal(142);
+    let sema = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+        WholeEthosBody::Sema(WholeEthosSemaBody::new(
+            vec![WholeEthosItem::Struct(
+                WholeEthosStruct::new(record.clone(), vec![reference(109), reference(125)])
+                    .expect("stored record fields"),
+            )],
+            vec![WholeEthosTable::new(
+                table.clone(),
+                WholeEthosTypeReference::Identity(record.clone()),
+                WholeEthosTypeReference::Identity(key.clone()),
+            )],
+        )),
+    )
+    .expect("typed current-v14-shaped Sema document");
+    let external = {
+        let owner = StorageProvenanceOwner::new(
+            "test://current-spirit-v14-layout".to_owned(),
+            "test-revision".to_owned(),
+        )
+        .expect("test external owner");
+        vec![
+            ExternalStorageProvenance::new(key.clone(), [1; 32], owner.clone())
+                .expect("key provenance"),
+            ExternalStorageProvenance::new(entry, [2; 32], owner).expect("entry provenance"),
+        ]
+    };
+    let ordinary = BundleStorageProvenance::from_documents(vec![sema.clone()], external.clone())
+        .expect("ordinary bundle provenance");
+    let record_layout = ordinary
+        .storage_fingerprint(&WholeEthosTypeReference::Identity(record.clone()))
+        .expect("complete record layout")
+        .bytes();
+    let key_layout = ordinary
+        .storage_fingerprint(&WholeEthosTypeReference::Identity(key.clone()))
+        .expect("complete key layout")
+        .bytes();
+    let proof = PreservedSemaFamilyProvenance::new(
+        table.clone(),
+        record.clone(),
+        key.clone(),
+        "records".to_owned(),
+        "RecordsFamily".to_owned(),
+        [
+            169, 167, 27, 203, 113, 158, 12, 113, 89, 93, 195, 166, 134, 208, 34, 40, 178, 38, 203,
+            139, 155, 209, 108, 101, 12, 183, 180, 233, 6, 84, 230, 177,
+        ],
+        "7405eee89e3b1b5b6764eb1a50cbdf467b93c9a7".to_owned(),
+        14,
+        record_layout,
+        key_layout,
+    )
+    .expect("catalogued v14 adoption proof");
+    assert_eq!(proof.source(), "https://github.com/LiGoldragon/spirit");
+    let provenance = BundleStorageProvenance::from_documents_with_preserved_families(
+        vec![sema.clone()],
+        external.clone(),
+        vec![proof.clone()],
+    )
+    .expect("one adopted descriptor");
+    let outcome = NexusTransformation::new()
+        .lower_sema(&sema, &provenance)
+        .expect("matching physical descriptor adoption");
+    let [WholeLogosItem::Struct(_), WholeLogosItem::Table(table)] = outcome.logos().items() else {
+        panic!("stored record and one table")
+    };
+    let physical = table
+        .preserved_sema_family()
+        .expect("validated physical descriptor is retained");
+    assert_eq!(physical.table_name(), "records");
+    assert_eq!(physical.family_name(), "RecordsFamily");
+    assert_eq!(
+        table.schema_hash().expect("preserved physical schema hash"),
+        physical.schema_hash()
+    );
+
+    assert!(matches!(
+        PreservedSemaFamilyProvenance::new(
+            universal(140),
+            record.clone(),
+            key.clone(),
+            "records".to_owned(),
+            "RecordsFamily".to_owned(),
+            physical.schema_hash(),
+            "7405eee89e3b1b5b6764eb1a50cbdf467b93c9a7".to_owned(),
+            14,
+            record_layout,
+            key_layout,
+        ),
+        Err(
+            NexusTransformationError::PreservedSemaFamilyIdentityMismatch {
+                position: "table",
+                ..
+            }
+        )
+    ));
+    assert!(matches!(
+        PreservedSemaFamilyProvenance::new(
+            table.name().clone(),
+            record.clone(),
+            key.clone(),
+            "records".to_owned(),
+            "RecordsFamily".to_owned(),
+            physical.schema_hash(),
+            "missing-current-revision".to_owned(),
+            14,
+            record_layout,
+            key_layout,
+        ),
+        Err(NexusTransformationError::PreservedSemaFamilyRevisionMismatch { .. })
+    ));
+    let mismatched_layout = PreservedSemaFamilyProvenance::new(
+        table.name().clone(),
+        record,
+        key,
+        "records".to_owned(),
+        "RecordsFamily".to_owned(),
+        physical.schema_hash(),
+        "7405eee89e3b1b5b6764eb1a50cbdf467b93c9a7".to_owned(),
+        14,
+        [0; 32],
+        key_layout,
+    )
+    .expect("layout is checked at lowering against the complete bundle");
+    let mismatch = BundleStorageProvenance::from_documents_with_preserved_families(
+        vec![sema.clone()],
+        external,
+        vec![mismatched_layout],
+    )
+    .expect("layout proof is syntactically complete");
+    assert!(matches!(
+        NexusTransformation::new().lower_sema(&sema, &mismatch),
+        Err(NexusTransformationError::PreservedSemaFamilyLayoutMismatch { .. })
+    ));
+    assert!(matches!(
+        BundleStorageProvenance::from_documents_with_preserved_families(
+            vec![sema],
+            Vec::new(),
+            vec![proof.clone(), proof],
+        ),
+        Err(NexusTransformationError::DuplicatePreservedSemaFamily { .. })
+    ));
 }
 
 #[test]
