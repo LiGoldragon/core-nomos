@@ -133,7 +133,7 @@ dependencies = [
 [[package]]
 name = "core-ethos"
 version = "0.25.0"
-source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=29237c33798db908bbfe10ef0cffe2c6a28be508#29237c33798db908bbfe10ef0cffe2c6a28be508"
+source = "git+https://github.com/LiGoldragon/core-ethos.git?rev=e0abb0a369ecfd146e406a99ed8db75327a564d2#e0abb0a369ecfd146e406a99ed8db75327a564d2"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
@@ -150,7 +150,7 @@ dependencies = [
 [[package]]
 name = "core-logos"
 version = "0.24.0"
-source = "git+https://github.com/LiGoldragon/core-logos.git?rev=5733b586c72a3191e12b3e09cf01a4a6caba4242#5733b586c72a3191e12b3e09cf01a4a6caba4242"
+source = "git+https://github.com/LiGoldragon/core-logos.git?rev=80e4ab18856f388a347320955eac365cfa766ce3#80e4ab18856f388a347320955eac365cfa766ce3"
 dependencies = [
  "content-identity 0.3.0",
  "content-identity 0.4.0",
@@ -518,7 +518,7 @@ dependencies = [
 [[package]]
 name = "rust-logos"
 version = "0.27.0"
-source = "git+https://github.com/LiGoldragon/rust-logos.git?rev=9b2a6ef7a14a7df77e8c7f165226169c85c79ccd#9b2a6ef7a14a7df77e8c7f165226169c85c79ccd"
+source = "git+https://github.com/LiGoldragon/rust-logos.git?rev=7366fff3f8adb2a78c6e66fd77bb267e6ee3e5d2#7366fff3f8adb2a78c6e66fd77bb267e6ee3e5d2"
 dependencies = [
  "bs58",
  "core-logos",

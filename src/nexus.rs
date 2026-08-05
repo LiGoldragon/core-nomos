@@ -14,18 +14,19 @@ use std::collections::{BTreeMap, BTreeSet};
 use capsule_content_identity::IdentityHasher;
 use core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
-    WholeEthosItem, WholeEthosNewtype, WholeEthosQuality, WholeEthosStreamInitiation,
-    WholeEthosStruct, WholeEthosTrait, WholeEthosTypeApplication, WholeEthosTypeParameter,
-    WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload, WholeEthosVisibility,
+    WholeEthosItem, WholeEthosNewtype, WholeEthosQuality, WholeEthosSemaTableKey,
+    WholeEthosStreamInitiation, WholeEthosStruct, WholeEthosTrait, WholeEthosTypeApplication,
+    WholeEthosTypeParameter, WholeEthosTypeReference, WholeEthosVariant, WholeEthosVariantPayload,
+    WholeEthosVisibility,
 };
 use core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype,
-    WholeLogosPreservedSemaFamily, WholeLogosStorageFingerprint, WholeLogosStreamHandle,
-    WholeLogosStreamInitiation, WholeLogosStreamLifecycle, WholeLogosStreamTermination,
-    WholeLogosStruct, WholeLogosTable, WholeLogosTraitDef, WholeLogosTraitImpl,
-    WholeLogosTupleFields, WholeLogosTypeApplication, WholeLogosTypeAttributes,
-    WholeLogosTypeParameter, WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload,
-    WholeLogosVisibility,
+    WholeLogosPreservedSemaFamily, WholeLogosSemaTableKey, WholeLogosStorageFingerprint,
+    WholeLogosStreamHandle, WholeLogosStreamInitiation, WholeLogosStreamLifecycle,
+    WholeLogosStreamTermination, WholeLogosStruct, WholeLogosTable, WholeLogosTraitDef,
+    WholeLogosTraitImpl, WholeLogosTupleFields, WholeLogosTypeApplication,
+    WholeLogosTypeAttributes, WholeLogosTypeParameter, WholeLogosTypeReference, WholeLogosVariant,
+    WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -378,6 +379,16 @@ pub trait NomosStorageProvenance {
     /// Whether a type identity is a declaration in the pre-registered bundle.
     fn declares(&self, identity: &VocabularyEncodedId) -> bool;
 
+    /// Resolve the exact bundle declaration which owns a source-declared
+    /// table-key archive contract.  This is separate from storage-shape
+    /// evidence: a key must never gain lookup semantics from an external
+    /// fingerprint or a generated Rust spelling.
+    fn sema_table_key_archive_identity(
+        &self,
+        table: &VocabularyEncodedId,
+        key: &WholeEthosSemaTableKey,
+    ) -> Result<VocabularyEncodedId, NexusTransformationError>;
+
     /// Return the one physical descriptor proven for this semantic table, or
     /// refuse a cited proof whose table types or complete layouts no longer
     /// match. Absence keeps ordinary fresh-table generation intact.
@@ -634,6 +645,31 @@ impl NomosStorageProvenance for BundleStorageProvenance {
 
     fn declares(&self, identity: &VocabularyEncodedId) -> bool {
         self.declarations.contains_key(identity)
+    }
+
+    fn sema_table_key_archive_identity(
+        &self,
+        table: &VocabularyEncodedId,
+        key: &WholeEthosSemaTableKey,
+    ) -> Result<VocabularyEncodedId, NexusTransformationError> {
+        let WholeEthosTypeReference::Identity(identity) = key.archive_type() else {
+            return Err(NexusTransformationError::InvalidSemaTableKeyShape {
+                table: table.clone(),
+            });
+        };
+        let declaration = self.declarations.get(identity).ok_or_else(|| {
+            NexusTransformationError::SemaTableKeyNotBundleOwned {
+                table: table.clone(),
+                key: identity.clone(),
+            }
+        })?;
+        if !matches!(declaration, WholeEthosItem::Newtype(_)) {
+            return Err(NexusTransformationError::SemaTableKeyNotNewtype {
+                table: table.clone(),
+                key: identity.clone(),
+            });
+        }
+        Ok(identity.clone())
     }
 
     fn preserved_sema_family(
@@ -1212,7 +1248,7 @@ impl SemaStructuralTransformation for NexusTransformation {
                     table: table.name().clone(),
                 });
             };
-            let WholeEthosTypeReference::Identity(key) = table.key() else {
+            let WholeEthosTypeReference::Identity(key) = table.key().archive_type() else {
                 return Err(NexusTransformationError::InvalidSemaTableKeyShape {
                     table: table.name().clone(),
                 });
@@ -1223,12 +1259,23 @@ impl SemaStructuralTransformation for NexusTransformation {
                     record: record.clone(),
                 });
             }
+            let key_archive_identity =
+                provenance.sema_table_key_archive_identity(table.name(), table.key())?;
+            if &key_archive_identity != key {
+                return Err(
+                    NexusTransformationError::SemaTableKeyArchiveIdentityMismatch {
+                        table: table.name().clone(),
+                        declared: key.clone(),
+                        provenanced: key_archive_identity,
+                    },
+                );
+            }
             let record_storage = provenance.storage_fingerprint(table.record())?;
-            let key_storage = provenance.storage_fingerprint(table.key())?;
+            let key_storage = provenance.storage_fingerprint(table.key().archive_type())?;
             let table = WholeLogosTable::new(
                 table.name().clone(),
                 WholeLogosTypeReference::Identity(self.map_reference(record)),
-                WholeLogosTypeReference::Identity(self.map_reference(key)),
+                WholeLogosSemaTableKey::new(self.map_reference(key)),
                 record_storage,
                 key_storage,
             );
@@ -1587,6 +1634,38 @@ pub enum NexusTransformationError {
     /// one-identity key contract.
     #[error("Sema table {table:?} has an unsupported key type application")]
     InvalidSemaTableKeyShape { table: VocabularyEncodedId },
+    /// A table key named a type outside the complete authored bundle.  An
+    /// external storage fingerprint is evidence for an archive layout, never
+    /// authority to define lookup semantics.
+    #[error("Sema table {table:?} key {key:?} is not owned by this bundle")]
+    SemaTableKeyNotBundleOwned {
+        /// Stable table identity.
+        table: VocabularyEncodedId,
+        /// Unknown or foreign key archive identity.
+        key: VocabularyEncodedId,
+    },
+    /// A source table key must be a newtype so generated Rust can project its
+    /// one declared payload without scanning archive bytes.
+    #[error("Sema table {table:?} key {key:?} is not a source newtype")]
+    SemaTableKeyNotNewtype {
+        /// Stable table identity.
+        table: VocabularyEncodedId,
+        /// Declared non-newtype key identity.
+        key: VocabularyEncodedId,
+    },
+    /// Provenance attempted to substitute a different archive identity for a
+    /// source-declared table key.
+    #[error(
+        "Sema table {table:?} declared key {declared:?} differs from provenanced archive identity {provenanced:?}"
+    )]
+    SemaTableKeyArchiveIdentityMismatch {
+        /// Stable table identity.
+        table: VocabularyEncodedId,
+        /// Source-declared key archive identity.
+        declared: VocabularyEncodedId,
+        /// Identity returned by the provenance boundary.
+        provenanced: VocabularyEncodedId,
+    },
     /// One adopted physical family attempted to bind a non-Universal semantic
     /// identity.
     #[error("preserved Sema family {position} identity must be Universal, found {found:?}")]

@@ -501,10 +501,18 @@ fn sema_record_types_become_stored_values_and_local_tables_become_typed_specific
     let sema = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
         WholeEthosBody::Sema(WholeEthosSemaBody::new(
-            vec![WholeEthosItem::Struct(
-                WholeEthosStruct::new(record.clone(), vec![reference(83)])
-                    .expect("stored record field"),
-            )],
+            vec![
+                WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                    key.clone(),
+                    WholeEthosVisibility::Public,
+                    WholeEthosAttributes,
+                    WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(83)),
+                )),
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(record.clone(), vec![reference(83)])
+                        .expect("stored record field"),
+                ),
+            ],
             vec![WholeEthosTable::new(
                 table.clone(),
                 WholeEthosTypeReference::Identity(record.clone()),
@@ -514,11 +522,12 @@ fn sema_record_types_become_stored_values_and_local_tables_become_typed_specific
     )
     .expect("typed Sema document");
 
-    let provenance = storage_provenance(std::slice::from_ref(&sema), &[(81, 1), (83, 2)]);
+    let provenance = storage_provenance(std::slice::from_ref(&sema), &[(83, 2)]);
     let outcome = NexusTransformation::new()
         .lower_sema(&sema, &provenance)
         .expect("lower Sema storage declarations");
     let [
+        WholeLogosItem::Newtype(_),
         WholeLogosItem::Struct(stored),
         WholeLogosItem::Table(specification),
     ] = outcome.logos().items()
@@ -543,10 +552,18 @@ fn preserved_current_spirit_v14_family_requires_the_catalogue_and_exact_generate
     let sema = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
         WholeEthosBody::Sema(WholeEthosSemaBody::new(
-            vec![WholeEthosItem::Struct(
-                WholeEthosStruct::new(record.clone(), vec![reference(109), reference(125)])
-                    .expect("stored record fields"),
-            )],
+            vec![
+                WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                    key.clone(),
+                    WholeEthosVisibility::Public,
+                    WholeEthosAttributes,
+                    WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(124)),
+                )),
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(record.clone(), vec![reference(109), reference(125)])
+                        .expect("stored record fields"),
+                ),
+            ],
             vec![WholeEthosTable::new(
                 table.clone(),
                 WholeEthosTypeReference::Identity(record.clone()),
@@ -562,8 +579,8 @@ fn preserved_current_spirit_v14_family_requires_the_catalogue_and_exact_generate
         )
         .expect("test external owner");
         vec![
-            ExternalStorageProvenance::new(key.clone(), [1; 32], owner.clone())
-                .expect("key provenance"),
+            ExternalStorageProvenance::new(universal(124), [1; 32], owner.clone())
+                .expect("key payload provenance"),
             ExternalStorageProvenance::new(entry, [2; 32], owner).expect("entry provenance"),
         ]
     };
@@ -603,7 +620,12 @@ fn preserved_current_spirit_v14_family_requires_the_catalogue_and_exact_generate
     let outcome = NexusTransformation::new()
         .lower_sema(&sema, &provenance)
         .expect("matching physical descriptor adoption");
-    let [WholeLogosItem::Struct(_), WholeLogosItem::Table(table)] = outcome.logos().items() else {
+    let [
+        WholeLogosItem::Newtype(_),
+        WholeLogosItem::Struct(_),
+        WholeLogosItem::Table(table),
+    ] = outcome.logos().items()
+    else {
         panic!("stored record and one table")
     };
     let physical = table
@@ -695,6 +717,12 @@ fn sema_schema_hash_tracks_direct_and_transitive_layout_under_stable_identities(
             WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
             WholeEthosBody::Sema(WholeEthosSemaBody::new(
                 vec![
+                    WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                        key.clone(),
+                        WholeEthosVisibility::Public,
+                        WholeEthosAttributes,
+                        WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(116)),
+                    )),
                     WholeEthosItem::Struct(
                         WholeEthosStruct::new(record.clone(), vec![reference(111)])
                             .expect("record field"),
@@ -723,7 +751,7 @@ fn sema_schema_hash_tracks_direct_and_transitive_layout_under_stable_identities(
     let original_document = document(nested_newtype);
     let original_provenance = storage_provenance(
         std::slice::from_ref(&original_document),
-        &[(113, 3), (114, 4), (115, 5)],
+        &[(114, 4), (115, 5), (116, 6)],
     );
     let original = NexusTransformation::new()
         .lower_sema(&original_document, &original_provenance)
@@ -731,7 +759,7 @@ fn sema_schema_hash_tracks_direct_and_transitive_layout_under_stable_identities(
     let changed_document = document(nested_struct);
     let changed_provenance = storage_provenance(
         std::slice::from_ref(&changed_document),
-        &[(113, 3), (114, 4), (115, 5)],
+        &[(114, 4), (115, 5), (116, 6)],
     );
     let changed = NexusTransformation::new()
         .lower_sema(&changed_document, &changed_provenance)
@@ -752,10 +780,18 @@ fn sema_reachable_external_storage_shape_requires_an_explicit_fingerprint() {
     let sema = WholeEthos::new(
         WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
         WholeEthosBody::Sema(WholeEthosSemaBody::new(
-            vec![WholeEthosItem::Struct(
-                WholeEthosStruct::new(universal(120), vec![reference(121)])
-                    .expect("stored record field"),
-            )],
+            vec![
+                WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                    universal(123),
+                    WholeEthosVisibility::Public,
+                    WholeEthosAttributes,
+                    WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(124)),
+                )),
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(universal(120), vec![reference(121)])
+                        .expect("stored record field"),
+                ),
+            ],
             vec![WholeEthosTable::new(
                 universal(122),
                 reference(120),
@@ -868,6 +904,69 @@ fn sema_table_refuses_a_record_not_declared_by_the_bundle() {
 }
 
 #[test]
+fn sema_table_refuses_foreign_or_non_newtype_key_provenance() {
+    let record = universal(160);
+    let table = universal(161);
+    let foreign_key = universal(162);
+    let foreign = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+        WholeEthosBody::Sema(WholeEthosSemaBody::new(
+            vec![WholeEthosItem::Struct(
+                WholeEthosStruct::new(record.clone(), vec![reference(163)])
+                    .expect("stored record field"),
+            )],
+            vec![WholeEthosTable::new(
+                table.clone(),
+                WholeEthosTypeReference::Identity(record.clone()),
+                WholeEthosTypeReference::Identity(foreign_key.clone()),
+            )],
+        )),
+    )
+    .expect("typed foreign-key Sema document");
+    let foreign_provenance =
+        storage_provenance(std::slice::from_ref(&foreign), &[(162, 1), (163, 2)]);
+    assert!(matches!(
+        NexusTransformation::new().lower_sema(&foreign, &foreign_provenance),
+        Err(NexusTransformationError::SemaTableKeyNotBundleOwned {
+            table: refused_table,
+            key,
+        }) if refused_table == table && key == foreign_key
+    ));
+
+    let non_newtype_key = universal(164);
+    let non_newtype = WholeEthos::new(
+        WholeEthosHeader::new(WholeEthosFileKind::Sema, 1).expect("Sema header"),
+        WholeEthosBody::Sema(WholeEthosSemaBody::new(
+            vec![
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(record.clone(), vec![reference(163)])
+                        .expect("stored record field"),
+                ),
+                WholeEthosItem::Struct(
+                    WholeEthosStruct::new(non_newtype_key.clone(), vec![reference(163)])
+                        .expect("non-newtype key declaration"),
+                ),
+            ],
+            vec![WholeEthosTable::new(
+                table.clone(),
+                WholeEthosTypeReference::Identity(record),
+                WholeEthosTypeReference::Identity(non_newtype_key.clone()),
+            )],
+        )),
+    )
+    .expect("typed non-newtype-key Sema document");
+    let non_newtype_provenance =
+        storage_provenance(std::slice::from_ref(&non_newtype), &[(163, 2)]);
+    assert!(matches!(
+        NexusTransformation::new().lower_sema(&non_newtype, &non_newtype_provenance),
+        Err(NexusTransformationError::SemaTableKeyNotNewtype {
+            table: refused_table,
+            key,
+        }) if refused_table == table && key == non_newtype_key
+    ));
+}
+
+#[test]
 fn sema_bundle_provenance_refuses_cycles_and_duplicate_declarations() {
     let first = universal(150);
     let second = universal(151);
@@ -884,12 +983,18 @@ fn sema_bundle_provenance_refuses_cycles_and_duplicate_declarations() {
                     WholeEthosStruct::new(second.clone(), vec![reference(150)])
                         .expect("second cyclic field"),
                 ),
+                WholeEthosItem::Newtype(WholeEthosNewtype::new(
+                    universal(153),
+                    WholeEthosVisibility::Public,
+                    WholeEthosAttributes,
+                    WholeEthosWrappedField::new(WholeEthosVisibility::Private, reference(154)),
+                )),
             ],
             vec![WholeEthosTable::new(table, reference(150), reference(153))],
         )),
     )
     .expect("typed cyclic Sema document");
-    let cyclic_provenance = storage_provenance(std::slice::from_ref(&cyclic), &[(153, 9)]);
+    let cyclic_provenance = storage_provenance(std::slice::from_ref(&cyclic), &[(154, 9)]);
     assert!(matches!(
         NexusTransformation::new().lower_sema(&cyclic, &cyclic_provenance),
         Err(NexusTransformationError::CyclicSemaStorageShape { identity }) if identity == first
