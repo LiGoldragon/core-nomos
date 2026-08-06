@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.40.0"
+version      = "0.41.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -15,8 +15,8 @@ path = "src/lib.rs"
 
 [dependencies]
 capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "896b21e17f31b66d0802bff899b4b60acea9c0f1" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "249ed6ac5b8a3a84fee5884bcb35b929f07e9166" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "abee4036fbeb58c767ef7dc3489804e2afd5c6e1" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "427fd74a8217f557cfabdfe0ff23b784c855bf85" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "f3655c5ba60d2aec5a6bffa0962eef6b5964ee4e" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "3a26cb43f8ce7f9fe85da64d19aa55aa662943ce" }
 thiserror                = "2"
 
