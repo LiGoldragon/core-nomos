@@ -11,7 +11,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use capsule_content_identity::IdentityHasher;
 use core_ethos::{
     WholeEthos, WholeEthosAttributes, WholeEthosBody, WholeEthosEnumeration, WholeEthosFileKind,
     WholeEthosItem, WholeEthosNewtype, WholeEthosQuality, WholeEthosSemaTableKey,
@@ -29,6 +28,8 @@ use core_logos::{
     WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
+
+use crate::storage_shape::{storage_shape_hasher, update_count, update_identity};
 
 const CURRENT_SPIRIT_V14_SOURCE: &str = "https://github.com/LiGoldragon/spirit";
 const CURRENT_SPIRIT_V14_REVISION: &str = "7405eee89e3b1b5b6764eb1a50cbdf467b93c9a7";
@@ -1522,30 +1523,6 @@ impl NexusTransformation {
             WholeLogosTypeReference::Identity(declaration.clone()),
             Vec::new(),
         ))
-    }
-}
-
-fn storage_shape_hasher(kind: &[u8]) -> IdentityHasher {
-    let mut hasher = IdentityHasher::unprimed();
-    hasher.update_length_prefixed(b"protos-sema-stored-shape-v1");
-    hasher.update_length_prefixed(kind);
-    hasher
-}
-
-fn update_count(hasher: &mut IdentityHasher, count: usize) {
-    let count = u64::try_from(count).expect("Rust collection length fits the u64 shape format");
-    hasher.update_length_prefixed(&count.to_be_bytes());
-}
-
-fn update_identity(hasher: &mut IdentityHasher, identity: &VocabularyEncodedId) {
-    let root = match identity.root_variant() {
-        VocabularyRoot::Universal => 0_u8,
-        VocabularyRoot::Rust => 1_u8,
-    };
-    hasher.update_length_prefixed(&[root]);
-    update_count(hasher, identity.chain().len());
-    for local in identity.chain() {
-        hasher.update_length_prefixed(&local.value().to_be_bytes());
     }
 }
 

@@ -17,7 +17,7 @@ first-slice reference transformation alongside a retained legacy graph. The
 native evaluator is the production-bound door; engine integration source gates
 must prevent the legacy graph from becoming reachable through deployment.
 
-`BootstrapSliceOneLowering` is the current interface-stage boundary. It accepts
+`BootstrapSliceOneLowering` is the current authority-sealed bootstrap boundary. It accepts
 the same `BootstrapReader<A>` that sealed an authority-branded
 `PreparedBootstrapTransaction<A>`, revalidates the authority receipt and every
 prepared-model invariant, and then reads the transaction directly. It never
@@ -28,6 +28,18 @@ retain complete identities; unit, unary, and arbitrary nonempty product variants
 retain exact variant and field order. Trait declarations, Interface roles,
 Streams, Sema tables, and Trait requirements each have a distinct typed refusal
 that retains the unsupported identity or requirement.
+
+The separate `lower_sema` operation is the storage-aware boundary; the generic
+`lower` operation continues to refuse Sema. `lower_sema` marks the exact
+document's record declarations as stored, requires every table record and key
+to be owned by that document, requires each key to be a newtype, and emits a
+first-class `WholeLogosTable`. Recursive local storage fingerprints use the
+same domain-separated structural algorithm as full Nexus lowering. Every
+reachable nonlocal leaf requires explicit `ExternalStorageProvenance`, including
+its owner source and immutable revision. Duplicate evidence, local/external
+ownership conflicts, missing evidence, cyclic shapes, foreign table types, and
+the wrong file kind are typed refusals; neither identity nor a later Rust path
+is treated as archive evidence.
 
 Catalog construction, grammar identities, naming/generated-stream assignments,
 metadata transitions, authority proof, and later textual resolution remain

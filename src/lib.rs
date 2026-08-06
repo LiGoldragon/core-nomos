@@ -78,6 +78,7 @@ pub mod prelude;
 pub mod scope_of;
 pub mod sealed;
 pub mod slice_one;
+mod storage_shape;
 pub mod template;
 pub mod template_language;
 pub mod textual;

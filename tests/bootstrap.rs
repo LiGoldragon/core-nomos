@@ -1,8 +1,13 @@
 use std::collections::BTreeMap;
 
 use core_ethos::bootstrap::*;
-use core_logos::{WholeLogosItem, WholeLogosTypeReference, WholeLogosVariantPayload};
-use core_nomos::{BootstrapSliceOneLowering, BootstrapSliceOneLoweringError};
+use core_logos::{
+    WholeLogosItem, WholeLogosTypeAttributes, WholeLogosTypeReference, WholeLogosVariantPayload,
+};
+use core_nomos::{
+    BootstrapSliceOneLowering, BootstrapSliceOneLoweringError, ExternalStorageProvenance,
+    StorageProvenanceOwner,
+};
 use encoded_name_table::LocalEncodedId;
 use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
 
@@ -267,6 +272,19 @@ fn spelling<'a>(
         .visible_name
 }
 
+fn external_storage(local: u16, fingerprint: u8) -> ExternalStorageProvenance {
+    ExternalStorageProvenance::new(
+        id(local),
+        [fingerprint; 32],
+        StorageProvenanceOwner::new(
+            "https://github.com/LiGoldragon/bootstrap-fixture".to_owned(),
+            "strict-sema-v1".to_owned(),
+        )
+        .expect("nonempty fixture owner"),
+    )
+    .expect("Universal external storage identity")
+}
+
 #[test]
 fn lowers_canonical_types_recursive_shapes_and_every_variant_payload() {
     let fixture = fixture(1);
@@ -354,6 +372,157 @@ fn lowers_role_free_interface_support_types() {
         panic!("one Interface support type")
     };
     assert_eq!(spelling(&transaction, signal.name()), "Signal");
+}
+
+#[test]
+fn lowers_sema_record_types_and_tables_with_explicit_storage_provenance() {
+    let fixture = fixture(20);
+    let transaction = seal(
+        &fixture,
+        "Sema.{1 0 0}\n[]\n{[Domain.String StoredRecord.{Domain Integer}] [records.{StoredRecord Domain}]}",
+    );
+    let external = [external_storage(7, 7), external_storage(8, 8)];
+
+    let logos = BootstrapSliceOneLowering::new()
+        .lower_sema(&fixture.reader, &transaction, &external)
+        .expect("supported Sema record and table lowering");
+    let [
+        WholeLogosItem::Newtype(key),
+        WholeLogosItem::Struct(record),
+        WholeLogosItem::Table(table),
+    ] = logos.items()
+    else {
+        panic!("stored declarations precede their table")
+    };
+    assert_eq!(spelling(&transaction, key.name()), "Domain");
+    assert_eq!(key.attributes(), WholeLogosTypeAttributes::Stored);
+    assert_eq!(spelling(&transaction, record.name()), "StoredRecord");
+    assert_eq!(record.attributes(), WholeLogosTypeAttributes::Stored);
+    assert_eq!(spelling(&transaction, table.name()), "records");
+    assert_eq!(
+        table.record(),
+        &WholeLogosTypeReference::Identity(record.name().clone())
+    );
+    assert_eq!(
+        table.key(),
+        &WholeLogosTypeReference::Identity(key.name().clone())
+    );
+    assert_ne!(table.record_storage(), table.key_storage());
+
+    assert_eq!(
+        logos,
+        BootstrapSliceOneLowering::new()
+            .lower_sema(&fixture.reader, &transaction, &external)
+            .expect("same verified inputs lower deterministically")
+    );
+}
+
+#[test]
+fn strict_sema_lowering_refuses_missing_or_ambiguous_storage_ownership() {
+    let fixture = fixture(21);
+    let transaction = seal(
+        &fixture,
+        "Sema.{1 0 0}\n[]\n{[Domain.String StoredRecord.{Domain Integer}] [records.{StoredRecord Domain}]}",
+    );
+    assert!(matches!(
+        BootstrapSliceOneLowering::new().lower_sema(
+            &fixture.reader,
+            &transaction,
+            &[external_storage(8, 8)]
+        ),
+        Err(BootstrapSliceOneLoweringError::MissingExternalStorageProvenance { identity })
+            if identity == id(7)
+    ));
+    assert!(matches!(
+        BootstrapSliceOneLowering::new().lower_sema(
+            &fixture.reader,
+            &transaction,
+            &[external_storage(7, 7), external_storage(7, 7), external_storage(8, 8)]
+        ),
+        Err(BootstrapSliceOneLoweringError::DuplicateExternalStorageProvenance { identity })
+            if identity == id(7)
+    ));
+    assert!(matches!(
+        BootstrapSliceOneLowering::new().lower_sema(
+            &fixture.reader,
+            &transaction,
+            &[external_storage(100, 1), external_storage(7, 7), external_storage(8, 8)]
+        ),
+        Err(BootstrapSliceOneLoweringError::StorageProvenanceOwnershipConflict { identity })
+            if spelling(&transaction, &identity) == "Domain"
+    ));
+}
+
+#[test]
+fn strict_sema_lowering_refuses_foreign_or_non_newtype_table_relationships() {
+    let fixture = fixture(22);
+    let external = [external_storage(7, 7), external_storage(8, 8)];
+
+    let foreign_record = seal(
+        &fixture,
+        "Sema.{1 0 0}\n[]\n{[Domain.String] [records.{String Domain}]}",
+    );
+    assert!(matches!(
+        BootstrapSliceOneLowering::new().lower_sema(
+            &fixture.reader,
+            &foreign_record,
+            &external
+        ),
+        Err(BootstrapSliceOneLoweringError::SemaTableRecordNotDeclared { record, .. })
+            if record == id(7)
+    ));
+
+    let foreign_key = seal(
+        &fixture,
+        "Sema.{1 0 0}\n[]\n{[StoredRecord.String] [records.{StoredRecord String}]}",
+    );
+    assert!(matches!(
+        BootstrapSliceOneLowering::new().lower_sema(&fixture.reader, &foreign_key, &external),
+        Err(BootstrapSliceOneLoweringError::SemaTableKeyNotDeclared { key, .. })
+            if key == id(7)
+    ));
+
+    let product_key = seal(
+        &fixture,
+        "Sema.{1 0 0}\n[]\n{[Key.{String Integer} StoredRecord.String] [records.{StoredRecord Key}]}",
+    );
+    assert!(matches!(
+        BootstrapSliceOneLowering::new().lower_sema(&fixture.reader, &product_key, &external),
+        Err(BootstrapSliceOneLoweringError::SemaTableKeyNotNewtype { key, .. })
+            if spelling(&product_key, &key) == "Key"
+    ));
+}
+
+#[test]
+fn strict_sema_lowering_revalidates_kind_and_authority() {
+    let primary = fixture(23);
+    let interface = seal(&primary, "Interface.{1 0 0}\n[]\n{[] [] [] [Thing.String]}");
+    assert!(matches!(
+        BootstrapSliceOneLowering::new().lower_sema(
+            &primary.reader,
+            &interface,
+            &[external_storage(7, 7)]
+        ),
+        Err(BootstrapSliceOneLoweringError::ExpectedSema {
+            found: EthosKind::Interface
+        })
+    ));
+
+    let sema = seal(
+        &primary,
+        "Sema.{1 0 0}\n[]\n{[Domain.String] [records.{Domain Domain}]}",
+    );
+    let other_authority = fixture(24);
+    assert!(matches!(
+        BootstrapSliceOneLowering::new().lower_sema(
+            &other_authority.reader,
+            &sema,
+            &[external_storage(7, 7)]
+        ),
+        Err(BootstrapSliceOneLoweringError::Validation(
+            BootstrapReadError::NamingAuthorityReceiptRejected
+        ))
+    ));
 }
 
 #[test]
