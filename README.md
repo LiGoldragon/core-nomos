@@ -1,12 +1,17 @@
 # core-nomos
 
-The Nomos transformation crate. Its conforming first-slice path is a direct
-typed transformation from the full-chain Ethos carrier to the full-chain Logos
-carrier. A broader `MacroPackage` engine remains as legacy flat-identifier
+The Nomos transformation crate. Its conforming bootstrap path is a direct typed
+transformation from an authority-sealed Ethos transaction to the full-chain
+Logos carrier. A broader `MacroPackage` engine remains as legacy flat-identifier
 evidence and is not the production path.
 
 ```
-Ethos text → WholeEthos → SliceOneTransformation → WholeLogos → structural Rust textual form
+Ethos text
+  → BootstrapReader<A> + naming authority
+  → PreparedBootstrapTransaction<A>
+  → BootstrapSliceOneLowering
+  → WholeLogos
+  → structural textual form
 ```
 
 Generated programs compiling and passing behavior tests are the acceptance surface;
@@ -14,21 +19,36 @@ rendered-source equality is not an oracle.
 
 ## The shape in one screen
 
-```rust
-use core_nomos::SliceOneTransformation;
-use core_ethos::WholeEthos;
+```rust,ignore
+use core_ethos::bootstrap::{
+    BootstrapNamingAuthority, BootstrapReader, PreparedBootstrapTransaction,
+};
 use core_logos::WholeLogos;
+use core_nomos::BootstrapSliceOneLowering;
 
-fn lower(ethos: &WholeEthos) -> WholeLogos {
-    SliceOneTransformation::new().lower(ethos)
+fn lower<A: BootstrapNamingAuthority>(
+    reader: &BootstrapReader<A>,
+    transaction: &PreparedBootstrapTransaction<A>,
+) -> WholeLogos {
+    BootstrapSliceOneLowering::new()
+        .lower(reader, transaction)
+        .expect("supported Slice One meaning")
 }
 ```
 
-`SliceOneTransformation` accepts no NameTable or text. It maps the current closed
-item vocabulary — one attribute-free, non-generic tuple newtype — positionally,
-preserving both complete Universal encodedID chains without resolving,
-flattening, deriving, or allocating names. It maps visibility and consumes the
-typed empty attribute position. Fields carry no names.
+The matching reader revalidates authority authenticity and all prepared-model
+invariants immediately before lowering. Nomos accepts no draft, decoded document,
+NameTable, or text, and it never manufactures the catalog, grammar identities,
+naming assignments, metadata transition, or authority proof. Those are inputs to
+the authority-side reader that seals the transaction.
+
+The Slice One boundary lowers canonically ordered Nexus types and role-free
+Interface support types. It preserves complete identities, recursive Shape
+applications, and unit, unary, or nonempty product variants. Traits, Interface
+role relations, Stream declarations, Sema tables, and local Trait requirements
+refuse with distinct typed errors carrying the exact unsupported identities.
+The transitional `SliceOneTransformation` over `WholeEthos` remains available
+for older witnesses while they migrate.
 
 ## Authored transformer seal
 

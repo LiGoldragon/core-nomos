@@ -17,9 +17,28 @@ first-slice reference transformation alongside a retained legacy graph. The
 native evaluator is the production-bound door; engine integration source gates
 must prevent the legacy graph from becoming reachable through deployment.
 
-`SliceOneTransformation` reads only the published `WholeEthos` positional
-carrier and constructs the published `WholeLogos` positional carrier. Its
-module imports those two typed carriers and the production encodedID contract.
+`BootstrapSliceOneLowering` is the current interface-stage boundary. It accepts
+the same `BootstrapReader<A>` that sealed an authority-branded
+`PreparedBootstrapTransaction<A>`, revalidates the authority receipt and every
+prepared-model invariant, and then reads the transaction directly. It never
+accepts a draft or decoded document and never reconstructs `WholeEthos`.
+Canonically ordered Nexus declarations and role-free Interface support types
+become ordered `WholeLogos` items. References and recursive Shape applications
+retain complete identities; unit, unary, and arbitrary nonempty product variants
+retain exact variant and field order. Trait declarations, Interface roles,
+Streams, Sema tables, and Trait requirements each have a distinct typed refusal
+that retains the unsupported identity or requirement.
+
+Catalog construction, grammar identities, naming/generated-stream assignments,
+metadata transitions, authority proof, and later textual resolution remain
+authority/assembly obligations upstream of Nomos. This crate neither embeds a
+fixture authority nor invents identities to make an incomplete transaction
+appear lowerable.
+
+The transitional `SliceOneTransformation` reads only the published `WholeEthos`
+positional carrier and constructs the published `WholeLogos` positional carrier.
+Its module imports those two typed carriers and the production encodedID
+contract.
 Its canonically ordered, exact reference mappings connect Universal identities
 to Rust vocabulary as typed data. Declarations remain Universal; only matching
 references and application heads change root. Invalid mapping roots and

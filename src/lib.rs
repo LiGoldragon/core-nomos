@@ -59,6 +59,7 @@
 //! end to end, outside text.
 
 pub mod authored;
+pub mod bootstrap;
 pub mod capsule;
 pub mod definition;
 pub mod domain;
@@ -86,6 +87,7 @@ pub use authored::{
     AuthoredInputSignature, AuthoredNomosError, AuthoredTransformerDeclaration,
     AuthoredTransformerIdentity, AuthoredTransformerSet,
 };
+pub use bootstrap::{BootstrapSliceOneLowering, BootstrapSliceOneLoweringError};
 pub use capsule::capsule_from_issued_hash;
 pub use definition::MacroDefinition;
 pub use domain::EncodedNomosDomain;

@@ -1,6 +1,7 @@
 //! Static boundary witness for the first direct transformation.
 
 const SLICE_SOURCE: &str = include_str!("../src/slice_one.rs");
+const BOOTSTRAP_SOURCE: &str = include_str!("../src/bootstrap.rs");
 const MANIFEST: &str = include_str!("../Cargo.toml");
 
 #[test]
@@ -47,21 +48,44 @@ fn slice_source_depends_only_on_typed_identity_and_carriers() {
 }
 
 #[test]
+fn prepared_bootstrap_boundary_revalidates_the_branded_transaction_directly() {
+    assert!(BOOTSTRAP_SOURCE.contains("&BootstrapReader<Authority>"));
+    assert!(BOOTSTRAP_SOURCE.contains("&PreparedBootstrapTransaction<Authority>"));
+    assert!(BOOTSTRAP_SOURCE.contains("reader.validate_transaction(transaction)?;"));
+    for forbidden in [
+        "WholeEthos",
+        "PreparedBootstrapDraft",
+        "to_draft",
+        "String",
+        "&str",
+        "NameTable",
+        "LocalEncodedId",
+        "allocate",
+        "mint",
+    ] {
+        assert!(
+            !BOOTSTRAP_SOURCE.contains(forbidden),
+            "bootstrap boundary contains forbidden surface {forbidden:?}"
+        );
+    }
+}
+
+#[test]
 fn slice_dependencies_are_exact_published_producer_revisions() {
     assert!(MANIFEST.contains(
         "core-ethos               = { git = \
          \"https://github.com/LiGoldragon/core-ethos.git\", rev = \
-         \"c9c880316b30c4d1f1085316dd56369df48b6534\" }"
+         \"db5a97a573113202e4de6c97e71b33491bd9666f\" }"
     ));
     assert!(MANIFEST.contains(
         "core-logos               = { git = \
          \"https://github.com/LiGoldragon/core-logos.git\", rev = \
-         \"41d366fb75820f8cb033e56433e62a6d7a5b73fb\" }"
+         \"abee4036fbeb58c767ef7dc3489804e2afd5c6e1\" }"
     ));
     assert!(MANIFEST.contains(
         "textual-rust             = { package = \"rust-logos\", git = \
          \"https://github.com/LiGoldragon/rust-logos.git\", rev = \
-         \"be014caca5e66a32a756b47c4e82503bf46f508a\" }"
+         \"250e728fa9e5a02e3c9a6d4f0cfee0683863df83\" }"
     ));
     assert!(MANIFEST.contains(
         "structural-codec         = { git = \

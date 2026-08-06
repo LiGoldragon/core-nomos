@@ -1,6 +1,6 @@
 [package]
 name         = "core-nomos"
-version      = "0.38.0"
+version      = "0.39.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -18,11 +18,11 @@ capsule-content-identity = { package = "content-identity", git = "https://github
 name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
 encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "a22f48d8040ab9235f3552ad8654ff8e27b8157d" }
 protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "65e7c6d4692a40e1c49deffb3fb4a9a2c3555c5b" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "c9c880316b30c4d1f1085316dd56369df48b6534" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "41d366fb75820f8cb033e56433e62a6d7a5b73fb" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "db5a97a573113202e4de6c97e71b33491bd9666f" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "abee4036fbeb58c767ef7dc3489804e2afd5c6e1" }
 raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "2d4e2e00f2821c4e2893fa96028cef0ac76e9644" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "3a26cb43f8ce7f9fe85da64d19aa55aa662943ce" }
-textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "be014caca5e66a32a756b47c4e82503bf46f508a" }
+textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "250e728fa9e5a02e3c9a6d4f0cfee0683863df83" }
 structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "413e3744569ca237e837a1fd57d9ba6ad6adc3de" }
 rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror                = "2"

@@ -536,7 +536,7 @@ fn nexus_lowering_retains_picked_up_parameter_names_and_quality_bounds() {
 }
 
 #[test]
-fn nexus_lowering_refuses_multi_field_tuple_payload_without_rewriting() {
+fn nexus_lowering_retains_multi_field_tuple_payload_without_rewriting() {
     let enumeration = WholeEthosEnumeration::new(
         universal(40),
         WholeEthosVisibility::Public,
@@ -560,9 +560,21 @@ fn nexus_lowering_refuses_multi_field_tuple_payload_without_rewriting() {
     )
     .expect("typed Nexus document");
 
+    let logos = NexusTransformation::new()
+        .lower(&nexus)
+        .expect("nonempty product payload is representable in Logos");
+    let [WholeLogosItem::Enumeration(enumeration)] = logos.items() else {
+        panic!("one enumeration")
+    };
+    let WholeLogosVariantPayload::Tuple(fields) = enumeration.variants()[0].payload() else {
+        panic!("product tuple payload")
+    };
     assert_eq!(
-        NexusTransformation::new().lower(&nexus),
-        Err(NexusTransformationError::UnsupportedVariantTupleArity { found: 2 })
+        fields.fields(),
+        &[
+            WholeLogosTypeReference::Identity(universal(42)),
+            WholeLogosTypeReference::Identity(universal(43)),
+        ]
     );
 }
 

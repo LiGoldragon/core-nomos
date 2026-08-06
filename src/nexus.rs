@@ -1210,9 +1210,9 @@ impl NexusTransformation {
                         .map(|field| self.lower_reference(field))
                         .collect::<Result<Vec<_>, _>>()?,
                 )
-                .map_err(|error| {
-                    NexusTransformationError::UnsupportedVariantTupleArity {
-                        found: error.found(),
+                .map_err(|_| {
+                    NexusTransformationError::EmptyVariantTupleFields {
+                        variant: variant.name().clone(),
                     }
                 })?;
                 WholeLogosVariantPayload::Tuple(fields)
@@ -1757,11 +1757,11 @@ pub enum NexusTransformationError {
         /// Parameter name absent from concrete Sema storage.
         name: VocabularyEncodedId,
     },
-    /// A tuple variant carried anything other than one payload field.
-    #[error("tuple variant payload requires exactly one field, found {found}")]
-    UnsupportedVariantTupleArity {
-        /// Refused positional-field count.
-        found: usize,
+    /// A tuple variant carried no payload fields.
+    #[error("tuple variant {variant:?} requires at least one payload field")]
+    EmptyVariantTupleFields {
+        /// Exact variant identity.
+        variant: VocabularyEncodedId,
     },
     /// A mapping source was not Universal vocabulary.
     #[error("Nexus mapping source must be Universal, found {found:?}")]
