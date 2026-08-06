@@ -21,10 +21,98 @@ use core_logos::{
 };
 use signal_sema_translator::VocabularyEncodedId;
 
-use crate::{
-    nexus::ExternalStorageProvenance,
-    storage_shape::{storage_shape_hasher, update_count, update_identity},
-};
+use crate::storage_shape::{storage_shape_hasher, update_count, update_identity};
+
+/// Immutable producer evidence attached to an external storage contract.
+///
+/// The source and revision describe the authority that published the supplied
+/// fingerprint. They do not participate in the fingerprint itself: repinning an
+/// ABI-identical producer changes provenance, not stored bytes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorageProvenanceOwner {
+    source: String,
+    revision: String,
+}
+
+// Trait exception — construction and read-only field access are this value's
+// invariants, not a reusable operation family.
+impl StorageProvenanceOwner {
+    /// Bind one published producer source and immutable revision.
+    pub fn new(source: String, revision: String) -> Result<Self, BootstrapSliceOneLoweringError> {
+        if source.is_empty() {
+            return Err(
+                BootstrapSliceOneLoweringError::StorageProvenanceOwnerEmpty { field: "source" },
+            );
+        }
+        if revision.is_empty() {
+            return Err(
+                BootstrapSliceOneLoweringError::StorageProvenanceOwnerEmpty { field: "revision" },
+            );
+        }
+        Ok(Self { source, revision })
+    }
+
+    /// Published producer that owns this storage contract.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Immutable producer revision that supplied the contract.
+    pub fn revision(&self) -> &str {
+        &self.revision
+    }
+}
+
+/// Explicit authority evidence for one nonlocal stored type.
+///
+/// Lowering never treats an encoded identity as archive compatibility. A Sema
+/// reference outside its own sealed document is admitted only when the caller
+/// supplies this identity, fingerprint, and producer owner together.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalStorageProvenance {
+    identity: VocabularyEncodedId,
+    fingerprint: WholeLogosStorageFingerprint,
+    owner: StorageProvenanceOwner,
+}
+
+// Trait exception — construction and read-only field access are this value's
+// invariants, not a reusable operation family.
+impl ExternalStorageProvenance {
+    /// Bind one Universal external type to its exact storage evidence.
+    pub fn new(
+        identity: VocabularyEncodedId,
+        fingerprint: [u8; 32],
+        owner: StorageProvenanceOwner,
+    ) -> Result<Self, BootstrapSliceOneLoweringError> {
+        if identity.root_variant() != &signal_sema_translator::VocabularyRoot::Universal {
+            return Err(
+                BootstrapSliceOneLoweringError::StorageProvenanceIdentityRoot {
+                    found: *identity.root_variant(),
+                },
+            );
+        }
+        Ok(Self {
+            identity,
+            fingerprint: WholeLogosStorageFingerprint::new(fingerprint),
+            owner,
+        })
+    }
+
+    /// Imported identity covered by this evidence.
+    pub const fn identity(&self) -> &VocabularyEncodedId {
+        &self.identity
+    }
+
+    /// Exact archived storage-shape evidence supplied by its owner.
+    pub const fn fingerprint(&self) -> WholeLogosStorageFingerprint {
+        self.fingerprint
+    }
+
+    /// Published producer and immutable revision for the evidence.
+    pub const fn owner(&self) -> &StorageProvenanceOwner {
+        &self.owner
+    }
+}
 
 /// The direct authority-sealed bootstrap-to-Logos transformation.
 ///
@@ -449,6 +537,15 @@ pub enum BootstrapSliceOneLoweringError {
     /// The matching reader rejected authority or a prepared-model invariant.
     #[error("prepared bootstrap transaction failed validation: {0}")]
     Validation(#[from] BootstrapReadError),
+    /// A producer owner omitted one required provenance component.
+    #[error("external storage provenance owner has empty {field}")]
+    StorageProvenanceOwnerEmpty { field: &'static str },
+    /// External storage evidence must name the shared Universal identity.
+    #[error("external storage provenance identity belongs to {found:?}; expected Universal")]
+    StorageProvenanceIdentityRoot {
+        /// Root found on the rejected identity.
+        found: signal_sema_translator::VocabularyRoot,
+    },
     /// An Interface-owned role relation cannot be erased into a plain type.
     #[error("direct Slice One lowering does not support Interface role {role:?} on {target:?}")]
     InterfaceRole {

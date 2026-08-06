@@ -1,5 +1,5 @@
 {
-  description = "core-nomos — the stringless encoded form of Nomos: macros as typed data lowering Ethos encoded forms to Logos encoded forms";
+  description = "core-nomos — strict authority-sealed bootstrap Ethos lowering into Logos";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -16,15 +16,7 @@
         pkgs = import nixpkgs { inherit system; };
         rust = rust-build.lib.${system}.fromPkgs pkgs;
         inherit (rust) craneLib toolchain;
-        compatibilityGoldenFilter =
-          path: type:
-          type == "regular"
-          && pkgs.lib.hasInfix "/tests/goldens/" path
-          && pkgs.lib.hasSuffix ".bin" path;
-        src = rust.cleanSource {
-          root = ./.;
-          extraFilters = [ compatibilityGoldenFilter ];
-        };
+        src = rust.cleanSource { root = ./.; };
         commonArguments = { inherit src; strictDeps = true; };
         cargoArtifacts = craneLib.buildDepsOnly commonArguments;
       in

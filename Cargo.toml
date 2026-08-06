@@ -5,32 +5,27 @@ edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/core-nomos"
-description  = "The stringless encoded form of Nomos with full-chain authored content sealing and separate authenticated NameTree projection."
+description  = "Strict authority-sealed bootstrap Ethos lowering into Logos."
 publish      = false
+autotests    = false
 
 [lib]
 name = "core_nomos"
 path = "src/lib.rs"
 
 [dependencies]
-content-identity         = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "24b43bae5d9748b0e7f679c6ec9f85a643c4d36a" }
 capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "896b21e17f31b66d0802bff899b4b60acea9c0f1" }
-name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
-encoded-name-table       = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "a22f48d8040ab9235f3552ad8654ff8e27b8157d" }
-protos                   = { git = "https://github.com/LiGoldragon/protos.git", rev = "65e7c6d4692a40e1c49deffb3fb4a9a2c3555c5b" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "7a1384874f3747de97c6ccbb4ae6fa2149b27330" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "249ed6ac5b8a3a84fee5884bcb35b929f07e9166" }
 core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "abee4036fbeb58c767ef7dc3489804e2afd5c6e1" }
-raw-discovery            = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "2d4e2e00f2821c4e2893fa96028cef0ac76e9644" }
 signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "3a26cb43f8ce7f9fe85da64d19aa55aa662943ce" }
-textual-rust             = { package = "rust-logos", git = "https://github.com/LiGoldragon/rust-logos.git", rev = "250e728fa9e5a02e3c9a6d4f0cfee0683863df83" }
-structural-codec         = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "413e3744569ca237e837a1fd57d9ba6ad6adc3de" }
-rkyv                     = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 thiserror                = "2"
 
 [dev-dependencies]
-sema-translator = { git = "https://github.com/LiGoldragon/sema-translator.git", rev = "1afcd7b1b17666b5489fe58d72f46c8848d33498" }
-tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+encoded-name-table = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "a22f48d8040ab9235f3552ad8654ff8e27b8157d" }
+
+[[test]]
+name = "bootstrap"
+path = "tests/bootstrap.rs"
 
 [lints.rust]
 unsafe_code = "forbid"
