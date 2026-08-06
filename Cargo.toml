@@ -15,13 +15,11 @@ path = "src/lib.rs"
 
 [dependencies]
 capsule-content-identity = { package = "content-identity", git = "https://github.com/LiGoldragon/content-identity.git", rev = "896b21e17f31b66d0802bff899b4b60acea9c0f1" }
-core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "43b48c779c54ee9f05cbcc111d5d88074b162461" }
-core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "734363bd5fca01c7dab46028f4a36e3ce6ae6650" }
-signal-sema-translator   = { git = "https://github.com/LiGoldragon/signal-sema-translator.git", rev = "3f41813dd63904c7e2b3da4382eff64ed1bf12fe" }
+core-ethos               = { git = "https://github.com/LiGoldragon/core-ethos.git", rev = "cc32c507da45998a18682af939915d192d902b9f" }
+core-logos               = { git = "https://github.com/LiGoldragon/core-logos.git", rev = "29d6635caadc" }
+name-table               = { git = "https://github.com/LiGoldragon/name-table.git", rev = "7dd5db15c16b4246c83d049c759415d3252a7d43" }
 thiserror                = "2"
 
-[dev-dependencies]
-encoded-name-table = { package = "name-table", git = "https://github.com/LiGoldragon/name-table.git", rev = "a22f48d8040ab9235f3552ad8654ff8e27b8157d" }
 
 [[test]]
 name = "bootstrap"

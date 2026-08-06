@@ -1,5 +1,5 @@
 use capsule_content_identity::IdentityHasher;
-use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
+use name_table::EncodedName;
 
 pub(crate) fn storage_shape_hasher(kind: &[u8]) -> IdentityHasher {
     let mut hasher = IdentityHasher::unprimed();
@@ -13,14 +13,6 @@ pub(crate) fn update_count(hasher: &mut IdentityHasher, count: usize) {
     hasher.update_length_prefixed(&count.to_be_bytes());
 }
 
-pub(crate) fn update_identity(hasher: &mut IdentityHasher, identity: &VocabularyEncodedId) {
-    let root = match identity.root_variant() {
-        VocabularyRoot::Universal => 0_u8,
-        VocabularyRoot::Rust => 1_u8,
-    };
-    hasher.update_length_prefixed(&[root]);
-    update_count(hasher, identity.chain().len());
-    for local in identity.chain() {
-        hasher.update_length_prefixed(&local.value().to_be_bytes());
-    }
+pub(crate) fn update_identity(hasher: &mut IdentityHasher, identity: &EncodedName) {
+    hasher.update_length_prefixed(&identity.archive_bytes());
 }

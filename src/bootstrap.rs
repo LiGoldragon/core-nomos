@@ -19,7 +19,7 @@ use core_logos::{
     WholeLogosTypeApplication, WholeLogosTypeAttributes, WholeLogosTypeReference,
     WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
 };
-use signal_sema_translator::VocabularyEncodedId;
+use name_table::EncodedName;
 
 use crate::storage_shape::{storage_shape_hasher, update_count, update_identity};
 
@@ -70,7 +70,7 @@ impl StorageProvenanceOwner {
 /// supplies this identity, fingerprint, and producer owner together.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExternalStorageProvenance {
-    identity: VocabularyEncodedId,
+    identity: EncodedName,
     fingerprint: WholeLogosStorageFingerprint,
     owner: StorageProvenanceOwner,
 }
@@ -78,28 +78,21 @@ pub struct ExternalStorageProvenance {
 // Trait exception — construction and read-only field access are this value's
 // invariants, not a reusable operation family.
 impl ExternalStorageProvenance {
-    /// Bind one Universal external type to its exact storage evidence.
+    /// Bind one external type to its exact storage evidence.
     pub fn new(
-        identity: VocabularyEncodedId,
+        identity: EncodedName,
         fingerprint: [u8; 32],
         owner: StorageProvenanceOwner,
-    ) -> Result<Self, BootstrapSliceOneLoweringError> {
-        if identity.root_variant() != &signal_sema_translator::VocabularyRoot::Universal {
-            return Err(
-                BootstrapSliceOneLoweringError::StorageProvenanceIdentityRoot {
-                    found: *identity.root_variant(),
-                },
-            );
-        }
-        Ok(Self {
+    ) -> Self {
+        Self {
             identity,
             fingerprint: WholeLogosStorageFingerprint::new(fingerprint),
             owner,
-        })
+        }
     }
 
     /// Imported identity covered by this evidence.
-    pub const fn identity(&self) -> &VocabularyEncodedId {
+    pub const fn identity(&self) -> &EncodedName {
         &self.identity
     }
 
@@ -144,7 +137,7 @@ impl BootstrapSliceOneLowering {
                 if let Some(membership) = body.memberships.first() {
                     return Err(BootstrapSliceOneLoweringError::InterfaceRole {
                         role: membership.role,
-                        target: membership.target.clone(),
+                        target: membership.target,
                     });
                 }
                 &body.types
@@ -152,7 +145,7 @@ impl BootstrapSliceOneLowering {
             BootstrapBody::Nexus(body) => {
                 if let Some(declaration) = body.traits.first() {
                     return Err(BootstrapSliceOneLoweringError::Trait {
-                        declaration: declaration.name.clone(),
+                        declaration: declaration.name,
                     });
                 }
                 &body.types
@@ -161,7 +154,7 @@ impl BootstrapSliceOneLowering {
                 return Err(body.tables.first().map_or(
                     BootstrapSliceOneLoweringError::Sema,
                     |table| BootstrapSliceOneLoweringError::Table {
-                        declaration: table.name.clone(),
+                        declaration: table.name,
                     },
                 ));
             }
@@ -173,7 +166,7 @@ impl BootstrapSliceOneLowering {
                 Declaration::Type(declaration) => self.lower_type(declaration),
                 Declaration::Nomos(NomosDeclaration::StreamInitiation(declaration)) => {
                     Err(BootstrapSliceOneLoweringError::Stream {
-                        declaration: declaration.name.clone(),
+                        declaration: declaration.name,
                     })
                 }
             })
@@ -211,31 +204,31 @@ impl BootstrapSliceOneLowering {
             .tables
             .iter()
             .map(|table| {
-                inventory.declaration(&table.record_type).ok_or_else(|| {
+                inventory.declaration(&table.record_type).ok_or(
                     BootstrapSliceOneLoweringError::SemaTableRecordNotDeclared {
-                        table: table.name.clone(),
-                        record: table.record_type.clone(),
-                    }
-                })?;
-                let key = inventory.declaration(&table.key_type).ok_or_else(|| {
+                        table: table.name,
+                        record: table.record_type,
+                    },
+                )?;
+                let key = inventory.declaration(&table.key_type).ok_or(
                     BootstrapSliceOneLoweringError::SemaTableKeyNotDeclared {
-                        table: table.name.clone(),
-                        key: table.key_type.clone(),
-                    }
-                })?;
+                        table: table.name,
+                        key: table.key_type,
+                    },
+                )?;
                 if !matches!(key, WholeLogosItem::Newtype(_)) {
                     return Err(BootstrapSliceOneLoweringError::SemaTableKeyNotNewtype {
-                        table: table.name.clone(),
-                        key: table.key_type.clone(),
+                        table: table.name,
+                        key: table.key_type,
                     });
                 }
 
                 let record_storage = inventory.storage_fingerprint(&table.record_type)?;
                 let key_storage = inventory.storage_fingerprint(&table.key_type)?;
                 Ok(WholeLogosItem::Table(WholeLogosTable::new(
-                    table.name.clone(),
-                    WholeLogosTypeReference::Identity(table.record_type.clone()),
-                    WholeLogosSemaTableKey::new(table.key_type.clone()),
+                    table.name,
+                    WholeLogosTypeReference::Identity(table.record_type),
+                    WholeLogosSemaTableKey::new(table.key_type),
                     record_storage,
                     key_storage,
                 )))
@@ -270,13 +263,13 @@ impl BootstrapSliceOneLowering {
         Ok(match &declaration.body {
             TypeBody::Newtype(wrapped) => WholeLogosItem::Newtype(WholeLogosNewtype::new(
                 WholeLogosVisibility::Public,
-                declaration.name.clone(),
+                declaration.name,
                 WholeLogosVisibility::Private,
                 self.lower_expression(&declaration.name, wrapped)?,
             )),
             TypeBody::Struct(fields) => WholeLogosItem::Struct(WholeLogosStruct::new(
                 WholeLogosVisibility::Public,
-                declaration.name.clone(),
+                declaration.name,
                 fields
                     .iter()
                     .map(|field| self.lower_expression(&declaration.name, field))
@@ -284,7 +277,7 @@ impl BootstrapSliceOneLowering {
             )),
             TypeBody::Enum(variants) => WholeLogosItem::Enumeration(WholeLogosEnumeration::new(
                 WholeLogosVisibility::Public,
-                declaration.name.clone(),
+                declaration.name,
                 variants
                     .iter()
                     .map(|variant| {
@@ -296,7 +289,7 @@ impl BootstrapSliceOneLowering {
                                 ])
                                 .map_err(|_| {
                                     BootstrapSliceOneLoweringError::EmptyVariantProduct {
-                                        variant: variant.name.clone(),
+                                        variant: variant.name,
                                     }
                                 })?,
                             ),
@@ -311,13 +304,13 @@ impl BootstrapSliceOneLowering {
                                 )
                                 .map_err(|_| {
                                     BootstrapSliceOneLoweringError::EmptyVariantProduct {
-                                        variant: variant.name.clone(),
+                                        variant: variant.name,
                                     }
                                 })?,
                             ),
                         };
                         Ok::<_, BootstrapSliceOneLoweringError>(WholeLogosVariant::new(
-                            variant.name.clone(),
+                            variant.name,
                             payload,
                         ))
                     })
@@ -328,16 +321,14 @@ impl BootstrapSliceOneLowering {
 
     fn lower_expression(
         &self,
-        declaration: &VocabularyEncodedId,
+        declaration: &EncodedName,
         expression: &TypeExpression,
     ) -> Result<WholeLogosTypeReference, BootstrapSliceOneLoweringError> {
         Ok(match expression {
-            TypeExpression::Reference(reference) => {
-                WholeLogosTypeReference::Identity(reference.clone())
-            }
+            TypeExpression::Reference(reference) => WholeLogosTypeReference::Identity(*reference),
             TypeExpression::ShapeApplication(application) => WholeLogosTypeReference::Application(
                 WholeLogosTypeApplication::new(
-                    application.shape.clone(),
+                    application.shape,
                     application
                         .arguments
                         .iter()
@@ -346,13 +337,13 @@ impl BootstrapSliceOneLowering {
                 )
                 .map_err(|_| {
                     BootstrapSliceOneLoweringError::EmptyShapeApplication {
-                        shape: application.shape.clone(),
+                        shape: application.shape,
                     }
                 })?,
             ),
             TypeExpression::TraitRequirement(requirement) => {
                 return Err(BootstrapSliceOneLoweringError::TraitRequirement {
-                    declaration: declaration.clone(),
+                    declaration: *declaration,
                     binder: requirement.binder().clone(),
                     required_traits: requirement.required_traits().to_vec(),
                 });
@@ -362,8 +353,8 @@ impl BootstrapSliceOneLowering {
 }
 
 struct BootstrapStorageInventory<'a> {
-    declarations: BTreeMap<VocabularyEncodedId, &'a WholeLogosItem>,
-    external: BTreeMap<VocabularyEncodedId, &'a ExternalStorageProvenance>,
+    declarations: BTreeMap<EncodedName, &'a WholeLogosItem>,
+    external: BTreeMap<EncodedName, &'a ExternalStorageProvenance>,
 }
 
 impl<'a> BootstrapStorageInventory<'a> {
@@ -375,9 +366,9 @@ impl<'a> BootstrapStorageInventory<'a> {
         for declaration in declarations {
             let identity = storage_declaration_identity(declaration)
                 .expect("stored bootstrap lowering emits only nominal declarations");
-            if by_identity.insert(identity.clone(), declaration).is_some() {
+            if by_identity.insert(*identity, declaration).is_some() {
                 return Err(BootstrapSliceOneLoweringError::DuplicateSemaRecord {
-                    identity: identity.clone(),
+                    identity: *identity,
                 });
             }
         }
@@ -387,17 +378,17 @@ impl<'a> BootstrapStorageInventory<'a> {
             if by_identity.contains_key(provenance.identity()) {
                 return Err(
                     BootstrapSliceOneLoweringError::StorageProvenanceOwnershipConflict {
-                        identity: provenance.identity().clone(),
+                        identity: *provenance.identity(),
                     },
                 );
             }
             if external_by_identity
-                .insert(provenance.identity().clone(), provenance)
+                .insert(*provenance.identity(), provenance)
                 .is_some()
             {
                 return Err(
                     BootstrapSliceOneLoweringError::DuplicateExternalStorageProvenance {
-                        identity: provenance.identity().clone(),
+                        identity: *provenance.identity(),
                     },
                 );
             }
@@ -408,36 +399,36 @@ impl<'a> BootstrapStorageInventory<'a> {
         })
     }
 
-    fn declaration(&self, identity: &VocabularyEncodedId) -> Option<&WholeLogosItem> {
+    fn declaration(&self, identity: &EncodedName) -> Option<&WholeLogosItem> {
         self.declarations.get(identity).copied()
     }
 
     fn storage_fingerprint(
         &self,
-        identity: &VocabularyEncodedId,
+        identity: &EncodedName,
     ) -> Result<WholeLogosStorageFingerprint, BootstrapSliceOneLoweringError> {
         self.storage_fingerprint_identity(identity, &mut BTreeSet::new())
     }
 
     fn storage_fingerprint_identity(
         &self,
-        identity: &VocabularyEncodedId,
-        visiting: &mut BTreeSet<VocabularyEncodedId>,
+        identity: &EncodedName,
+        visiting: &mut BTreeSet<EncodedName>,
     ) -> Result<WholeLogosStorageFingerprint, BootstrapSliceOneLoweringError> {
         let Some(declaration) = self.declarations.get(identity).copied() else {
             return self
                 .external
                 .get(identity)
                 .map(|provenance| provenance.fingerprint())
-                .ok_or_else(
-                    || BootstrapSliceOneLoweringError::MissingExternalStorageProvenance {
-                        identity: identity.clone(),
+                .ok_or(
+                    BootstrapSliceOneLoweringError::MissingExternalStorageProvenance {
+                        identity: *identity,
                     },
                 );
         };
-        if !visiting.insert(identity.clone()) {
+        if !visiting.insert(*identity) {
             return Err(BootstrapSliceOneLoweringError::CyclicSemaStorageShape {
-                identity: identity.clone(),
+                identity: *identity,
             });
         }
         let fingerprint = match declaration {
@@ -483,7 +474,7 @@ impl<'a> BootstrapStorageInventory<'a> {
             _ => {
                 return Err(
                     BootstrapSliceOneLoweringError::InvalidSemaRecordDeclaration {
-                        identity: identity.clone(),
+                        identity: *identity,
                     },
                 );
             }
@@ -495,7 +486,7 @@ impl<'a> BootstrapStorageInventory<'a> {
     fn storage_fingerprint_reference(
         &self,
         reference: &WholeLogosTypeReference,
-        visiting: &mut BTreeSet<VocabularyEncodedId>,
+        visiting: &mut BTreeSet<EncodedName>,
     ) -> Result<WholeLogosStorageFingerprint, BootstrapSliceOneLoweringError> {
         match reference {
             WholeLogosTypeReference::Identity(identity) => {
@@ -515,14 +506,14 @@ impl<'a> BootstrapStorageInventory<'a> {
             }
             WholeLogosTypeReference::Parameter(parameter) => {
                 Err(BootstrapSliceOneLoweringError::StorageTypeParameter {
-                    parameter: parameter.clone(),
+                    parameter: *parameter,
                 })
             }
         }
     }
 }
 
-fn storage_declaration_identity(item: &WholeLogosItem) -> Option<&VocabularyEncodedId> {
+fn storage_declaration_identity(item: &WholeLogosItem) -> Option<&EncodedName> {
     match item {
         WholeLogosItem::Newtype(item) => Some(item.name()),
         WholeLogosItem::Struct(item) => Some(item.name()),
@@ -540,31 +531,25 @@ pub enum BootstrapSliceOneLoweringError {
     /// A producer owner omitted one required provenance component.
     #[error("external storage provenance owner has empty {field}")]
     StorageProvenanceOwnerEmpty { field: &'static str },
-    /// External storage evidence must name the shared Universal identity.
-    #[error("external storage provenance identity belongs to {found:?}; expected Universal")]
-    StorageProvenanceIdentityRoot {
-        /// Root found on the rejected identity.
-        found: signal_sema_translator::VocabularyRoot,
-    },
     /// An Interface-owned role relation cannot be erased into a plain type.
     #[error("direct Slice One lowering does not support Interface role {role:?} on {target:?}")]
     InterfaceRole {
         /// Exact role carried by the prepared transaction.
         role: InterfaceRole,
         /// Exact target of the refused role relationship.
-        target: VocabularyEncodedId,
+        target: EncodedName,
     },
     /// An authored Stream needs its complete lifecycle lowering.
     #[error("direct Slice One lowering does not support Stream declaration {declaration:?}")]
     Stream {
         /// Exact authored direct Stream output identity.
-        declaration: VocabularyEncodedId,
+        declaration: EncodedName,
     },
     /// A Nexus Trait cannot be silently omitted from a type-only projection.
     #[error("direct Slice One lowering does not support Trait declaration {declaration:?}")]
     Trait {
         /// Exact authored Trait identity.
-        declaration: VocabularyEncodedId,
+        declaration: EncodedName,
     },
     /// Sema is not part of the type-only Slice One projection.
     #[error("direct Slice One lowering does not accept a Sema document")]
@@ -573,72 +558,72 @@ pub enum BootstrapSliceOneLoweringError {
     #[error("direct Slice One lowering does not support table declaration {declaration:?}")]
     Table {
         /// Exact authored table identity.
-        declaration: VocabularyEncodedId,
+        declaration: EncodedName,
     },
     /// The storage-aware entry point received another bootstrap file kind.
     #[error("strict Sema lowering received {found:?} source")]
     ExpectedSema { found: EthosKind },
     /// Two local record declarations carried the same encoded identity.
     #[error("strict Sema lowering received duplicate record identity {identity:?}")]
-    DuplicateSemaRecord { identity: VocabularyEncodedId },
+    DuplicateSemaRecord { identity: EncodedName },
     /// A table's record type was not declared in this Sema document.
     #[error("Sema table {table:?} record {record:?} is not declared by this Sema document")]
     SemaTableRecordNotDeclared {
-        table: VocabularyEncodedId,
-        record: VocabularyEncodedId,
+        table: EncodedName,
+        record: EncodedName,
     },
     /// A table's key type was not declared in this Sema document.
     #[error("Sema table {table:?} key {key:?} is not declared by this Sema document")]
     SemaTableKeyNotDeclared {
-        table: VocabularyEncodedId,
-        key: VocabularyEncodedId,
+        table: EncodedName,
+        key: EncodedName,
     },
     /// A locally declared table key was not a newtype with structural key projection.
     #[error("Sema table {table:?} key {key:?} is not a newtype")]
     SemaTableKeyNotNewtype {
-        table: VocabularyEncodedId,
-        key: VocabularyEncodedId,
+        table: EncodedName,
+        key: EncodedName,
     },
     /// A local declaration could not be represented as stored data.
     #[error("Sema record declaration {identity:?} is not a supported stored nominal type")]
-    InvalidSemaRecordDeclaration { identity: VocabularyEncodedId },
+    InvalidSemaRecordDeclaration { identity: EncodedName },
     /// External provenance repeated one encoded identity.
     #[error("external storage provenance repeats identity {identity:?}")]
-    DuplicateExternalStorageProvenance { identity: VocabularyEncodedId },
+    DuplicateExternalStorageProvenance { identity: EncodedName },
     /// An identity was claimed by both the local Sema document and external provenance.
     #[error("storage provenance ownership conflicts for local identity {identity:?}")]
-    StorageProvenanceOwnershipConflict { identity: VocabularyEncodedId },
+    StorageProvenanceOwnershipConflict { identity: EncodedName },
     /// A reachable nonlocal storage type had no explicit owner fingerprint.
     #[error("storage type {identity:?} has no explicit external provenance")]
-    MissingExternalStorageProvenance { identity: VocabularyEncodedId },
+    MissingExternalStorageProvenance { identity: EncodedName },
     /// Recursive storage shapes have no finite archive fingerprint in this stage.
     #[error("Sema storage shape is cyclic through {identity:?}")]
-    CyclicSemaStorageShape { identity: VocabularyEncodedId },
+    CyclicSemaStorageShape { identity: EncodedName },
     /// Stored record fields cannot retain unresolved local type parameters.
     #[error("Sema storage shape contains unresolved parameter {parameter:?}")]
-    StorageTypeParameter { parameter: VocabularyEncodedId },
+    StorageTypeParameter { parameter: EncodedName },
     /// A local parameter and all of its Trait constraints remain unsupported.
     #[error(
         "direct Slice One lowering does not support a Trait requirement in {declaration:?}: {binder:?} requires {required_traits:?}"
     )]
     TraitRequirement {
         /// Exact containing type declaration.
-        declaration: VocabularyEncodedId,
+        declaration: EncodedName,
         /// Exact inferred or named local binder.
         binder: ParameterBinder,
         /// Canonically ordered, nonempty required Trait identities.
-        required_traits: Vec<VocabularyEncodedId>,
+        required_traits: Vec<EncodedName>,
     },
     /// A prepared Shape application violated the Logos nonempty invariant.
     #[error("prepared Shape application {shape:?} has no arguments")]
     EmptyShapeApplication {
         /// Exact Shape identity.
-        shape: VocabularyEncodedId,
+        shape: EncodedName,
     },
     /// A prepared product violated the Logos nonempty tuple invariant.
     #[error("prepared variant {variant:?} has an empty product payload")]
     EmptyVariantProduct {
         /// Exact variant identity.
-        variant: VocabularyEncodedId,
+        variant: EncodedName,
     },
 }

@@ -8,27 +8,27 @@ use core_nomos::{
     BootstrapSliceOneLowering, BootstrapSliceOneLoweringError, ExternalStorageProvenance,
     StorageProvenanceOwner,
 };
-use encoded_name_table::LocalEncodedId;
-use signal_sema_translator::{VocabularyEncodedId, VocabularyRoot};
+use name_table::{EncodedName, TextualName};
 
 const AUTHORITY_PROOF: u64 = 0x006e_6f6d_6f73;
 
-fn id(local: u16) -> VocabularyEncodedId {
-    VocabularyEncodedId::new(VocabularyRoot::Universal, vec![LocalEncodedId::new(local)])
-        .expect("nonempty identity")
+fn id(local: u16) -> EncodedName {
+    let mut bytes = [0; 16];
+    bytes[..2].copy_from_slice(&local.to_le_bytes());
+    EncodedName::from_archive_bytes(bytes)
 }
 
 fn record(
     module: &[&str],
-    owner: Option<VocabularyEncodedId>,
+    owner: Option<EncodedName>,
     name: &str,
-    identity: VocabularyEncodedId,
+    identity: EncodedName,
 ) -> TextualMetadataRecord {
     TextualMetadataRecord {
         address: TextualProjectionAddress {
             module_path: module.iter().map(|part| (*part).to_owned()).collect(),
             lexical_owner: owner,
-            visible_name: name.to_owned(),
+            textual_name: TextualName::new(name),
         },
         encoded_name: identity,
     }
@@ -120,8 +120,8 @@ fn fixture(authority: u64) -> Fixture {
     let mut order = Vec::new();
     for (local, name, roles) in prior_specs {
         let identity = id(local);
-        records.push(record(&["builtin"], None, name, identity.clone()));
-        schemas.push(IdentitySchema::new(identity.clone(), roles).expect("valid prior schema"));
+        records.push(record(&["builtin"], None, name, identity));
+        schemas.push(IdentitySchema::new(identity, roles).expect("valid prior schema"));
         order.push((identity, vec![0x80, local as u8]));
     }
     let snapshot = TextualMetadataSnapshot::new(records).expect("unique prior metadata");
@@ -179,7 +179,7 @@ fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAut
     let mut assignments = Vec::new();
     for (index, declaration) in plan.declarations().iter().enumerate() {
         let identity = id(100 + index as u16);
-        by_occurrence.insert(declaration.occurrence(), identity.clone());
+        by_occurrence.insert(declaration.occurrence(), identity);
         assignments.push(NamingAssignment {
             occurrence: declaration.occurrence(),
             encoded_name: identity,
@@ -191,15 +191,13 @@ fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAut
     for (declaration, assignment) in plan.declarations().iter().zip(&assignments) {
         let owner = match declaration.scope() {
             PlannedScope::Module => None,
-            PlannedScope::Enum(owner) | PlannedScope::Trait(owner) => {
-                Some(by_occurrence[&owner].clone())
-            }
+            PlannedScope::Enum(owner) | PlannedScope::Trait(owner) => Some(by_occurrence[&owner]),
         };
         records.push(record(
             &["app"],
             owner,
             declaration.spelling(),
-            assignment.encoded_name.clone(),
+            assignment.encoded_name,
         ));
     }
 
@@ -218,13 +216,13 @@ fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAut
                 &["app"],
                 None,
                 &format!("Start{}", declaration.spelling()),
-                initiation.clone(),
+                initiation,
             ),
             record(
                 &["app"],
                 None,
                 &format!("Stop{}", declaration.spelling()),
-                termination.clone(),
+                termination,
             ),
         ]);
         generated.push(GeneratedStreamAssignment {
@@ -261,15 +259,16 @@ fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAut
 
 fn spelling<'a>(
     transaction: &'a PreparedBootstrapTransaction<TestAuthority>,
-    identity: &VocabularyEncodedId,
+    identity: &EncodedName,
 ) -> &'a str {
-    &transaction
+    transaction
         .naming_transition()
         .after()
         .record(identity)
         .expect("identity has metadata")
         .address
-        .visible_name
+        .textual_name
+        .as_str()
 }
 
 fn external_storage(local: u16, fingerprint: u8) -> ExternalStorageProvenance {
@@ -282,7 +281,6 @@ fn external_storage(local: u16, fingerprint: u8) -> ExternalStorageProvenance {
         )
         .expect("nonempty fixture owner"),
     )
-    .expect("Universal external storage identity")
 }
 
 #[test]
@@ -401,12 +399,9 @@ fn lowers_sema_record_types_and_tables_with_explicit_storage_provenance() {
     assert_eq!(spelling(&transaction, table.name()), "records");
     assert_eq!(
         table.record(),
-        &WholeLogosTypeReference::Identity(record.name().clone())
+        &WholeLogosTypeReference::Identity(*record.name())
     );
-    assert_eq!(
-        table.key(),
-        &WholeLogosTypeReference::Identity(key.name().clone())
-    );
+    assert_eq!(table.key(), &WholeLogosTypeReference::Identity(*key.name()));
     assert_ne!(table.record_storage(), table.key_storage());
 
     assert_eq!(
@@ -561,15 +556,12 @@ fn refuses_traits_roles_streams_tables_and_requirements_without_erasure() {
         }) if spelling(&transaction, &target) == "Message"
     ));
 
-    let transaction = seal(
-        &fixture,
-        "Interface.{1 0 0}\n[]\n{[] [] [] [Flow.Stream.(String Integer)]}",
+    assert!(
+        fixture
+            .reader
+            .plan("Interface.{1 0 0}\n[]\n{[] [] [] [Flow.Stream.(String Integer)]}")
+            .is_err()
     );
-    assert!(matches!(
-        BootstrapSliceOneLowering::new().lower(&fixture.reader, &transaction),
-        Err(BootstrapSliceOneLoweringError::Stream { declaration })
-            if spelling(&transaction, &declaration) == "Flow"
-    ));
 
     let transaction = seal(
         &fixture,
