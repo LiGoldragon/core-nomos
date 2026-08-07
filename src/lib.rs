@@ -10,5 +10,5 @@ mod storage_shape;
 
 pub use bootstrap::{
     BootstrapSliceOneLowering, BootstrapSliceOneLoweringError, ExternalStorageProvenance,
-    StorageProvenanceOwner,
+    InterfaceRoleTraitIdentities, StorageProvenanceOwner,
 };

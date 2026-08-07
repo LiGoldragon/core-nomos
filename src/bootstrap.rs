@@ -10,14 +10,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use core_ethos::bootstrap::{
     BootstrapBody, BootstrapNamingAuthority, BootstrapReadError, BootstrapReader, Declaration,
-    EthosKind, InterfaceRole, ParameterBinder, PreparedBootstrapTransaction,
-    TypeBody, TypeDeclaration, TypeExpression, VariantBody,
+    EthosKind, InterfaceRole, ParameterBinder, PreparedBootstrapTransaction, RoleEntry, TypeBody,
+    TypeDeclaration, TypeExpression, VariantBody,
 };
 use core_logos::{
     WholeLogos, WholeLogosEnumeration, WholeLogosItem, WholeLogosNewtype, WholeLogosSemaTableKey,
-    WholeLogosStorageFingerprint, WholeLogosStruct, WholeLogosTable, WholeLogosTupleFields,
-    WholeLogosTypeApplication, WholeLogosTypeAttributes, WholeLogosTypeReference,
-    WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
+    WholeLogosStorageFingerprint, WholeLogosStruct, WholeLogosTable, WholeLogosTraitImpl,
+    WholeLogosTupleFields, WholeLogosTypeApplication, WholeLogosTypeAttributes,
+    WholeLogosTypeReference, WholeLogosVariant, WholeLogosVariantPayload, WholeLogosVisibility,
 };
 use name_table::EncodedName;
 
@@ -107,6 +107,47 @@ impl ExternalStorageProvenance {
     }
 }
 
+/// Encoded names for the four universal role traits conferred by Interface
+/// section position.
+///
+/// Each identity must already be registered in the authority's name table so
+/// that the Rust emitter can resolve its textual name or external type path.
+// psyche-grasp: slightly-reviewed (2026-08-07)
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InterfaceRoleTraitIdentities {
+    input: EncodedName,
+    output: EncodedName,
+    refusal: EncodedName,
+    stream: EncodedName,
+}
+
+impl InterfaceRoleTraitIdentities {
+    /// Bind one encoded name per positional role trait.
+    pub fn new(
+        input: EncodedName,
+        output: EncodedName,
+        refusal: EncodedName,
+        stream: EncodedName,
+    ) -> Self {
+        Self {
+            input,
+            output,
+            refusal,
+            stream,
+        }
+    }
+
+    /// Resolve the trait identity for a specific role.
+    pub fn trait_identity(&self, role: InterfaceRole) -> &EncodedName {
+        match role {
+            InterfaceRole::Input => &self.input,
+            InterfaceRole::Output => &self.output,
+            InterfaceRole::Refusal => &self.refusal,
+            InterfaceRole::Stream => &self.stream,
+        }
+    }
+}
+
 /// The direct authority-sealed bootstrap-to-Logos transformation.
 ///
 /// This transformation is stateless because every identity and every ordering
@@ -167,6 +208,68 @@ impl BootstrapSliceOneLowering {
                 self.lower_type(declaration)
             })
             .collect::<Result<Vec<_>, _>>()?;
+        Ok(WholeLogos::new(items))
+    }
+
+    /// Lower an authority-sealed Interface with its role memberships.
+    ///
+    /// Type declarations from all role sections and the declarations section are
+    /// lowered to nominal Logos items exactly as `lower` does. Each role
+    /// membership is additionally lowered to a marker trait implementation
+    /// mapping the target type to its positional role trait.
+    // psyche-grasp: slightly-reviewed (2026-08-07)
+    pub fn lower_interface<Authority: BootstrapNamingAuthority>(
+        &self,
+        reader: &BootstrapReader<Authority>,
+        transaction: &PreparedBootstrapTransaction<Authority>,
+        role_traits: &InterfaceRoleTraitIdentities,
+    ) -> Result<WholeLogos, BootstrapSliceOneLoweringError> {
+        reader.validate_transaction(transaction)?;
+        let body = match &transaction.decoded().document.body {
+            BootstrapBody::Interface(body) => body,
+            BootstrapBody::Nexus(_) => {
+                return Err(BootstrapSliceOneLoweringError::ExpectedInterface {
+                    found: EthosKind::Nexus,
+                });
+            }
+            BootstrapBody::Sema(_) => {
+                return Err(BootstrapSliceOneLoweringError::ExpectedInterface {
+                    found: EthosKind::Sema,
+                });
+            }
+        };
+
+        // Lower all role-section inline declarations and support declarations.
+        let role_sections: [&[RoleEntry]; 4] = [
+            &body.inputs,
+            &body.outputs,
+            &body.refusals,
+            &body.streams,
+        ];
+        let mut items: Vec<WholeLogosItem> = Vec::new();
+        for section in &role_sections {
+            for entry in *section {
+                if let RoleEntry::Declaration(declaration) = entry {
+                    items.push(self.lower_type(declaration)?);
+                }
+            }
+        }
+        for declaration in &body.types {
+            let Declaration::Type(declaration) = declaration;
+            items.push(self.lower_type(declaration)?);
+        }
+
+        // Lower each membership to a marker trait implementation.
+        for membership in &body.memberships {
+            items.push(WholeLogosItem::TraitImpl(WholeLogosTraitImpl::new(
+                WholeLogosTypeReference::Identity(
+                    *role_traits.trait_identity(membership.role),
+                ),
+                WholeLogosTypeReference::Identity(membership.target),
+                Vec::new(),
+            )));
+        }
+
         Ok(WholeLogos::new(items))
     }
 
@@ -553,6 +656,9 @@ pub enum BootstrapSliceOneLoweringError {
     /// The storage-aware entry point received another bootstrap file kind.
     #[error("strict Sema lowering received {found:?} source")]
     ExpectedSema { found: EthosKind },
+    /// The Interface-role entry point received another bootstrap file kind.
+    #[error("strict Interface lowering received {found:?} source")]
+    ExpectedInterface { found: EthosKind },
     /// Two local record declarations carried the same encoded identity.
     #[error("strict Sema lowering received duplicate record identity {identity:?}")]
     DuplicateSemaRecord { identity: EncodedName },
