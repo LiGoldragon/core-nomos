@@ -201,11 +201,15 @@ impl BootstrapSliceOneLowering {
             }
         };
 
+        let attributes = match &transaction.decoded().document.body {
+            BootstrapBody::Interface(_) => WholeLogosTypeAttributes::Wire,
+            _ => WholeLogosTypeAttributes::Plain,
+        };
         let items = declarations
             .iter()
             .map(|declaration| {
                 let Declaration::Type(declaration) = declaration;
-                self.lower_type(declaration)
+                self.lower_type_with_attributes(declaration, attributes)
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(WholeLogos::new(items))
@@ -250,13 +254,19 @@ impl BootstrapSliceOneLowering {
         for section in &role_sections {
             for entry in *section {
                 if let RoleEntry::Declaration(declaration) = entry {
-                    items.push(self.lower_type(declaration)?);
+                    items.push(self.lower_type_with_attributes(
+                        declaration,
+                        WholeLogosTypeAttributes::Wire,
+                    )?);
                 }
             }
         }
         for declaration in &body.types {
             let Declaration::Type(declaration) = declaration;
-            items.push(self.lower_type(declaration)?);
+            items.push(self.lower_type_with_attributes(
+                declaration,
+                WholeLogosTypeAttributes::Wire,
+            )?);
         }
 
         // Lower each membership to a marker trait implementation.
@@ -352,6 +362,25 @@ impl BootstrapSliceOneLowering {
                 WholeLogosItem::Enumeration(item.with_attributes(WholeLogosTypeAttributes::Stored))
             }
             _ => unreachable!("bootstrap type lowering emits only nominal types"),
+        })
+    }
+
+    fn lower_type_with_attributes(
+        &self,
+        declaration: &TypeDeclaration,
+        attributes: WholeLogosTypeAttributes,
+    ) -> Result<WholeLogosItem, BootstrapSliceOneLoweringError> {
+        Ok(match self.lower_type(declaration)? {
+            WholeLogosItem::Newtype(item) => {
+                WholeLogosItem::Newtype(item.with_attributes(attributes))
+            }
+            WholeLogosItem::Struct(item) => {
+                WholeLogosItem::Struct(item.with_attributes(attributes))
+            }
+            WholeLogosItem::Enumeration(item) => {
+                WholeLogosItem::Enumeration(item.with_attributes(attributes))
+            }
+            other => other,
         })
     }
 
