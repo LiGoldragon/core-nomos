@@ -96,6 +96,11 @@ fn fixture(authority: u64) -> Fixture {
             "Refusal",
             vec![SchemaRole::InterfaceRole(InterfaceRole::Refusal)],
         ),
+        (
+            15,
+            "Stream",
+            vec![SchemaRole::InterfaceRole(InterfaceRole::Stream)],
+        ),
         (7, "String", vec![SchemaRole::Nominal { persistent: true }]),
         (8, "Integer", vec![SchemaRole::Nominal { persistent: true }]),
         (9, "Boolean", vec![SchemaRole::Nominal { persistent: true }]),
@@ -126,6 +131,7 @@ fn fixture(authority: u64) -> Fixture {
             input_role: id(4),
             output_role: id(5),
             refusal_role: id(6),
+            stream_role: id(15),
             string_type: id(7),
             integer_type: id(8),
             boolean_type: id(9),
@@ -309,7 +315,7 @@ fn lowers_role_free_interface_support_types() {
     let fixture = fixture(2);
     let transaction = seal(
         &fixture,
-        "Interface.{1 0 0}\n[]\n{[] [] [] [Signal.Result<Vector<String> Integer>]}",
+        "Interface.{1 0 0}\n[]\n{[] [] [] [] [Signal.Result<Vector<String> Integer>]}",
     );
     let logos = BootstrapSliceOneLowering::new()
         .lower(&fixture.reader, &transaction)
@@ -439,7 +445,7 @@ fn strict_sema_lowering_refuses_foreign_or_non_newtype_table_relationships() {
 #[test]
 fn strict_sema_lowering_revalidates_kind_and_authority() {
     let primary = fixture(23);
-    let interface = seal(&primary, "Interface.{1 0 0}\n[]\n{[] [] [] [Thing.String]}");
+    let interface = seal(&primary, "Interface.{1 0 0}\n[]\n{[] [] [] [] [Thing.String]}");
     assert!(matches!(
         BootstrapSliceOneLowering::new().lower_sema(
             &primary.reader,
@@ -494,7 +500,7 @@ fn refuses_traits_roles_tables_and_requirements_without_erasure() {
 
     let transaction = seal(
         &fixture,
-        "Interface.{1 0 0}\n[]\n{[Message.String] [] [] []}",
+        "Interface.{1 0 0}\n[]\n{[Message.String] [] [] [] []}",
     );
     assert!(matches!(
         BootstrapSliceOneLowering::new().lower(&fixture.reader, &transaction),
