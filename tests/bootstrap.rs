@@ -201,53 +201,11 @@ fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAut
         ));
     }
 
-    let mut generated = Vec::new();
-    let mut next_generated = 500u16;
-    for declaration in plan
-        .declarations()
-        .iter()
-        .filter(|declaration| declaration.purpose() == DeclarationPurpose::StreamInitiation)
-    {
-        let initiation = id(next_generated);
-        let termination = id(next_generated + 1);
-        next_generated += 2;
-        records.extend([
-            record(
-                &["app"],
-                None,
-                &format!("Start{}", declaration.spelling()),
-                initiation,
-            ),
-            record(
-                &["app"],
-                None,
-                &format!("Stop{}", declaration.spelling()),
-                termination,
-            ),
-        ]);
-        generated.push(GeneratedStreamAssignment {
-            source: declaration.occurrence(),
-            initiation: AssignedIdentity {
-                encoded_name: initiation,
-                disposition: IdentityDisposition::New {
-                    canonical_bytes: format!("start-{}", declaration.spelling()).into_bytes(),
-                },
-            },
-            termination: AssignedIdentity {
-                encoded_name: termination,
-                disposition: IdentityDisposition::New {
-                    canonical_bytes: format!("stop-{}", declaration.spelling()).into_bytes(),
-                },
-            },
-        });
-    }
-
     fixture
         .reader
         .seal(
             &plan,
             &NamingAssignments::new(assignments).expect("complete authored assignments"),
-            &GeneratedStreamAssignments::new(generated).expect("complete generated assignments"),
             &TextualMetadataTransition::new(
                 fixture.snapshot.clone(),
                 TextualMetadataSnapshot::new(records).expect("complete metadata transition"),
