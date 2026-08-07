@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use core_ethos::bootstrap::{
     BootstrapBody, BootstrapNamingAuthority, BootstrapReadError, BootstrapReader, Declaration,
-    EthosKind, InterfaceRole, NomosDeclaration, ParameterBinder, PreparedBootstrapTransaction,
+    EthosKind, InterfaceRole, ParameterBinder, PreparedBootstrapTransaction,
     TypeBody, TypeDeclaration, TypeExpression, VariantBody,
 };
 use core_logos::{
@@ -162,13 +162,9 @@ impl BootstrapSliceOneLowering {
 
         let items = declarations
             .iter()
-            .map(|declaration| match declaration {
-                Declaration::Type(declaration) => self.lower_type(declaration),
-                Declaration::Nomos(NomosDeclaration::StreamInitiation(declaration)) => {
-                    Err(BootstrapSliceOneLoweringError::Stream {
-                        declaration: declaration.name,
-                    })
-                }
+            .map(|declaration| {
+                let Declaration::Type(declaration) = declaration;
+                self.lower_type(declaration)
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(WholeLogos::new(items))
@@ -538,12 +534,6 @@ pub enum BootstrapSliceOneLoweringError {
         role: InterfaceRole,
         /// Exact target of the refused role relationship.
         target: EncodedName,
-    },
-    /// An authored Stream needs its complete lifecycle lowering.
-    #[error("direct Slice One lowering does not support Stream declaration {declaration:?}")]
-    Stream {
-        /// Exact authored direct Stream output identity.
-        declaration: EncodedName,
     },
     /// A Nexus Trait cannot be silently omitted from a type-only projection.
     #[error("direct Slice One lowering does not support Trait declaration {declaration:?}")]

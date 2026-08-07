@@ -104,15 +104,6 @@ fn fixture(authority: u64) -> Fixture {
         (12, "Option", vec![SchemaRole::Shape { arity: 1 }]),
         (13, "Map", vec![SchemaRole::Shape { arity: 2 }]),
         (14, "Result", vec![SchemaRole::Shape { arity: 2 }]),
-        (
-            15,
-            "Stream",
-            vec![
-                SchemaRole::Shape { arity: 1 },
-                SchemaRole::Nomos(NomosSchema::StreamInitiation { arity: 2 }),
-            ],
-        ),
-        (16, "StreamIdentity", vec![SchemaRole::Shape { arity: 1 }]),
         (17, "Sortable", vec![SchemaRole::Trait]),
     ];
     let mut records = Vec::new();
@@ -143,36 +134,33 @@ fn fixture(authority: u64) -> Fixture {
             option_shape: id(12),
             map_shape: id(13),
             result_shape: id(14),
-            stream_nomos: id(15),
-            stream_shape: id(15),
-            stream_identity_shape: id(16),
         },
         &schemas,
         &snapshot,
     )
     .expect("valid prior vocabulary");
-    let catalog = BootstrapCatalog::new(
-        vec!["app".to_owned()],
-        snapshot.clone(),
-        schemas,
-        priors,
-        BootstrapVersionPolicy::exact(EthosVersion::new(1, 0, 0)),
-        canonical,
-    )
-    .expect("valid catalog");
-    let reader = BootstrapReader::build(
-        BootstrapGrammarIdentities {
-            document: id(900),
-            syntax: id(901),
-        },
-        catalog,
-        TestAuthority(authority),
-    )
-    .expect("valid reader");
+    let admitted = SemaTransactionAssembler::new();
+    let catalog = admitted
+        .bootstrap_catalog(
+            vec!["app".to_owned()],
+            BootstrapCatalogMetadata::new(snapshot.clone(), schemas),
+            priors,
+            BootstrapVersionPolicy::exact(EthosVersion::new(1, 0, 0)),
+            canonical,
+        )
+        .expect("valid catalog");
+    let reader = admitted
+        .bootstrap_reader(
+            admitted.bootstrap_grammar(id(900), id(901)),
+            catalog,
+            TestAuthority(authority),
+        )
+        .expect("valid reader");
     Fixture { reader, snapshot }
 }
 
 fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAuthority> {
+    let admitted = SemaTransactionAssembler::new();
     let plan = fixture.reader.plan(source).expect("valid bootstrap source");
     let mut records = fixture.snapshot.records().to_vec();
     let mut by_occurrence = BTreeMap::new();
@@ -180,13 +168,13 @@ fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAut
     for (index, declaration) in plan.declarations().iter().enumerate() {
         let identity = id(100 + index as u16);
         by_occurrence.insert(declaration.occurrence(), identity);
-        assignments.push(NamingAssignment {
-            occurrence: declaration.occurrence(),
-            encoded_name: identity,
-            disposition: IdentityDisposition::New {
+        assignments.push(admitted.naming_assignment(
+            declaration.occurrence(),
+            identity,
+            IdentityDisposition::New {
                 canonical_bytes: declaration.spelling().as_bytes().to_vec(),
             },
-        });
+        ));
     }
     for (declaration, assignment) in plan.declarations().iter().zip(&assignments) {
         let owner = match declaration.scope() {
@@ -197,7 +185,7 @@ fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAut
             &["app"],
             owner,
             declaration.spelling(),
-            assignment.encoded_name,
+            *assignment.encoded_name(),
         ));
     }
 
@@ -205,7 +193,9 @@ fn seal(fixture: &Fixture, source: &str) -> PreparedBootstrapTransaction<TestAut
         .reader
         .seal(
             &plan,
-            &NamingAssignments::new(assignments).expect("complete authored assignments"),
+            &admitted
+                .naming_assignments(assignments)
+                .expect("complete authored assignments"),
             &TextualMetadataTransition::new(
                 fixture.snapshot.clone(),
                 TextualMetadataSnapshot::new(records).expect("complete metadata transition"),
@@ -492,7 +482,7 @@ fn matching_reader_revalidates_the_authority_receipt() {
 }
 
 #[test]
-fn refuses_traits_roles_streams_tables_and_requirements_without_erasure() {
+fn refuses_traits_roles_tables_and_requirements_without_erasure() {
     let fixture = fixture(5);
 
     let transaction = seal(&fixture, "Nexus.{1 0 0}\n[]\n{[Behavior.{}] []}");
@@ -513,13 +503,6 @@ fn refuses_traits_roles_streams_tables_and_requirements_without_erasure() {
             target,
         }) if spelling(&transaction, &target) == "Message"
     ));
-
-    assert!(
-        fixture
-            .reader
-            .plan("Interface.{1 0 0}\n[]\n{[] [] [] [Flow.Stream.(String Integer)]}")
-            .is_err()
-    );
 
     let transaction = seal(
         &fixture,
